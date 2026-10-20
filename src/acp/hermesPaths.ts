@@ -127,7 +127,7 @@ export function hermesNotFoundMessage(): string {
         return (
             'Hermes not found. Install:\n' +
             '  iex (irm https://hermes-agent.nousresearch.com/install.ps1)\n\n' +
-            `Or set hermes.path in Settings (e.g. ${example})`
+            `Or set tommys.path in Settings (e.g. ${example})`
         );
     }
     return (

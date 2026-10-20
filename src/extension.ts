@@ -21,31 +21,31 @@ function bindChatCommand(
 
 export function activate(context: vscode.ExtensionContext) {
     initI18n();
-    console.log('Rina Hermes ACP activating...');
+    console.log('Tommys Hermes ACP activating...');
 
     // Register the chat webview provider
     chatProvider = new HermesChatProvider(context.extensionUri, context);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('hermesChat', chatProvider, {
+        vscode.window.registerWebviewViewProvider('tommysChat', chatProvider, {
             webviewOptions: { retainContextWhenHidden: true }
         })
     );
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('hermes.newChat', () => {
+        vscode.commands.registerCommand('tommys.newChat', () => {
             chatProvider?.newChat();
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('hermes.openChat', () => {
-            vscode.commands.executeCommand('workbench.view.extension.hermes-sidebar');
+        vscode.commands.registerCommand('tommys.openChat', () => {
+            vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('hermes.sendSelection', () => {
+        vscode.commands.registerCommand('tommys.sendSelection', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.selection.isEmpty) {
                 vscode.window.showInformationMessage(t('selectCodeFirst'));
@@ -56,24 +56,24 @@ export function activate(context: vscode.ExtensionContext) {
             const line = editor.selection.start.line + 1;
             const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
 
-            vscode.commands.executeCommand('workbench.view.extension.hermes-sidebar');
+            vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');
             chatProvider?.insertIntoInput(text);
         })
     );
 
-    bindChatCommand(context, 'hermes.reloadExtension', provider => provider.reloadExtension());
-    bindChatCommand(context, 'hermes.reloadSession', provider => provider.reloadSession());
-    bindChatCommand(context, 'hermes.openSettings', provider => provider.openSettings());
-    bindChatCommand(context, 'hermes.checkUpdate', provider => provider.checkForUpdate());
-    bindChatCommand(context, 'hermes.openAbout', provider => provider.openAbout());
-    bindChatCommand(context, 'hermes.openHelp', provider => provider.openHelp());
-    bindChatCommand(context, 'hermes.openFaq', provider => provider.openFaq());
-    bindChatCommand(context, 'hermes.openLogs', provider => provider.openLogs());
-    bindChatCommand(context, 'hermes.detectEnvironment', provider => provider.detectEnvironment());
-    bindChatCommand(context, 'hermes.detectEnvironmentBusy', () => undefined);
-    bindChatCommand(context, 'hermes.configureEnvironment', provider => provider.configureEnvironment());
+    bindChatCommand(context, 'tommys.reloadExtension', provider => provider.reloadExtension());
+    bindChatCommand(context, 'tommys.reloadSession', provider => provider.reloadSession());
+    bindChatCommand(context, 'tommys.openSettings', provider => provider.openSettings());
+    bindChatCommand(context, 'tommys.checkUpdate', provider => provider.checkForUpdate());
+    bindChatCommand(context, 'tommys.openAbout', provider => provider.openAbout());
+    bindChatCommand(context, 'tommys.openHelp', provider => provider.openHelp());
+    bindChatCommand(context, 'tommys.openFaq', provider => provider.openFaq());
+    bindChatCommand(context, 'tommys.openLogs', provider => provider.openLogs());
+    bindChatCommand(context, 'tommys.detectEnvironment', provider => provider.detectEnvironment());
+    bindChatCommand(context, 'tommys.detectEnvironmentBusy', () => undefined);
+    bindChatCommand(context, 'tommys.configureEnvironment', provider => provider.configureEnvironment());
 
-    console.log('Rina Hermes ACP activated');
+    console.log('Tommys Hermes ACP activated');
 }
 
 export function deactivate() {

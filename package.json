@@ -1,9 +1,9 @@
 {
-  "name": "rina-hermes-acp",
+  "name": "tommys-hermes-acp",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "0.3.2",
-  "publisher": "JoveRina",
+  "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "MIT",
   "engines": {
@@ -18,182 +18,182 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "hermes-sidebar",
+          "id": "tommys-sidebar",
           "title": "%viewsContainers.activitybar.title%",
           "icon": "media/activitybar.svg"
         }
       ]
     },
     "views": {
-      "hermes-sidebar": [
+      "tommys-sidebar": [
         {
           "type": "webview",
-          "id": "hermesChat",
-          "name": "%views.hermesChat.name%",
+          "id": "tommysChat",
+          "name": "%views.tommysChat.name%",
           "icon": "media/activitybar.svg"
         }
       ]
     },
     "commands": [
       {
-        "command": "hermes.newChat",
-        "title": "%commands.hermes.newChat.title%"
+        "command": "tommys.newChat",
+        "title": "%commands.tommys.newChat.title%"
       },
       {
-        "command": "hermes.openChat",
-        "title": "%commands.hermes.openChat.title%"
+        "command": "tommys.openChat",
+        "title": "%commands.tommys.openChat.title%"
       },
       {
-        "command": "hermes.sendSelection",
-        "title": "%commands.hermes.sendSelection.title%"
+        "command": "tommys.sendSelection",
+        "title": "%commands.tommys.sendSelection.title%"
       },
       {
-        "command": "hermes.reloadExtension",
-        "title": "%commands.hermes.reloadExtension.title%",
+        "command": "tommys.reloadExtension",
+        "title": "%commands.tommys.reloadExtension.title%",
         "icon": "$(debug-restart)"
       },
       {
-        "command": "hermes.reloadSession",
-        "title": "%commands.hermes.reloadSession.title%",
+        "command": "tommys.reloadSession",
+        "title": "%commands.tommys.reloadSession.title%",
         "icon": "$(refresh)"
       },
       {
-        "command": "hermes.openSettings",
-        "title": "%commands.hermes.openSettings.title%",
+        "command": "tommys.openSettings",
+        "title": "%commands.tommys.openSettings.title%",
         "icon": "$(gear)"
       },
       {
-        "command": "hermes.checkUpdate",
-        "title": "%commands.hermes.checkUpdate.title%",
+        "command": "tommys.checkUpdate",
+        "title": "%commands.tommys.checkUpdate.title%",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "hermes.openAbout",
-        "title": "%commands.hermes.openAbout.title%",
+        "command": "tommys.openAbout",
+        "title": "%commands.tommys.openAbout.title%",
         "icon": "$(info)"
       },
       {
-        "command": "hermes.openHelp",
-        "title": "%commands.hermes.openHelp.title%",
+        "command": "tommys.openHelp",
+        "title": "%commands.tommys.openHelp.title%",
         "icon": "$(question)"
       },
       {
-        "command": "hermes.openFaq",
-        "title": "%commands.hermes.openFaq.title%",
+        "command": "tommys.openFaq",
+        "title": "%commands.tommys.openFaq.title%",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "hermes.openLogs",
-        "title": "%commands.hermes.openLogs.title%",
+        "command": "tommys.openLogs",
+        "title": "%commands.tommys.openLogs.title%",
         "icon": "$(output)"
       },
       {
-        "command": "hermes.detectEnvironment",
-        "title": "%commands.hermes.detectEnvironment.title%",
+        "command": "tommys.detectEnvironment",
+        "title": "%commands.tommys.detectEnvironment.title%",
         "icon": "$(search)"
       },
       {
-        "command": "hermes.detectEnvironmentBusy",
-        "title": "%commands.hermes.detectEnvironmentBusy.title%",
+        "command": "tommys.detectEnvironmentBusy",
+        "title": "%commands.tommys.detectEnvironmentBusy.title%",
         "icon": "$(sync~spin)"
       },
       {
-        "command": "hermes.configureEnvironment",
-        "title": "%commands.hermes.configureEnvironment.title%",
+        "command": "tommys.configureEnvironment",
+        "title": "%commands.tommys.configureEnvironment.title%",
         "icon": "$(settings-gear)"
       }
     ],
     "submenus": [
       {
-        "id": "hermes.reloadMenu",
-        "label": "%submenus.hermes.reloadMenu.label%",
+        "id": "tommys.reloadMenu",
+        "label": "%submenus.tommys.reloadMenu.label%",
         "icon": "$(refresh)"
       },
       {
-        "id": "hermes.envMenu",
-        "label": "%submenus.hermes.envMenu.label%",
+        "id": "tommys.envMenu",
+        "label": "%submenus.tommys.envMenu.label%",
         "icon": "$(wrench)"
       },
       {
-        "id": "hermes.moreMenu",
-        "label": "%submenus.hermes.moreMenu.label%",
+        "id": "tommys.moreMenu",
+        "label": "%submenus.tommys.moreMenu.label%",
         "icon": "$(ellipsis)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "submenu": "hermes.envMenu",
-          "when": "view == hermesChat",
+          "submenu": "tommys.envMenu",
+          "when": "view == tommysChat",
           "group": "navigation@0"
         },
         {
-          "submenu": "hermes.reloadMenu",
-          "when": "view == hermesChat",
+          "submenu": "tommys.reloadMenu",
+          "when": "view == tommysChat",
           "group": "navigation@1"
         },
         {
-          "submenu": "hermes.moreMenu",
-          "when": "view == hermesChat",
+          "submenu": "tommys.moreMenu",
+          "when": "view == tommysChat",
           "group": "navigation@2"
         }
       ],
-      "hermes.envMenu": [
+      "tommys.envMenu": [
         {
-          "command": "hermes.detectEnvironment",
-          "when": "!hermesDetectInProgress",
+          "command": "tommys.detectEnvironment",
+          "when": "!tommysDetectInProgress",
           "group": "1@1"
         },
         {
-          "command": "hermes.detectEnvironmentBusy",
-          "when": "hermesDetectInProgress",
+          "command": "tommys.detectEnvironmentBusy",
+          "when": "tommysDetectInProgress",
           "group": "1@1"
         },
         {
-          "command": "hermes.configureEnvironment",
-          "when": "!hermesDetectInProgress",
+          "command": "tommys.configureEnvironment",
+          "when": "!tommysDetectInProgress",
           "group": "1@2"
         }
       ],
-      "hermes.reloadMenu": [
+      "tommys.reloadMenu": [
         {
-          "command": "hermes.reloadExtension",
+          "command": "tommys.reloadExtension",
           "group": "1@1"
         },
         {
-          "command": "hermes.reloadSession",
+          "command": "tommys.reloadSession",
           "group": "1@2"
         }
       ],
-      "hermes.moreMenu": [
+      "tommys.moreMenu": [
         {
-          "command": "hermes.openSettings",
+          "command": "tommys.openSettings",
           "group": "1@1"
         },
         {
-          "command": "hermes.checkUpdate",
+          "command": "tommys.checkUpdate",
           "group": "1@2"
         },
         {
-          "command": "hermes.openAbout",
+          "command": "tommys.openAbout",
           "group": "2@1"
         },
         {
-          "command": "hermes.openHelp",
+          "command": "tommys.openHelp",
           "group": "2@2"
         },
         {
-          "command": "hermes.openFaq",
+          "command": "tommys.openFaq",
           "group": "2@3"
         },
         {
-          "command": "hermes.openLogs",
+          "command": "tommys.openLogs",
           "group": "3@1"
         }
       ],
       "editor/context": [
         {
-          "command": "hermes.sendSelection",
+          "command": "tommys.sendSelection",
           "group": "1_modification"
         }
       ]
@@ -201,47 +201,47 @@
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
-        "hermes.path": {
+        "tommys.path": {
           "type": "string",
           "default": "",
-          "description": "%configuration.hermes.path.description%"
+          "description": "%configuration.tommys.path.description%"
         },
-        "hermes.cwd": {
+        "tommys.cwd": {
           "type": "string",
           "default": "",
-          "description": "%configuration.hermes.cwd.description%"
+          "description": "%configuration.tommys.cwd.description%"
         },
-        "hermes.profile": {
+        "tommys.profile": {
           "type": "string",
           "default": "",
-          "description": "%configuration.hermes.profile.description%"
+          "description": "%configuration.tommys.profile.description%"
         },
-        "hermes.showThoughts": {
+        "tommys.showThoughts": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.hermes.showThoughts.description%"
+          "description": "%configuration.tommys.showThoughts.description%"
         },
-        "hermes.showToolCalls": {
+        "tommys.showToolCalls": {
           "type": "boolean",
           "default": true,
-          "description": "%configuration.hermes.showToolCalls.description%"
+          "description": "%configuration.tommys.showToolCalls.description%"
         },
-        "hermes.contextAttachVisibility": {
+        "tommys.contextAttachVisibility": {
           "type": "string",
           "default": "onNewSession",
           "enum": ["onNewSession", "always", "never"],
           "enumDescriptions": [
-            "%configuration.hermes.contextAttachVisibility.onNewSession.description%",
-            "%configuration.hermes.contextAttachVisibility.always.description%",
-            "%configuration.hermes.contextAttachVisibility.never.description%"
+            "%configuration.tommys.contextAttachVisibility.onNewSession.description%",
+            "%configuration.tommys.contextAttachVisibility.always.description%",
+            "%configuration.tommys.contextAttachVisibility.never.description%"
           ],
-          "description": "%configuration.hermes.contextAttachVisibility.description%"
+          "description": "%configuration.tommys.contextAttachVisibility.description%"
         },
-        "hermes.models": {
+        "tommys.models": {
           "type": "array",
           "default": [],
-          "description": "%configuration.hermes.models.description%",
-          "markdownDescription": "%configuration.hermes.models.markdownDescription%",
+          "description": "%configuration.tommys.models.description%",
+          "markdownDescription": "%configuration.tommys.models.markdownDescription%",
           "items": {
             "type": "object",
             "properties": {
@@ -251,16 +251,16 @@
             "required": ["id", "name"]
           }
         },
-        "hermes.defaultModel": {
+        "tommys.defaultModel": {
           "type": "string",
           "default": "",
-          "description": "%configuration.hermes.defaultModel.description%"
+          "description": "%configuration.tommys.defaultModel.description%"
         },
-        "hermes.agents": {
+        "tommys.agents": {
           "type": "array",
           "default": [],
-          "description": "%configuration.hermes.agents.description%",
-          "markdownDescription": "%configuration.hermes.agents.markdownDescription%",
+          "description": "%configuration.tommys.agents.description%",
+          "markdownDescription": "%configuration.tommys.agents.markdownDescription%",
           "items": {
             "type": "object",
             "properties": {
@@ -296,6 +296,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jove-rina/rina-hermes-acp"
+    "url": "https://github.com/Emperor-and-Fool/tommys-hermes-acp"
   }
 }

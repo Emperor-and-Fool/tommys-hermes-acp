@@ -27,11 +27,11 @@ export const zhCn: LocaleStrings = {
     detectEnvironmentProgressPrefix: '环境检测：{0}',
     detectEnvironmentStepCompleteShort: '完成',
     detectEnvironmentCancelled: '环境检测已取消',
-    detectEnvironmentNotFound: '未找到 Hermes 可执行文件。请先安装 Hermes Agent，或在设置中手动配置 hermes.path。',
+    detectEnvironmentNotFound: '未找到 Hermes 可执行文件。请先安装 Hermes Agent，或在设置中手动配置 tommys.path。',
     detectEnvironmentPickExecutable: '选择 Hermes 可执行文件',
     detectEnvironmentConfigureTitle: '如何配置 Hermes 路径？',
     detectEnvironmentConfigurePlugin: '配置到插件',
-    detectEnvironmentConfigurePluginDesc: '写入 hermes.path，仅对本插件生效并立即重连',
+    detectEnvironmentConfigurePluginDesc: '写入 tommys.path，仅对本插件生效并立即重连',
     detectEnvironmentConfigureSystem: '配置到系统环境',
     detectEnvironmentConfigureSystemDesc: '写入环境变量 {0}（{1}）',
     detectEnvironmentSystemVarTargetWindows: 'Windows 用户级 Path 环境变量',
@@ -54,7 +54,7 @@ export const zhCn: LocaleStrings = {
     detectEnvironmentCandidateUnverified: '未验证',
     detectEnvironmentDetectTitle: '环境检测中....',
     detectEnvironmentCompleteTitle: '环境检测完成',
-    detectEnvironmentStepConfig: 'L0 · 插件配置 (hermes.path)',
+    detectEnvironmentStepConfig: 'L0 · 插件配置 (tommys.path)',
     detectEnvironmentStepPath: 'L1 · PATH 查找 (where / command -v)',
     detectEnvironmentStepKnownPath: 'L2 · 已知安装路径',
     detectEnvironmentStepPip: 'L3 · pip 安装 (pip show hermes-agent)',
@@ -153,7 +153,7 @@ export const zhCn: LocaleStrings = {
     copy: '复制',
     clear: '清空',
     noLogs: '（暂无日志）',
-    aboutTitle: '关于 Rina Hermes ACP',
+    aboutTitle: '关于 Tommys Hermes ACP',
     helpTitle: '帮助 — 如何启动 ACP',
     faqTitle: '常见问题',
 
@@ -183,16 +183,16 @@ hermes --profile &lt;name&gt; acp</code></pre>
 
             <h3>3. 插件配置（Settings）</h3>
             <ul>
-                <li><code>hermes.path</code> — Hermes 可执行文件路径（留空则自动检测）</li>
-                <li><code>hermes.profile</code> — 对应 <code>--profile</code> 参数</li>
-                <li><code>hermes.cwd</code> — Agent 工作目录（默认工作区根目录）</li>
+                <li><code>tommys.path</code> — Hermes 可执行文件路径（留空则自动检测）</li>
+                <li><code>tommys.profile</code> — 对应 <code>--profile</code> 参数</li>
+                <li><code>tommys.cwd</code> — Agent 工作目录（默认工作区根目录）</li>
             </ul>
             <p>点击视图标题栏 <strong>更多 → 配置</strong> 可打开 Settings，修改后<strong>实时生效</strong>（连接相关项会自动重连）。</p>
 
             <h3>4. 连接失败排查</h3>
             <ul>
                 <li>确认 <code>hermes acp</code> 在终端能正常启动</li>
-                <li>在 Settings 中设置正确的 <code>hermes.path</code></li>
+                <li>在 Settings 中设置正确的 <code>tommys.path</code></li>
                 <li>点击视图标题栏 <strong>更多 → 日志</strong> 查看 ERROR/WARNING 日志</li>
             </ul>`,
 
@@ -209,7 +209,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <p><strong>如何续上之前的讨论？</strong> 重置后，输入区可能出现 <strong>「会话被重置？是否附带上次会话记忆？」</strong> 选项，可将部分历史消息作为参考文本附带到下一条发送（会消耗更多输入 Token）。仅 <strong>用户、助手与权限</strong> 消息可附带，思考/工具消息不在范围内。</p>
             <ul>
                 <li>默认：重置后出现一次，<strong>首次成功回复后消失</strong></li>
-                <li>可在 Settings 调整 <code>hermes.contextAttachVisibility</code>：<code>onNewSession</code>（默认）/ <code>always</code> / <code>never</code></li>
+                <li>可在 Settings 调整 <code>tommys.contextAttachVisibility</code>：<code>onNewSession</code>（默认）/ <code>always</code> / <code>never</code></li>
             </ul>
             <p class="dim"><strong>建议：</strong>需连续上下文时尽量在同一 Tab 内完成；切换后若要延续话题，使用记忆附带；重要结论及时复制或导出会话。</p>
 
@@ -228,7 +228,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
                 <li><strong>会话列表换一套</strong> — 每个 Profile / <code>hermes.agents</code> 命名 Agent 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
                 <li><strong>模型列表刷新</strong> — 来自新 Profile 下 Hermes 暴露的可用模型，可能与旧 Profile 完全不同</li>
                 <li><strong>聊天内容</strong> — 按新 Profile 下的活跃会话重新加载</li>
-                <li><strong>Settings 变更</strong> — 修改 <code>hermes.profile</code>、<code>hermes.path</code> 等连接项也会自动重连，效果类似切换 Profile</li>
+                <li><strong>Settings 变更</strong> — 修改 <code>tommys.profile</code>、<code>tommys.path</code> 等连接项也会自动重连，效果类似切换 Profile</li>
             </ul>
 
             <h3>4. 模型列表为什么不全？</h3>
@@ -244,10 +244,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
 
             <h3>5. 会持续更新吗？</h3>
             <p><strong>会。</strong> 本扩展通过 VS Code 扩展市场发布；顶部 <strong>「…」→ 检查更新</strong> 可触发市场检查并定位到本扩展。</p>
-            <p>Hermes Agent 与扩展<strong>独立演进</strong>：扩展跟进 ACP、模型选择、Profile 等；底层能力（模型、工具等）取决于 Hermes 本身。可关注 <a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp">GitHub 仓库</a> 的 Release 与 Issue。</p>
+            <p>Hermes Agent 与扩展<strong>独立演进</strong>：扩展跟进 ACP、模型选择、Profile 等；底层能力（模型、工具等）取决于 Hermes 本身。可关注 <a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp">GitHub 仓库</a> 的 Release 与 Issue。</p>
 
             <h3>6. BUG 怎么反馈？</h3>
-            <p>请到 GitHub 提交 Issue：<br><a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp/issues">github.com/jove-rina/rina-hermes-acp/issues</a></p>
+            <p>请到 GitHub 提交 Issue：<br><a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues">github.com/jove-rina/tommys-hermes-acp/issues</a></p>
             <p><strong>建议包含：</strong></p>
             <ul>
                 <li>VS Code 版本（帮助 → 关于）</li>
@@ -258,7 +258,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             </ul>
 
             <h3>7. 期望的新功能怎么告诉我？</h3>
-            <p>同样通过 <a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp/issues">GitHub Issues</a> 提交，标题标明 <code>[Feature Request]</code>。</p>
+            <p>同样通过 <a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues">GitHub Issues</a> 提交，标题标明 <code>[Feature Request]</code>。</p>
             <p>请说明：<strong>使用场景</strong>、<strong>期望行为</strong>、是否接受替代方案。描述越具体，越便于排期。</p>`,
 
     roleYou: '你',

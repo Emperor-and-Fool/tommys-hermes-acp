@@ -574,7 +574,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _getContextAttachVisibility(): ContextAttachVisibility {
-        const value = vscode.workspace.getConfiguration('hermes').get<string>('contextAttachVisibility', 'onNewSession');
+        const value = vscode.workspace.getConfiguration('tommys').get<string>('contextAttachVisibility', 'onNewSession');
         if (value === 'always' || value === 'never') {
             return value;
         }
@@ -896,7 +896,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _resolveConnectionTarget(selectionId?: string): ConnectionTarget {
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const configPath = config.get<string>('path') || undefined;
         const configCwd = config.get<string>('cwd') || undefined;
         const configProfile = config.get<string>('profile') || undefined;
@@ -963,7 +963,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._profileDiscoveryPromise = (async () => {
-            const config = vscode.workspace.getConfiguration('hermes');
+            const config = vscode.workspace.getConfiguration('tommys');
             const hermesPath = config.get<string>('path') || undefined;
             try {
                 this._discoveredProfiles = await discoverHermesProfiles(hermesPath);
@@ -1010,7 +1010,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const catalog = resolveModelCatalog(modelOptions, hermesModelsRaw);
         const profileState = loadProfileState(this._historyDir, this._scopeKey);
         const session = this._sessions.find(s => s.id === this._sessionId);
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const settingsModels = config.get<Array<{ id: string; name: string }>>('models') || [];
 
         if (catalog?.groups.length) {
@@ -1331,8 +1331,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private _setDetectContext(inProgress: boolean, reportAvailable: boolean): void {
         this._detectInProgress = inProgress;
-        void vscode.commands.executeCommand('setContext', 'hermesDetectInProgress', inProgress);
-        void vscode.commands.executeCommand('setContext', 'hermesDetectReportAvailable', reportAvailable);
+        void vscode.commands.executeCommand('setContext', 'tommysDetectInProgress', inProgress);
+        void vscode.commands.executeCommand('setContext', 'tommysDetectReportAvailable', reportAvailable);
     }
 
     private _handleDetectEnvironmentDismiss(): void {
@@ -1581,7 +1581,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._log('Environment detection requested');
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const configuredPath = config.get<string>('path') || undefined;
         const report = await this._runEnvironmentDetectionWithUi(configuredPath, 'manual');
 
@@ -1602,7 +1602,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (this._detectInProgress) {
             return;
         }
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const systemEnv = this._getSystemPathEnvInfo();
         this._postMessage({
             type: 'configureEnvironmentOpen',
@@ -1792,7 +1792,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (!this._pickBestExecutable(report)) {
             return false;
         }
-        const workspaceConfig = vscode.workspace.getConfiguration('hermes');
+        const workspaceConfig = vscode.workspace.getConfiguration('tommys');
         const configuredPath = workspaceConfig.get<string>('path')?.trim();
         const pluginConfigValid = !!configuredPath && report.executables.some(
             (item) => item.source === 'config' && item.verified,
@@ -1883,9 +1883,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         executable: string,
         options?: { notify?: boolean },
     ): Promise<void> {
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         await config.update('path', executable, vscode.ConfigurationTarget.Global);
-        this._log(`Configured hermes.path: ${executable}`);
+        this._log(`Configured tommys.path: ${executable}`);
         if (options?.notify !== false) {
             void vscode.window.showInformationMessage(t('detectEnvironmentPluginConfigured', executable));
         }
@@ -1916,7 +1916,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _buildFallbackModelList(): ModelListState | null {
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const models = config.get<Array<{ id: string; name: string }>>('models') || [];
         const defaultModel = config.get<string>('defaultModel') || '';
         const session = this._sessions.find(s => s.id === this._sessionId);
@@ -2687,7 +2687,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _readAgentConfigs(): HermesAgentConfig[] {
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const raw = config.get<unknown>('agents');
         if (!Array.isArray(raw)) {
             return [];
@@ -2799,7 +2799,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postConfig(): void {
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         this._postMessage({
             type: 'config',
             showThoughts: config.get<boolean>('showThoughts', true),
@@ -2830,7 +2830,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         this._postMessage({
             type: 'pluginInfo',
-            displayName: pkg?.displayName || 'Rina Hermes ACP',
+            displayName: pkg?.displayName || 'Tommys Hermes ACP',
             version: pkg?.version || '',
             publisher: pkg?.publisher || '',
             description: pkg?.description || '',
@@ -2894,7 +2894,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         // Cursor: always open Settings UI (JSON editor command often does nothing visible).
         if (preferJsonEditor && !isCursor) {
             await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
-                revealSetting: { key: 'hermes.path', edit: false },
+                revealSetting: { key: 'tommys.path', edit: false },
             });
             return;
         }
@@ -2906,10 +2906,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
-        if (e.affectsConfiguration('hermes.showThoughts') || e.affectsConfiguration('hermes.showToolCalls')) {
+        if (e.affectsConfiguration('tommys.showThoughts') || e.affectsConfiguration('tommys.showToolCalls')) {
             this._postConfig();
         }
-        if (e.affectsConfiguration('hermes.contextAttachVisibility')) {
+        if (e.affectsConfiguration('tommys.contextAttachVisibility')) {
             this._applyContextAttachVisibility();
         }
         if (e.affectsConfiguration('hermes.models') || e.affectsConfiguration('hermes.defaultModel')) {
@@ -2922,10 +2922,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._discoveredProfiles = null;
             this._postProfileList();
         }
-        const reconnectKeys = ['hermes.path', 'hermes.cwd', 'hermes.profile'];
+        const reconnectKeys = ['tommys.path', 'tommys.cwd', 'tommys.profile'];
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration('hermes.profile') && this._readAgentConfigs().length === 0) {
-                const config = vscode.workspace.getConfiguration('hermes');
+            if (e.affectsConfiguration('tommys.profile') && this._readAgentConfigs().length === 0) {
+                const config = vscode.workspace.getConfiguration('tommys');
                 this._activeSelectionId = normalizeHermesCliProfile(config.get<string>('profile'));
             }
             await this._reconnectForConfig();
@@ -2987,7 +2987,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return folders.some(f => p.startsWith(f.uri.fsPath));
         }
         // No workspace: restrict to cwd
-        const config = vscode.workspace.getConfiguration('hermes');
+        const config = vscode.workspace.getConfiguration('tommys');
         const configCwd = config.get<string>('cwd');
         const cwd = configCwd || process.cwd();
         return p.startsWith(cwd);

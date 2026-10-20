@@ -27,11 +27,11 @@ export const en: LocaleStrings = {
     detectEnvironmentProgressPrefix: 'Environment: {0}',
     detectEnvironmentStepCompleteShort: 'Done',
     detectEnvironmentCancelled: 'Environment detection cancelled',
-    detectEnvironmentNotFound: 'Hermes executable not found. Install Hermes Agent or set hermes.path manually in Settings.',
+    detectEnvironmentNotFound: 'Hermes executable not found. Install Hermes Agent or set tommys.path manually in Settings.',
     detectEnvironmentPickExecutable: 'Select Hermes executable',
     detectEnvironmentConfigureTitle: 'How should Hermes be configured?',
     detectEnvironmentConfigurePlugin: 'Configure for extension',
-    detectEnvironmentConfigurePluginDesc: 'Write hermes.path — extension only, reconnects immediately',
+    detectEnvironmentConfigurePluginDesc: 'Write tommys.path — extension only, reconnects immediately',
     detectEnvironmentConfigureSystem: 'Configure for system',
     detectEnvironmentConfigureSystemDesc: 'Write to environment variable {0} ({1})',
     detectEnvironmentSystemVarTargetWindows: 'Windows user-level Path',
@@ -54,7 +54,7 @@ export const en: LocaleStrings = {
     detectEnvironmentCandidateUnverified: 'unverified',
     detectEnvironmentDetectTitle: 'Detecting environment....',
     detectEnvironmentCompleteTitle: 'Environment detection complete',
-    detectEnvironmentStepConfig: 'L0 · Extension setting (hermes.path)',
+    detectEnvironmentStepConfig: 'L0 · Extension setting (tommys.path)',
     detectEnvironmentStepPath: 'L1 · PATH lookup (where / command -v)',
     detectEnvironmentStepKnownPath: 'L2 · Known install paths',
     detectEnvironmentStepPip: 'L3 · pip install (pip show hermes-agent)',
@@ -76,7 +76,7 @@ export const en: LocaleStrings = {
     detectEnvironmentSummaryBroken: 'Hermes files were found but could not run. Try reinstalling Hermes Agent.',
     detectEnvironmentSummaryNotFound: 'Hermes not found. Please install Hermes Agent first.',
     detectEnvironmentSummaryInstall: 'Hermes not found. Please install Hermes Agent first.',
-    detectEnvironmentSummaryConfigureViaMenu: 'Hermes was found but hermes.path is not set. Open the wrench menu and choose Environment configuration.',
+    detectEnvironmentSummaryConfigureViaMenu: 'Hermes was found but tommys.path is not set. Open the wrench menu and choose Environment configuration.',
     detectEnvironmentSummaryAcpBroken: 'Hermes is installed but ACP dependencies are missing. Detection will try installing agent-client-protocol.',
     detectEnvironmentSummaryAcpManual: 'ACP still fails after installing dependencies. Run hermes acp in a terminal to troubleshoot.',
     detectEnvironmentViewDetails: 'View details',
@@ -153,7 +153,7 @@ export const en: LocaleStrings = {
     copy: 'Copy',
     clear: 'Clear',
     noLogs: '(no logs yet)',
-    aboutTitle: 'About Rina Hermes ACP',
+    aboutTitle: 'About Tommys Hermes ACP',
     helpTitle: 'Help — How to start ACP',
     faqTitle: 'FAQ',
 
@@ -183,16 +183,16 @@ hermes --profile &lt;name&gt; acp</code></pre>
 
             <h3>3. Extension settings</h3>
             <ul>
-                <li><code>hermes.path</code> — path to the Hermes executable (empty = auto-detect)</li>
-                <li><code>hermes.profile</code> — maps to <code>--profile</code></li>
-                <li><code>hermes.cwd</code> — agent working directory (defaults to workspace root)</li>
+                <li><code>tommys.path</code> — path to the Hermes executable (empty = auto-detect)</li>
+                <li><code>tommys.profile</code> — maps to <code>--profile</code></li>
+                <li><code>tommys.cwd</code> — agent working directory (defaults to workspace root)</li>
             </ul>
             <p>Open <strong>More → Settings</strong> from the view title bar; connection-related changes <strong>take effect immediately</strong> (reconnects automatically).</p>
 
             <h3>4. Troubleshooting connection</h3>
             <ul>
                 <li>Confirm <code>hermes acp</code> starts in a terminal</li>
-                <li>Set the correct <code>hermes.path</code> in Settings</li>
+                <li>Set the correct <code>tommys.path</code> in Settings</li>
                 <li>Open <strong>More → Logs</strong> from the view title bar to inspect ERROR/WARNING logs</li>
             </ul>`,
 
@@ -209,7 +209,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <p><strong>How to continue a prior discussion?</strong> After a reset, the input area may show <strong>"Session reset? Attach prior session memory?"</strong> You can attach selected prior messages as reference text to your next send (uses more input tokens). Only <strong>user, assistant, and permission</strong> messages count as attachable memory; thought and tool messages are excluded.</p>
             <ul>
                 <li>Default: shown once after reset, <strong>disappears after the first successful reply</strong></li>
-                <li>Adjust in Settings via <code>hermes.contextAttachVisibility</code>: <code>onNewSession</code> (default) / <code>always</code> / <code>never</code></li>
+                <li>Adjust in Settings via <code>tommys.contextAttachVisibility</code>: <code>onNewSession</code> (default) / <code>always</code> / <code>never</code></li>
             </ul>
             <p class="dim"><strong>Tip:</strong> stay in one tab for continuous context; use memory attach after switching; copy or export important conclusions.</p>
 
@@ -228,7 +228,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
                 <li><strong>Different session list</strong> — each Profile / named agent in <code>hermes.agents</code> has separate local storage; tab history, active tab, and model preferences do not carry over</li>
                 <li><strong>Model list refreshes</strong> — from models exposed by Hermes under the new Profile; may differ completely</li>
                 <li><strong>Chat content</strong> — reloads the active session under the new Profile</li>
-                <li><strong>Settings changes</strong> — editing <code>hermes.profile</code>, <code>hermes.path</code>, etc. also reconnects, similar to switching Profile</li>
+                <li><strong>Settings changes</strong> — editing <code>tommys.profile</code>, <code>tommys.path</code>, etc. also reconnects, similar to switching Profile</li>
             </ul>
 
             <h3>4. Why isn't the model list complete?</h3>
@@ -244,10 +244,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
 
             <h3>5. Will this extension keep getting updates?</h3>
             <p><strong>Yes.</strong> Published on the VS Code Marketplace; use <strong>More → Check for Updates</strong> to check and jump to this extension.</p>
-            <p>Hermes Agent and this extension <strong>evolve independently</strong>: the extension tracks ACP, model selection, Profile support, etc.; underlying capabilities depend on Hermes itself. Watch <a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp">Releases and Issues on GitHub</a>.</p>
+            <p>Hermes Agent and this extension <strong>evolve independently</strong>: the extension tracks ACP, model selection, Profile support, etc.; underlying capabilities depend on Hermes itself. Watch <a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp">Releases and Issues on GitHub</a>.</p>
 
             <h3>6. How do I report a bug?</h3>
-            <p>Open an Issue on GitHub:<br><a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp/issues">github.com/jove-rina/rina-hermes-acp/issues</a></p>
+            <p>Open an Issue on GitHub:<br><a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues">github.com/jove-rina/tommys-hermes-acp/issues</a></p>
             <p><strong>Please include:</strong></p>
             <ul>
                 <li>VS Code version (Help → About)</li>
@@ -258,7 +258,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             </ul>
 
             <h3>7. How do I suggest a new feature?</h3>
-            <p>Same channel: <a href="#" data-url="https://github.com/jove-rina/rina-hermes-acp/issues">GitHub Issues</a>, with <code>[Feature Request]</code> in the title.</p>
+            <p>Same channel: <a href="#" data-url="https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues">GitHub Issues</a>, with <code>[Feature Request]</code> in the title.</p>
             <p>Describe the <strong>use case</strong>, <strong>expected behavior</strong>, and whether alternatives are acceptable. The more specific, the easier to prioritize.</p>`,
 
     roleYou: 'You',

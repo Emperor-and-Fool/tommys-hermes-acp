@@ -1,0 +1,58 @@
+Tommys Hermes ACP — provenance and attribution
+==============================================
+
+This project is a derivative of "Rina Hermes ACP" by jove-rina, used under the MIT
+licence. It is maintained by Emperor & Fool as a separate extension and is neither
+the upstream project nor endorsed by it.
+
+Upstream
+--------
+Project : Rina Hermes ACP
+Source  : https://github.com/jove-rina/rina-hermes-acp
+Licence : MIT, Copyright (c) 2026 jove-rina
+Notice  : retained verbatim in LICENSE (do not remove)
+
+Base of this fork
+-----------------
+Upstream release        : 0.3.2 (tag 0.3.2, commit f0c7cb5)
+Upstream master merged  : cfe8a3d
+Fork commit carrying all inherited work: 8d92a5b
+Original feature commits carried over :
+  49fabe6  image paste, image-only send, light-theme readability (upstream PR #8)
+  f60ab85  live font-size pill and input layout fixes
+
+Licence of this fork
+--------------------
+Inherited code   : MIT, Copyright (c) 2026 jove-rina — see LICENSE
+New work         : MIT, Copyright (c) 2026 Emperor & Fool
+
+The MIT notice for the inherited code is distributed in LICENSE and must be kept in
+all copies and substantial portions, including packaged .vsix artifacts. New work is
+released under the same MIT terms so the project stays single-licence; if any file is
+ever relicensed differently, that must be stated per file.
+
+Disclaimer
+----------
+The software is provided "as is", without warranty of any kind, as set out in LICENSE.
+
+Trademarks and identity
+-----------------------
+The MIT licence grants copyright permissions only. It does not grant rights to the
+upstream project's name, logo or marketplace identity. "Rina Hermes ACP", "jove-rina",
+the publisher id JoveRina and the upstream marketplace listings are not used by this
+fork; the extension id is emperorandfool.tommys-hermes-acp.
+
+The files media/icon.png and media/activitybar.svg are inherited upstream artwork.
+They are redistributable under the MIT licence, but they are not Emperor & Fool
+branding and should be replaced before this fork is published as a distinct product.
+
+Bundled third-party components
+------------------------------
+@agentclientprotocol/sdk            Apache-2.0   (node_modules)
+media/vendor/purify.min.js          Apache-2.0   DOMPurify
+media/vendor/highlight.min.js       BSD-3-Clause highlight.js
+media/vendor/github-dark.min.css    BSD-3-Clause highlight.js theme
+media/vendor/marked.min.js          MIT          marked, Copyright (c) 2011-2024 Christopher Jeffrey
+
+Their notices must remain in the packaged extension. Where Apache-2.0 components have
+been modified, the modification is stated in the commit that made it.
