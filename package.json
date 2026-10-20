@@ -20,7 +20,7 @@
         {
           "id": "tommys-sidebar",
           "title": "%viewsContainers.activitybar.title%",
-          "icon": "media/activitybar.svg"
+          "icon": "$(comment-discussion)"
         }
       ]
     },
@@ -29,8 +29,7 @@
         {
           "type": "webview",
           "id": "tommysChat",
-          "name": "%views.tommysChat.name%",
-          "icon": "media/activitybar.svg"
+          "name": "%views.tommysChat.name%"
         }
       ]
     },
