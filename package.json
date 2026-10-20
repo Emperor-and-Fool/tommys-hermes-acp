@@ -5,7 +5,7 @@
   "version": "0.3.2",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -229,7 +229,11 @@
         "tommys.contextAttachVisibility": {
           "type": "string",
           "default": "onNewSession",
-          "enum": ["onNewSession", "always", "never"],
+          "enum": [
+            "onNewSession",
+            "always",
+            "never"
+          ],
           "enumDescriptions": [
             "%configuration.tommys.contextAttachVisibility.onNewSession.description%",
             "%configuration.tommys.contextAttachVisibility.always.description%",
@@ -245,10 +249,17 @@
           "items": {
             "type": "object",
             "properties": {
-              "id": { "type": "string" },
-              "name": { "type": "string" }
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
             },
-            "required": ["id", "name"]
+            "required": [
+              "id",
+              "name"
+            ]
           }
         },
         "tommys.defaultModel": {
@@ -264,12 +275,22 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
-              "path": { "type": "string" },
-              "profile": { "type": "string" },
-              "cwd": { "type": "string" }
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "cwd": {
+                "type": "string"
+              }
             },
-            "required": ["name"]
+            "required": [
+              "name"
+            ]
           }
         }
       }

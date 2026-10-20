@@ -100,16 +100,22 @@ Extension id: `emperorandfool.tommys-hermes-acp` — distinct from upstream's
 
 ## Licence and attribution
 
-Inherited code: **MIT**, © 2026 jove-rina — notice retained verbatim in [`LICENSE`](LICENSE), as MIT
-requires. Additions and modifications by Emperor & Fool: **MIT**, © 2026 Emperor & Fool. The full
-split, the upstream commits this fork is based on, and the bundled third-party licences are in
-[`NOTICE`](NOTICE).
+**This project is distributed under GPL-3.0-or-later**, © 2026 Emperor & Fool — full text in
+[`LICENSE`](LICENSE). It is a fork of Rina Hermes ACP, which was received under the **MIT**
+licence, © 2026 jove-rina; that notice is retained verbatim in
+[`LICENSES/MIT-jove-rina.txt`](LICENSES/MIT-jove-rina.txt) as MIT requires, and the upstream code
+remains available from upstream under MIT. The full split, the upstream commits this fork is based
+on, and the bundled third-party licences are in [`NOTICE`](NOTICE) and
+[`packaging/copyright`](packaging/copyright).
+
+Because this is a GPL work: the complete source for every distributed build is this repository, and
+anyone redistributing a modified version must do so under the same licence.
 
 Bundled components keep their own licences: `@agentclientprotocol/sdk` and `media/vendor/purify.min.js`
 (DOMPurify) Apache-2.0; `media/vendor/highlight.min.js` and `github-dark.min.css` (highlight.js)
 BSD-3-Clause; `media/vendor/marked.min.js` MIT.
 
-MIT grants copyright permissions, not trademark rights: the upstream name "Rina Hermes ACP", the
+Neither MIT nor the GPL grant trademark rights: the upstream name "Rina Hermes ACP", the
 `jove-rina` name and the upstream marketplace identity are not used by this fork. The icon and
-activity-bar glyph under `media/` are still upstream artwork — redistributable under MIT, but they
-should be replaced before publishing this fork as a distinct product.
+activity-bar glyph under `media/` are still upstream artwork — redistributable, but they are not
+Emperor & Fool branding and are being replaced.

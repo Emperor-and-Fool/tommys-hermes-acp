@@ -23,13 +23,21 @@ Original feature commits carried over :
 
 Licence of this fork
 --------------------
-Inherited code   : MIT, Copyright (c) 2026 jove-rina — see LICENSE
-New work         : MIT, Copyright (c) 2026 Emperor & Fool
+Project as a whole : GPL-3.0-or-later, Copyright (c) 2026 Emperor & Fool — see LICENSE
+Inherited code     : MIT, Copyright (c) 2026 jove-rina — notice retained verbatim in
+                     LICENSES/MIT-jove-rina.txt
+Third-party        : see the table below and packaging/copyright
 
-The MIT notice for the inherited code is distributed in LICENSE and must be kept in
-all copies and substantial portions, including packaged .vsix artifacts. New work is
-released under the same MIT terms so the project stays single-licence; if any file is
-ever relicensed differently, that must be stated per file.
+MIT is compatible with GPLv3, so the inherited portions are distributed inside this
+GPL-3.0-or-later work without any loss to recipients, and remain obtainable from
+upstream under MIT. The MIT notice must stay in all copies and substantial portions,
+including packaged .vsix artifacts.
+
+Corresponding source: the complete source of every distributed build is this
+repository (https://github.com/Emperor-and-Fool/tommys-hermes-acp), which satisfies
+GPLv3 section 6 for recipients of a .vsix. If a build is ever distributed without a
+public source location, add a written offer instead.
+
 
 Disclaimer
 ----------
