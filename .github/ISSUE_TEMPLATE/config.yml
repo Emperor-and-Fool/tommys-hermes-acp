@@ -1,11 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 📦 VS Code Marketplace
-    url: https://marketplace.visualstudio.com/items?itemName=JoveRina.rina-hermes-acp
-    about: Install the latest version
-  - name: 🖥️ Cursor (Open VSX)
-    url: https://open-vsx.org/extension/JoveRina/rina-hermes-acp
-    about: Install via Cursor extension registry
-  - name: 🌐 Brand Site
-    url: https://app.jove-rina.top
-    about: Guides, tips, and related tools
+  - name: Hermes Agent docs
+    url: https://hermes-agent.nousresearch.com/docs
+    about: Documentation for the agent this extension drives
+  - name: Issues in this fork
+    url: https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues
+    about: Report bugs or request features for Tommys Hermes ACP
