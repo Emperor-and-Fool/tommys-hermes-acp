@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AcpClient, AcpStatus, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
+import { AcpClient, AcpStatus, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../acp/modelConfig';
 import { resolveModelCatalog } from '../acp/acpModelCatalog';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
@@ -119,6 +119,8 @@ interface DetectStepLogEntry {
 export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
     private _view?: vscode.WebviewView;
+    /** Every live webview for our view id; a moved container can briefly have two. */
+    private readonly _views = new Set<vscode.WebviewView>();
     private _acp?: AcpClient;
     private _output: vscode.OutputChannel;
 
@@ -130,6 +132,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _sessionMessages: ChatMessage[] = [];
     private _sessionId: string = '';
     private _sessions: SessionInfo[] = [];
+    /** Sessions Hermes has flagged hidden: closed tabs waiting to be opened again. */
+    private _hiddenSessions: CatalogSession[] = [];
     private _lastAssistantText: string = '';
     private _lastThoughtText: string = '';
     private _modelState: ModelListState | null = null;
@@ -137,6 +141,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _activeAgentName: string = '';
     /** Agent name or CLI profile id used for reconnect / switch. */
     private _activeSelectionId: string = '';
+    /** One-shot guard for the automatic reconnect after a lost connection. */
+    private _reconnectAttempts = 0;
+    private _disposed = false;
+    /** Selection id of the profile/agent used last, restored on activation. */
+    private _persistedSelectionId: string = '';
     private _discoveredProfiles: string[] | null = null;
     private _profileDiscoveryPromise: Promise<void> | undefined;
     private _modelSwitchInFlight: Promise<void> | undefined;
@@ -194,13 +203,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const context = this._context;
         this._extensionId = context.extension.id;
         this._persistedHermesSessionId = context.workspaceState.get<string>('hermesSessionId') || '';
+        // The profile/agent last picked in the UI outlives the window: without this the
+        // extension always reopened on the `tommys.profile` setting, not on the user's pick.
+        this._persistedSelectionId = context.globalState.get<string>('activeSelectionId') || '';
         this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
-        const initialTarget = this._resolveConnectionTarget();
+        // Seed the in-memory selection first: _resolveConnectionTarget() prefers it over
+        // the configured profile, and still falls back when the id no longer resolves.
+        this._activeSelectionId = this._persistedSelectionId;
+        const initialTarget = this._resolveConnectionTarget(this._persistedSelectionId || undefined);
         this._scopeKey = initialTarget.scopeKey;
         this._activeSelectionId = initialTarget.selectionId;
         this._activeAgentName = initialTarget.displayName;
@@ -245,6 +260,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         _token: vscode.CancellationToken
     ) {
         this._view = webviewView;
+        this._views.add(webviewView);
+        this._log(`Resolved webview (${this._views.size} live)`);
+        webviewView.onDidDispose(() => {
+            this._views.delete(webviewView);
+            if (this._view === webviewView) {
+                this._view = Array.from(this._views).pop();
+            }
+            this._log(`Webview disposed (${this._views.size} live)`);
+        });
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -279,25 +303,43 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 case 'previewFile':
                     void this._handlePreviewFile(message.path, message.requestId);
                     break;
-                case 'newChat':
-                    this._handleNewChat();
-                    break;
-                case 'clearChat':
-                    void this._handleClearChat();
-                    break;
                 case 'ready':
                     this._log('WebView ready');
                     this._syncWebviewLocale();
                     this._postPluginInfo();
                     this._postSessionList();
                     this._postProfileList();
+                    this._postHiddenSessions();
                     this._postConfig();
                     this._postTokenUsage();
+                    // A pane can be brand new (container move, view re-show): replay the state
+                    // a freshly connected pane would have or it renders placeholders — an empty
+                    // "Profile" pill, a model chip with nothing in it.
+                    this._postMessage({ type: 'activeAgent', name: this._activeAgentName });
+                    this._postModelList();
                     this._restoreMessages();
+                    // Moving the view container disposes and re-creates the webview but keeps
+                    // the ACP client. The new pane knows nothing and its composer starts
+                    // disabled, so replay the live status — otherwise the UI looks frozen and
+                    // only a window reload recovers.
+                    if (this._acp) {
+                        const liveStatus = this._acp.status;
+                        this._postMessage({ type: 'status', status: liveStatus, sessionId: this._sessionId });
+                        if (liveStatus === 'idle' || liveStatus === 'error') {
+                            this._acp.dispose();
+                            this._acp = undefined;
+                        }
+                    }
                     this._connect();
                     break;
                 case 'getSessions':
                     void this._refreshSessionsFromHermes();
+                    break;
+                case 'getHiddenSessions':
+                    this._postHiddenSessions();
+                    break;
+                case 'openTab':
+                    this._enqueueChatOp(() => this._handleOpenTab(message.sessionId));
                     break;
                 case 'deleteSession':
                     this._handleDeleteSession(message.sessionId);
@@ -507,73 +549,95 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * reconnect added a throwaway row. `session/list` is the real catalog; local
      * entries become a cache keyed by `hermesSessionId`.
      */
-    private async _syncSessionsFromHermes(cwd: string): Promise<void> {
-        const acp = this._acp;
-        if (!acp) {
-            return;
-        }
-        let remote: Array<{ sessionId: string; title?: string; updatedAt?: string; cwd?: string }> = [];
-        try {
-            remote = await acp.listSessions(cwd);
-            if (remote.length === 0) {
-                // The open folder rarely matches the folder a session was created in;
-                // fall back to the full catalog instead of showing an empty tab list.
-                remote = await acp.listSessions();
-            }
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._log(`session/list failed: ${msg}`);
-            return;
-        }
-        if (remote.length === 0) {
-            return;
-        }
-        let changed = false;
-        for (const item of remote) {
-            const title = (item.title || '').trim();
-            const updated = item.updatedAt ? Date.parse(item.updatedAt) : NaN;
-            const record = this._sessions.find(rec => rec.hermesSessionId === item.sessionId);
-            if (!record) {
-                // Local id mirrors the Hermes id: one identity, no mapping table.
-                this._sessions.push({
-                    id: item.sessionId,
-                    title: title || item.sessionId.slice(0, 8),
-                    createdAt: Number.isFinite(updated) ? updated : Date.now(),
-                    updatedAt: Number.isFinite(updated) ? updated : Date.now(),
-                    messageCount: 0,
-                    agentEngaged: true,
-                    hermesSessionId: item.sessionId,
-                    cwd: item.cwd,
-                });
-                changed = true;
+    /**
+     * Rebuild the tab list from Hermes' catalog.
+     *
+     * A tab *is* an unhidden session, so the list is a projection of `sessions.hidden`
+     * rather than a second store: nothing here can drift from Hermes, a close is the same
+     * operation as an open with a different value, and a session created by the TUI or the
+     * dashboard appears without any adoption step.
+     */
+    private _applyCatalog(rows: CatalogSession[]): void {
+        const previous = new Map(this._sessions.map(rec => [rec.id, rec]));
+        // A tab opened via session/new still carries its local id until the catalog lists it,
+        // so match on the Hermes id as well or the same session opens a second tab.
+        const byHermes = new Map(
+            this._sessions
+                .filter(rec => !!rec.hermesSessionId)
+                .map(rec => [rec.hermesSessionId as string, rec])
+        );
+        const next: SessionInfo[] = [];
+        for (const row of rows) {
+            if (row.hidden) {
                 continue;
             }
-            if (!record.titleManual && title && record.title !== title) {
-                record.title = title;
-                changed = true;
-            }
-            if (Number.isFinite(updated) && updated > record.updatedAt) {
-                record.updatedAt = updated;
-                changed = true;
-            }
-            if (!record.cwd && item.cwd) {
-                record.cwd = item.cwd;
-                changed = true;
-            }
+            const prior = previous.get(row.sessionId) || byHermes.get(row.sessionId);
+            next.push({
+                id: prior?.id || row.sessionId,
+                title: prior?.titleManual
+                    ? prior.title
+                    : (row.title || prior?.title || row.sessionId.slice(0, 8)),
+                createdAt: prior?.createdAt ?? (row.updatedAt || Date.now()),
+                updatedAt: row.updatedAt || prior?.updatedAt || Date.now(),
+                messageCount: row.messageCount,
+                titleManual: prior?.titleManual,
+                pinned: prior?.pinned,
+                modelId: prior?.modelId,
+                modelLabel: prior?.modelLabel,
+                agentEngaged: prior?.agentEngaged ?? row.messageCount > 0,
+                hermesSessionId: row.sessionId,
+                cwd: row.cwd ?? prior?.cwd,
+            });
         }
-        if (!changed) {
-            return;
+        // A session created moments ago has no messages, so the catalog does not list it
+        // yet; keep the tab the user is sitting in until its first turn lands.
+        const current = previous.get(this._sessionId);
+        if (current && !next.some(rec => rec.id === this._sessionId) && this._sessionMessages.length === 0) {
+            next.unshift(current);
         }
-        this._sessions.sort((a, b) => {
+        next.sort((a, b) => {
             if (!!a.pinned !== !!b.pinned) {
                 return a.pinned ? -1 : 1;
             }
             return b.updatedAt - a.updatedAt;
         });
+        // The active id can disappear on us (closed elsewhere, or a stale id restored from
+        // disk before the connection existed): fall back to the newest tab instead of
+        // leaving the view pointed at a session that is no longer open.
+        if (next.length > 0 && !next.some(rec => rec.id === this._sessionId)) {
+            this._sessionId = next[0].id;
+            this._sessionMessages = [];
+        }
+        this._sessions = next;
+        this._hiddenSessions = rows.filter(row => row.hidden);
         try {
             fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
         } catch { /* non-critical */ }
         this._postSessionList();
+        this._postHiddenSessions();
+    }
+
+    /** Read the catalog; null when there is no connection to ask. */
+    private async _readCatalog(): Promise<CatalogSession[] | null> {
+        const acp = this._acp;
+        if (!acp) {
+            return null;
+        }
+        try {
+            return await acp.listSessionCatalog();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._log(`session/catalog failed: ${msg}`);
+            return null;
+        }
+    }
+
+    private async _syncSessionsFromHermes(cwd: string): Promise<void> {
+        void cwd;
+        const rows = await this._readCatalog();
+        if (rows) {
+            this._applyCatalog(rows);
+        }
     }
 
     /** Refresh the tab list from Hermes, then repaint it. */
@@ -741,9 +805,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         void this._context.workspaceState.update('hermesSessionId', hermesSessionId);
     }
 
-    private async _ensureAcpReadyForCurrentSession(): Promise<void> {
+    /** True when the current tab has a usable Hermes session. */
+    private async _ensureAcpReadyForCurrentSession(): Promise<boolean> {
         if (!this._acp) {
-            return;
+            return false;
         }
         if (this._otherSessionIsPrompting()) {
             await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
@@ -754,14 +819,30 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const bound = this._sessions.find(rec => rec.id === this._sessionId)?.hermesSessionId;
         if (bound && this._acp.activeSessionId !== bound) {
             const record = this._sessions.find(rec => rec.id === this._sessionId);
-            await this._acp.loadSession(record?.cwd || this._resolveCwd(), bound);
-            this._log(`Switched Hermes session to ${bound}`);
+            try {
+                await this._acp.loadSession(record?.cwd || this._resolveCwd(), bound);
+                this._log(`Switched Hermes session to ${bound}`);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this._log(`Resume failed for ${bound}: ${msg}`);
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', bound) });
+                return false;
+            }
         } else if (!bound) {
+            if (this._sessionMessages.length > 0) {
+                // This tab shows a conversation whose Hermes session is gone; creating a new
+                // one here would silently replace it, so say so and leave the pane alone.
+                this._log(`No Hermes session bound to tab ${this._sessionId}`);
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', this._sessionId) });
+                return false;
+            }
+            // Blank tab: the first message is what creates its session.
             await this._acp.newSession(this._resolveCwd());
             this._bindHermesSessionId(this._acp.activeSessionId);
         }
         await this._applySessionModelPreference();
         this._acpBoundSessionId = this._sessionId;
+        return true;
     }
 
     private _postPromptScopedMessage(msg: Record<string, unknown>): void {
@@ -908,15 +989,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._clearContextAttachOffer();
-    }
-
-    private _markSessionResetInWebview(): void {
-        if (this._sessionMessages.length === 0) {
-            this._clearContextAttachOffer();
-            return;
-        }
-        this._postMessage({ type: 'markSessionReset' });
-        this._offerContextAttach(this._sessionMessages);
     }
 
     private _saveMessage(role: string, text: string, toolCallId?: string): void {
@@ -1077,7 +1149,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (existing) {
             existing.updatedAt = Date.now();
             existing.messageCount = this._sessionMessages.length;
-            if (firstUser && !existing.titleManual) {
+            // Hermes owns the title of any session it knows about: the catalog supplies it,
+            // and this cache must not overwrite it with the first user message (which here is
+            // usually the injected memory preamble). Only a purely local chat, which Hermes
+            // has never seen, derives a title from its own text.
+            if (firstUser && !existing.titleManual && !existing.hermesSessionId) {
                 existing.title = firstUser;
             }
         } else {
@@ -1118,6 +1194,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             type: 'sessionList',
             sessions: this._sessions,
             activeSessionId: this._sessionId,
+        });
+    }
+
+    private _postHiddenSessions(): void {
+        this._postMessage({
+            type: 'hiddenSessions',
+            sessions: this._hiddenSessions,
         });
     }
 
@@ -1305,7 +1388,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _connect(selectionId?: string): Promise<void> {
-        if (this._acp) return;
+        if (this._acp) {
+            const status = this._acp.status;
+            if (status !== 'idle' && status !== 'error') {
+                return;
+            }
+            // The process is gone but the object lingered: reconnect instead of staying dead.
+            this._acp.dispose();
+            this._acp = undefined;
+        }
         if (this._connectPromise) {
             await this._connectPromise;
             return;
@@ -1335,7 +1426,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._postMessage({
             type: 'status',
             status: 'connecting',
-            message: localizeStatusMessage('Starting Hermes ACP...'),
+            message: localizeStatusMessage('Loading profile & session...'),
         });
 
         const quickPath = await tryResolveHermesQuick(target.configPath);
@@ -1411,6 +1502,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     });
                 }
                 if (status === 'ready') {
+                    this._reconnectAttempts = 0;
                     this._clearPromptStallTimer();
                     if (this._promptSessionId) {
                         this._withPromptSessionContext(() => {
@@ -1440,6 +1532,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 this._tokenUsage = null;
                 this._postTokenUsage();
                 this._acp = undefined;
+                this._postMessage({
+                    type: 'status',
+                    status: 'error',
+                    message: t('connectionLostRetrying'),
+                });
+                void this._reconnectAfterLoss();
             },
             {
                 readTextFile: async (p: string) => {
@@ -1592,7 +1690,22 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._pendingPermissions.clear();
     }
 
-    private async _handleRetry(): Promise<void> {
+    /** One automatic reconnect after the process dies; the Retry button covers the rest. */
+    private async _reconnectAfterLoss(): Promise<void> {
+        if (this._disposed || this._reconnectAttempts >= 1) {
+            return;
+        }
+        this._reconnectAttempts++;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (this._disposed || this._acp) {
+            return;
+        }
+        this._log('Reconnecting after connection loss');
+        await this._connect(this._activeSelectionId || undefined);
+        this._restoreMessages();
+    }
+
+    private async _handleRetry(): Promise<void> {
         this._log('Retry connection requested');
         this._acp?.dispose();
         this._acp = undefined;
@@ -2251,13 +2364,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         saveProfileState(this._historyDir, this._scopeKey, { modelId: valueId, modelLabel: label });
     }
 
+    /** Point the *live* session at another model. No session/new: Hermes' set_session_model
+     *  swaps the agent in place, and a fresh session here would silently drop the tab's
+     *  conversation (and leave an empty row in the catalog). */
     private async _resetAgentWithModel(valueId: string, configId?: string): Promise<void> {
         if (!this._acp || !valueId) {
             return;
         }
-        const cwd = this._resolveCwd();
-        await this._acp.newSession(cwd);
-        this._bindHermesSessionId(this._acp.activeSessionId);
+        if (!this._acp.activeSessionId) {
+            // Blank tab: nothing to switch yet. The choice is persisted already and
+            // _applySessionModelPreference() applies it when the first message creates one.
+            this._log('Model choice saved; no live session to switch yet');
+            return;
+        }
         const state = this._modelState ?? this._acp.getModelListState();
         const effectiveConfigId = configId || state?.configId || '';
         if (!state || !isRuntimeModelSource(effectiveConfigId)) {
@@ -2268,6 +2387,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const runtimeId = this._acp.getRuntimeModelId();
         if (runtimeId !== valueId) {
             this._log(`Model apply incomplete: runtime=${runtimeId || '(none)'} expected=${valueId}`);
+            this._postMessage({
+                type: 'addMessage',
+                role: 'assistant',
+                text: t('modelSwitchIncomplete', valueId),
+            });
         }
         await this._syncModelState();
     }
@@ -2334,7 +2458,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 await this._resetAgentWithModel(valueId, effectiveConfigId);
                 this._acpBoundSessionId = this._sessionId;
                 this._log(`Model active: ${label}`);
-                this._markSessionResetInWebview();
                 return;
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -2372,6 +2495,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (epoch !== this._sendEpoch) {
             return;
         }
+        if (this._sessions.length === 0) {
+            this._postMessage({ type: 'noActiveTab' });
+            return;
+        }
+        const ready = await this._ensureAcpReadyForCurrentSession();
+        if (epoch !== this._sendEpoch) {
+            return;
+        }
+        if (!ready) {
+            // The pane keeps its history; the reader gets the reason instead of silence.
+            this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+            return;
+        }
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
         this._snapshotSessionModelFromProfile();
@@ -2382,10 +2518,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._contextAttachAwaitingReply = true;
         }
         const promptText = this._buildPromptText(text, contextAttach);
-        if (epoch !== this._sendEpoch) {
-            return;
-        }
-        await this._ensureAcpReadyForCurrentSession();
         if (epoch !== this._sendEpoch) {
             return;
         }
@@ -2547,55 +2679,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._saveCurrentSession();
     }
 
-    private async _handleClearChat(): Promise<void> {
-        this._log('Clear Chat');
-        this._clearContextAttachOffer();
-        await this._detachActivePrompt(this._sessionId, { savePartial: false });
-        this._sessionMessages = [];
-        try { fs.unlinkSync(this._msgPath(this._sessionId)); } catch { /* ignore */ }
-
-        const session = this._sessions.find(s => s.id === this._sessionId);
-        if (session) {
-            session.messageCount = 0;
-            session.updatedAt = Date.now();
-            session.title = t('newChat');
-            session.titleManual = false;
-            try {
-                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
-            } catch { /* ignore */ }
-        }
-
-        const cwd = this._resolveCwd();
-        if (this._acp) {
-            await this._acp.newSession(cwd);
-            this._bindHermesSessionId(this._acp.activeSessionId);
-            await this._applySessionModelPreference();
-            await this._syncModelState();
-            this._acpBoundSessionId = this._sessionId;
-        } else {
-            await this._connect();
-        }
-        this._postMessage({ type: 'clearChat' });
-        this._postSessionList();
-    }
-
-    private async _handleNewChat(): Promise<void> {
-        this._log('New Chat');
-        this._clearContextAttachOffer();
+    private async _createBlankTab(): Promise<void> {
         this._saveCurrentSession();
         this._sessionMessages = [];
         this._sessionId = Date.now().toString(36);
         try { fs.unlinkSync(this._msgPath(this._sessionId)); } catch { /* ignore */ }
-
         this._ensureSessionRegistered();
         this._snapshotSessionModelFromProfile();
-        if (this._acp) {
-            await this._acp.newSession(this._resolveCwd());
-            this._bindHermesSessionId(this._acp.activeSessionId);
-        }
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
-        await this._syncModelStateForCurrentSession();
     }
 
     private async _handleSwitchSession(
@@ -2665,17 +2757,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        this._sessionMessages = [];
-        this._sessionId = Date.now().toString(36);
-        this._ensureSessionRegistered();
-        this._snapshotSessionModelFromProfile();
-        const cwd = this._resolveCwd();
-        await this._acp?.newSession(cwd);
-        await this._applySessionModelPreference();
-        await this._syncModelState();
-        this._acpBoundSessionId = this._sessionId;
-        this._postMessage({ type: 'newChat' });
-        this._postSessionList();
+        await this._createBlankTab();
     }
 
     private _handleRenameSession(sessionId: string, title: string): void {
@@ -2726,52 +2808,101 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._postSessionList();
     }
 
+    /**
+     * Close tabs by hiding their sessions.
+     *
+     * Closing is not deletion: the transcript, the title and the cwd all stay in Hermes,
+     * the row simply stops being an open tab, and `[+ Open Tab]` is where it comes back.
+     */
     private async _handleCloseSessions(sessionId: string, mode: unknown): Promise<void> {
         if (typeof mode !== 'string' || !this._sessions.length) {
             return;
         }
-        if (mode === 'self') {
-            await this._handleDeleteSession(sessionId);
-            return;
-        }
-
         const ids = this._sessions.map(s => s.id);
         const idx = ids.indexOf(sessionId);
-        let toDelete: string[] = [];
+        let toHide: string[] = [];
         switch (mode) {
+            case 'self':
+                toHide = idx === -1 ? [] : [sessionId];
+                break;
             case 'others':
-                if (idx === -1) {
-                    return;
-                }
-                toDelete = ids.filter(id => id !== sessionId);
+                toHide = idx === -1 ? [] : ids.filter(id => id !== sessionId);
                 break;
             case 'left':
-                if (idx <= 0) {
-                    return;
-                }
-                toDelete = ids.slice(0, idx);
+                toHide = idx > 0 ? ids.slice(0, idx) : [];
                 break;
             case 'right':
-                if (idx === -1 || idx >= ids.length - 1) {
-                    return;
-                }
-                toDelete = ids.slice(idx + 1);
+                toHide = idx !== -1 && idx < ids.length - 1 ? ids.slice(idx + 1) : [];
                 break;
             case 'all':
-                toDelete = [...ids];
+                toHide = [...ids];
                 break;
             default:
                 return;
         }
-        if (!toDelete.length) {
+        if (!toHide.length) {
             return;
         }
-        const focusId = mode === 'all' ? undefined : sessionId;
-        await this._deleteSessionsBatch(toDelete, focusId);
+        await this._hideSessions(toHide, mode === 'all' ? undefined : sessionId);
+    }
+
+    /** Hide the given tabs, move focus off a closed tab, then re-read the catalog. */
+    private async _hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
+        const acp = this._acp;
+        for (const id of toHide) {
+            if (acp) {
+                try {
+                    await acp.setSessionHidden(id, true);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    this._log(`Hide failed for ${id}: ${msg}`);
+                }
+            }
+        }
+        this._log(`Closed ${toHide.length} tab(s)`);
+        const hidingActive = toHide.includes(this._sessionId);
+        const remaining = this._sessions.filter(rec => !toHide.includes(rec.id));
+        if (hidingActive) {
+            const nextId = focusSessionId && remaining.some(rec => rec.id === focusSessionId)
+                ? focusSessionId
+                : remaining[0]?.id;
+            if (nextId) {
+                await this._handleSwitchSession(nextId, { skipSaveCurrent: true });
+            } else {
+                this._sessionMessages = [];
+                this._postMessage({ type: 'noActiveTab' });
+            }
+        }
+        await this._refreshSessionsFromHermes();
+    }
+
+    /** Open a closed session as a tab; with nothing picked, open a blank tab instead of
+     *  starting a session inside the tab the user is already reading. */
+    private async _handleOpenTab(sessionId?: string): Promise<void> {
+        if (!sessionId) {
+            await this._createBlankTab();
+            return;
+        }
+        if (!this._sessions.some(rec => rec.id === sessionId)) {
+            const acp = this._acp;
+            if (acp) {
+                try {
+                    await acp.setSessionHidden(sessionId, false);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    this._log(`Unhide failed for ${sessionId}: ${msg}`);
+                    return;
+                }
+            }
+            this._log(`Opened closed session ${sessionId}`);
+            await this._refreshSessionsFromHermes();
+        }
+        await this._handleSwitchSession(sessionId);
     }
 
     private async _deleteSessionsBatch(toDelete: string[], focusSessionId?: string): Promise<void> {
         const deletingActive = toDelete.includes(this._sessionId);
+        const deletedIndex = this._sessions.findIndex(s => s.id === this._sessionId);
         for (const id of toDelete) {
             this._sessions = this._sessions.filter(s => s.id !== id);
             try {
@@ -2783,24 +2914,16 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } catch { /* ignore */ }
 
         if (this._sessions.length === 0) {
-            this._sessionMessages = [];
-            this._sessionId = Date.now().toString(36);
-            this._ensureSessionRegistered();
-            this._snapshotSessionModelFromProfile();
-            const cwd = this._resolveCwd();
-            await this._acp?.newSession(cwd);
-            await this._applySessionModelPreference();
-            await this._syncModelState();
-            this._acpBoundSessionId = this._sessionId;
-            this._postMessage({ type: 'newChat' });
-            this._postSessionList();
+            await this._createBlankTab();
             return;
         }
 
         if (deletingActive) {
+            // Stay where the eye is: the tab that took the deleted one's place, else the
+            // one before it. Never an arbitrary session picked by list order.
             const nextId = focusSessionId && this._sessions.some(s => s.id === focusSessionId)
                 ? focusSessionId
-                : this._sessions[0].id;
+                : this._sessions[Math.max(0, Math.min(deletedIndex, this._sessions.length - 1))].id;
             await this._handleSwitchSession(nextId, { skipSaveCurrent: true });
             return;
         }
@@ -2970,6 +3093,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._bindProfileScope(target.scopeKey);
         this._activeSelectionId = target.selectionId;
         this._activeAgentName = target.displayName;
+        void this._context.globalState.update('activeSelectionId', target.selectionId);
+        // View reset only: the other profile's tab is restored by _bindProfileScope above and
+        // replayed by _restoreMessages below, so nothing of the old profile stays on screen.
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
         this._postProfileList();
@@ -2995,10 +3121,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             const agent = entry as HermesAgentConfig;
             return [{ ...agent, name: name.trim() }];
         });
-    }
-
-    public newChat(): void {
-        this._handleNewChat();
     }
 
     public insertIntoInput(text: string): void {
@@ -3076,6 +3198,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     public dispose(): void {
+        this._disposed = true;
         this._clearPromptStallTimer();
         this._saveCurrentSession();
         this._cancelPendingPermissions();
@@ -3087,7 +3210,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postMessage(msg: any): void {
-        this._view?.webview.postMessage(msg);
+        // Fan out: after a container move the visible pane may not be this._view.
+        if (this._views.size === 0) {
+            this._view?.webview.postMessage(msg);
+            return;
+        }
+        for (const view of this._views) {
+            void view.webview.postMessage(msg);
+        }
     }
 
     private _postConfig(): void {

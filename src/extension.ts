@@ -31,13 +31,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register commands
-    context.subscriptions.push(
-        vscode.commands.registerCommand('tommys.newChat', () => {
-            chatProvider?.newChat();
-        })
-    );
-
     context.subscriptions.push(
         vscode.commands.registerCommand('tommys.openChat', () => {
             vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');

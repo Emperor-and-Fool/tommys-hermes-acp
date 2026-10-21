@@ -16,6 +16,14 @@ export interface LocaleStrings {
     fileAccessDenied: string;
     fileReadError: string;
     newChat: string;
+    noActiveTabHint: string;
+    sessionNotFound: string;
+    sessionNotWritable: string;
+    modelSwitchIncomplete: string;
+    openTab: string;
+    chooseChat: string;
+    closedSessionsHeader: string;
+    noClosedSessions: string;
     defaultAgent: string;
     statusStartingAcp: string;
     statusHermesThinking: string;
@@ -110,7 +118,9 @@ export interface LocaleStrings {
     statusConnecting: string;
     statusReady: string;
     statusThinking: string;
+    statusThinkingProvider: string;
     statusError: string;
+    connectionLostRetrying: string;
     retry: string;
     switchProfile: string;
     profile: string;

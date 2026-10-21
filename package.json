@@ -35,10 +35,6 @@
     },
     "commands": [
       {
-        "command": "tommys.newChat",
-        "title": "%commands.tommys.newChat.title%"
-      },
-      {
         "command": "tommys.openChat",
         "title": "%commands.tommys.openChat.title%"
       },

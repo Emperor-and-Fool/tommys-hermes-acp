@@ -5,7 +5,7 @@ export type ToolCallStatus = 'pending' | 'in_progress' | 'completed' | 'failed' 
 export type ToolCallUpdateView = {
     toolCallId: string;
     status: ToolCallStatus;
-    title: string;
+    title?: string;
     body?: string;
     kind?: string;
 };
@@ -83,8 +83,8 @@ function formatToolCallRawValue(value: unknown): string | undefined {
     }
 }
 
-export function formatToolCallSummary(status: ToolCallStatus, title: string): string {
-    return `${TOOL_CALL_ICONS[status]} ${title}`;
+export function formatToolCallSummary(status: ToolCallStatus, title?: string): string {
+    return `${TOOL_CALL_ICONS[status]} ${title || 'Tool'}`;
 }
 
 export function formatToolCallDisplay(view: ToolCallUpdateView): string {
@@ -106,7 +106,8 @@ export function parseToolCallSessionUpdate(
     }
 
     const status = normalizeToolCallStatus(update.status, kind);
-    const title = String(update.title ?? 'Tool');
+    const rawTitle = typeof update.title === 'string' ? update.title.trim() : '';
+    const title = rawTitle || undefined;
     const body = extractToolCallBody(update);
     const kindValue = update.kind;
 
@@ -146,7 +147,7 @@ export class ToolCallTracker {
         const merged: ToolCallUpdateView = {
             toolCallId: incoming.toolCallId,
             status: incoming.status,
-            title: incoming.title || prev?.title || 'Tool',
+            title: incoming.title || prev?.title,
             kind: incoming.kind ?? prev?.kind,
             body: mergeToolCallBodies(prev?.body, incoming.body),
         };

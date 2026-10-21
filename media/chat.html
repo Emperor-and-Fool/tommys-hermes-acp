@@ -402,6 +402,41 @@ body {
     color: var(--dim);
     margin-right: 3px;
 }
+/* The closed-session picker carries the chosen title, so it needs more room than the
+   bare caret it replaced; .picker-btn already ellipsises. */
+#closedPicker .picker-btn {
+    max-width: 190px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+/* Empty state: nothing has been picked yet, so show a dashed chip that still names itself. */
+#closedPicker.is-empty .picker-btn {
+    border-style: dashed;
+}
+#closedPicker .picker-caret {
+    color: var(--dim);
+    font-size: 9px;
+    line-height: 1;
+    margin-left: auto;
+}
+/* Sits against Open Tab as one control pair rather than next to the status cluster. */
+.toolbar-actions #closedPicker {
+    margin-right: -4px;
+}
+#closedPicker .picker-btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+#closedPicker + .toolbar-btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+/* Right-aligned control: the menu must not run off the sidebar. */
+#closedPicker .dropdown {
+    left: auto;
+    right: 0;
+}
 .dropdown {
     position: absolute;
     top: calc(100% + 2px);
@@ -890,22 +925,6 @@ body {
     margin: 4px 0;
     background: var(--border);
 }
-.local-history-divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 16px 12px;
-    font-size: 11px;
-    color: var(--dim);
-    line-height: 1.4;
-}
-.local-history-divider::before,
-.local-history-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-}
 .log-filter {
     display: inline-flex;
     align-items: center;
@@ -1210,9 +1229,19 @@ body {
     white-space: pre-wrap;
     min-width: 96px;
 }
+/* The reader's own turn reads as a quoted document: graphite edge, warm grey card.
+   Distinct from the assistant card (blue left bar) and from the bare thinking/tool cards. */
+/* "You" = the editor background, the lightest surface in the pane. The block-quote wash
+   (--text-block, #8080801a in VS Code's default registry) is 10% alpha, so it just
+   tracked the pane/composer instead of being a colour of its own. */
 .message.user {
-    background: var(--text-block);
-    border: 1px solid transparent;
+    background: var(--vscode-editor-background, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
+    border-left: 4px solid color-mix(in srgb, var(--fg) 75%, transparent);
+    border-radius: 6px;
+}
+.message.user .label {
+    color: color-mix(in srgb, var(--fg) 65%, transparent);
 }
 .message.assistant {
     background: var(--assistant-bg);
@@ -1231,13 +1260,15 @@ body {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent),
                 0 1px 4px rgba(0, 0, 0, 0.12);
 }
+/* Thinking/tool cards are the grey ones: they sit behind the conversation, so they get
+   the tinted grey card instead of the pane colour. "You" keeps the white card. */
 .message.thought,
 .message.tool {
     font-size: 12px;
     padding: 6px 10px;
     border-radius: 6px;
-    background: var(--text-block);
-    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--fg) 14%, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
     white-space: normal;
 }
 .message.thought {
@@ -1829,7 +1860,21 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-right: 120px; /* clear the token-usage ring + Send button on the right */
+    min-width: 0;
+    /* No overflow:hidden here: both picker dropdowns open upward, outside this box, and
+       clipping the row hid them completely. The children below shrink instead. */
+    /* the ring + Send cluster is ~96px; the row must stop before it at any width */
+    max-width: calc(100% - 104px);
+}
+.input-picker-row > * {
+    min-width: 0;
+    flex-shrink: 1;
+}
+/* Injected font-size pill: clip its own content rather than push over the buttons. */
+.input-picker-row .fs-ctl {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
 }
 .input-model-picker,
 .input-context-picker {
@@ -2501,7 +2546,9 @@ body {
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
-    padding: 0 3px 3px min(350px, 80vw);
+    /* measured from the picker row itself (syncPickerReserve), not a fixed 350px guess:
+       that guess pushed the ring over the Send button in a narrow sidebar. */
+    padding: 0 3px 3px calc(var(--picker-reserve, 120px) + 8px);
     border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
 }
 .input-composite-shell.waiting .input-composite {
@@ -2916,6 +2963,9 @@ mark.search-mark-active {
 /* ---- Responsive (sidebar width) ---- */
 @container app (max-width: 420px) {
     .picker-btn .picker-label { display: none; }
+    /* this one is the only content of its button — hide it and the chip is blank */
+    #closedPicker .picker-btn .picker-label { display: inline; }
+    #closedPicker .picker-btn { max-width: 82px; }
     .picker-btn { max-width: 96px; padding: 3px 6px; }
     .toolbar-status #statusText { max-width: 64px; }
     .session-tab { max-width: 120px; padding: 6px 8px; }
@@ -2952,6 +3002,8 @@ mark.search-mark-active {
 /* Fallback for hosts without container queries */
 @media (max-width: 420px) {
     .picker-btn .picker-label { display: none; }
+    #closedPicker .picker-btn .picker-label { display: inline; }
+    #closedPicker .picker-btn { max-width: 82px; }
     .picker-btn { max-width: 96px; }
     .session-tab { max-width: 120px; }
     .message { max-width: 100%; }
@@ -3002,7 +3054,16 @@ mark.search-mark-active {
         </div>
     </div>
     <div class="toolbar-actions">
-        <button class="toolbar-btn primary" id="newChatBtn"><span class="new-label-full" id="newChatLabelFull"></span><span class="new-label-short">+</span></button>
+        <div class="picker is-empty" id="closedPicker">
+            <button class="picker-btn" id="closedPickerBtn" aria-haspopup="true">
+                <span class="picker-label" id="closedPickerLabel"></span><span class="picker-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="dropdown" id="closedDropdown" style="display:none">
+                <div class="dropdown-header" id="closedHeader"></div>
+                <div id="closedList"></div>
+            </div>
+        </div>
+        <button class="toolbar-btn primary" id="openTabBtn"><span class="new-label-full" id="openTabLabelFull"></span><span class="new-label-short">+</span></button>
     </div>
 </div>
 <div id="tab-bar"></div>
@@ -3055,9 +3116,6 @@ mark.search-mark-active {
                     </div>
                 </div>
                 <div class="input-quick-actions">
-                <button type="button" id="clearChatBtn" class="icon-btn" disabled>
-                    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 1h3l.5 1h6.5a.5.5 0 0 1 0 1H12v9.5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 12.5V3H1.5a.5.5 0 0 1 0-1H2.5zm2 2v9.5a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 .5-.5V3H4.5zM6 5.5a.5.5 0 0 1 1 0v5a.5.5 0 0 1-1 0v-5zm3 0a.5.5 0 0 1 1 0v5a.5.5 0 0 1-1 0v-5z"/></svg>
-                </button>
                 <button type="button" id="clearInputBtn" class="icon-btn" disabled>
                     <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h9A1.5 1.5 0 0 1 14 4.5v6A1.5 1.5 0 0 1 12.5 12h-9A1.5 1.5 0 0 1 2 10.5v-6zM3.5 4.5v6h9v-6h-9zM5 6.5h5v1H5v-1zm0 2h3v1H5v-1z"/><path d="M10.5 9.5 13.5 12.5l-.7.7-2-2-2 2-.7-.7 2-2-2-2 .7-.7 2 2 2-2 .7.7-2 2 2 2-.7.7-2-2z"/></svg>
                 </button>
@@ -3265,7 +3323,6 @@ mark.search-mark-active {
     const tokenUsagePct = document.getElementById('tokenUsagePct');
     const TOKEN_RING_RADIUS = 11;
     const TOKEN_RING_CIRCUMFERENCE = 2 * Math.PI * TOKEN_RING_RADIUS;
-    const clearChatBtn = document.getElementById('clearChatBtn');
     const clearInputBtn = document.getElementById('clearInputBtn');
     const copySessionBtn = document.getElementById('copySessionBtn');
     const quickToggleBtn = document.getElementById('quickToggleBtn');
@@ -3274,7 +3331,17 @@ mark.search-mark-active {
     const chatSearchCount = document.getElementById('chatSearchCount');
     const chatSearchPrev = document.getElementById('chatSearchPrev');
     const chatSearchNext = document.getElementById('chatSearchNext');
-    const newChatBtn = document.getElementById('newChatBtn');
+    const openTabBtn = document.getElementById('openTabBtn');
+    const closedPicker = document.getElementById('closedPicker');
+    const closedPickerBtn = document.getElementById('closedPickerBtn');
+    const closedDropdown = document.getElementById('closedDropdown');
+    const closedList = document.getElementById('closedList');
+    const closedPickerLabel = document.getElementById('closedPickerLabel');
+    /** null = "new session"; a string = the closed session the user picked. */
+    let pendingOpenSessionId = null;
+    /** Title/count of the pending pick, so the toolbar can show what Open Tab will open. */
+    let pendingOpenTitle = '';
+    let pendingOpenCount = 0;
     const multiSelectToolbar = document.getElementById('multiSelectToolbar');
     const multiSelectCount = document.getElementById('multiSelectCount');
     const multiSelectAllBtn = document.getElementById('multiSelectAllBtn');
@@ -3295,24 +3362,6 @@ mark.search-mark-active {
     const SESSION_RENDER_BANNER_ID = 'sessionRenderBanner';
     const RESTORE_BATCH_SIZE = 30;
     const MARKDOWN_RENDER_BATCH_SIZE = 4;
-
-    const LOCAL_HISTORY_DIVIDER_ID = 'localHistoryDivider';
-
-    function removeLocalHistoryDivider() {
-        const divider = document.getElementById(LOCAL_HISTORY_DIVIDER_ID);
-        if (divider) divider.remove();
-    }
-
-    function insertLocalHistoryDivider() {
-        removeLocalHistoryDivider();
-        const divider = document.createElement('div');
-        divider.id = LOCAL_HISTORY_DIVIDER_ID;
-        divider.className = 'local-history-divider';
-        divider.title = locale.localHistoryDividerTitle || '';
-        divider.textContent = locale.localHistoryDivider || '';
-        placeholder.style.display = 'none';
-        messagesEl.appendChild(divider);
-    }
 
     function setConnectingPlaceholder() {
         if (!placeholder) return;
@@ -4021,9 +4070,14 @@ mark.search-mark-active {
         if (multiSelectAttachConfirmBtn) multiSelectAttachConfirmBtn.textContent = locale.contextAttachConfirm || '';
         updateContextAttachButtonLabel();
         renderContextAttachOptions();
-        const newChatLabelFull = document.getElementById('newChatLabelFull');
-        if (newChatLabelFull) newChatLabelFull.textContent = locale.newChatBtn;
-        if (newChatBtn) newChatBtn.title = locale.newChatBtn;
+        const openTabLabelFull = document.getElementById('openTabLabelFull');
+        if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
+        if (openTabBtn) openTabBtn.title = locale.openTab;
+        if (closedPickerBtn) closedPickerBtn.title = locale.chooseChat;
+        const closedPickerLabelEl = document.getElementById('closedPickerLabel');
+        if (closedPickerLabelEl && !pendingOpenSessionId) {
+            closedPickerLabelEl.textContent = locale.chooseChat;
+        }
         const detectEnvClose = document.getElementById('detectEnvClose');
         if (detectEnvClose) {
             detectEnvClose.title = locale.detectEnvironmentClose || '';
@@ -4062,10 +4116,6 @@ mark.search-mark-active {
         if (chatSearchNext) {
             chatSearchNext.title = locale.searchNext;
             chatSearchNext.setAttribute('aria-label', locale.searchNext);
-        }
-        if (clearChatBtn) {
-            clearChatBtn.title = locale.clearChat;
-            clearChatBtn.setAttribute('aria-label', locale.clearChat);
         }
         if (clearInputBtn) {
             clearInputBtn.title = locale.clearInput;
@@ -4172,7 +4222,7 @@ mark.search-mark-active {
             group._auxState.lessBtn.textContent = locale.permissionCollapse || 'Collapse';
             const labelEl = group.querySelector('.aux-label');
             if (labelEl) {
-                labelEl.textContent = group._auxState.role === 'thought' ? locale.roleThought : locale.roleTool;
+                labelEl.textContent = auxiliaryRoleLabel(group._auxState.role, group._auxState.rawText);
             }
             syncAuxiliaryDetailView(group);
         });
@@ -4574,10 +4624,10 @@ mark.search-mark-active {
             return locale.permissionTitle || 'Permission';
         }
         if (group.classList.contains('thought')) {
-            return locale.roleThought || 'Thought';
+            return auxiliaryRoleLabel('thought');
         }
         if (group.classList.contains('tool')) {
-            return locale.roleTool || 'Tool';
+            return auxiliaryRoleLabel('tool', group._auxState && group._auxState.rawText);
         }
         return getGroupRoleLabel(group);
     }
@@ -5330,6 +5380,10 @@ mark.search-mark-active {
         const state = group._auxState;
         if (!state) return;
         state.rawText = text || '';
+        const labelEl = group.querySelector('.aux-label');
+        if (labelEl) {
+            labelEl.textContent = auxiliaryRoleLabel(state.role, state.rawText);
+        }
         state.contentEl.innerHTML = renderMarkdown(state.rawText);
         setupContentBlocks(state.contentEl);
         processFileRefs(state.contentEl);
@@ -5344,7 +5398,7 @@ mark.search-mark-active {
         header.className = 'aux-header';
         const label = document.createElement('div');
         label.className = 'label aux-label';
-        label.textContent = role === 'thought' ? locale.roleThought : locale.roleTool;
+        label.textContent = auxiliaryRoleLabel(role, text);
         header.appendChild(label);
         div.appendChild(header);
 
@@ -5794,6 +5848,79 @@ mark.search-mark-active {
         vscode.postMessage({ type: 'detectEnvironment' });
     }
 
+    /* Vendor spellings that naive capitalisation gets wrong. Only used when Hermes sends
+       no display name (the session-model path sends names as "DeepSeek · deepseek-flash"). */
+    const VENDOR_NAMES = {
+        deepseek: 'DeepSeek',
+        openai: 'OpenAI',
+        xai: 'xAI',
+        zai: 'Z.ai',
+        'z-ai': 'Z.ai',
+        huggingface: 'HuggingFace'
+    };
+
+    function vendorLabel(slug) {
+        const raw = String(slug || '').trim().replace(/^custom:/i, '');
+        if (!raw) return '';
+        const known = VENDOR_NAMES[raw.toLowerCase()];
+        if (known) return known;
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+
+    /** Vendor label of the active model, or '' when it cannot be resolved honestly.
+     *  1) provider group that lists the model, 2) Hermes' "Vendor · model" display name,
+     *  3) the provider prefix of the "vendor:model" id. No other guessing.
+     */
+    function currentProviderVendor() {
+        const payload = lastModelPayload;
+        if (!payload) return '';
+        const current = String(payload.currentValueId || '');
+        if (!current) return '';
+        const groups = Array.isArray(payload.groups) ? payload.groups : [];
+        const usable = function(g) {
+            const name = String((g && (g.name || g.slug)) || '').trim();
+            return name && name.toLowerCase() !== 'other' ? name : '';
+        };
+        for (let i = 0; i < groups.length; i++) {
+            const gModels = Array.isArray(groups[i].models) ? groups[i].models : [];
+            for (let j = 0; j < gModels.length; j++) {
+                if (gModels[j] && gModels[j].valueId === current) {
+                    const label = usable(groups[i]);
+                    if (label) return label;
+                }
+            }
+        }
+        const models = Array.isArray(payload.models) ? payload.models : [];
+        for (let k = 0; k < models.length; k++) {
+            if (!models[k] || models[k].valueId !== current) continue;
+            const display = String(models[k].name || '');
+            const cut = display.indexOf(' · ');
+            if (cut > 0) return display.slice(0, cut).trim();
+            break;
+        }
+        const prefix = current.split(':')[0];
+        return prefix && prefix !== current ? vendorLabel(prefix) : '';
+    }
+
+    let currentStatus = 'ready';
+    let currentStatusMessage = '';
+    /** Set when the host says there is no tab at all, cleared once one is shown again. */
+    let paneHintText = '';
+
+    /** The empty pane must not claim "Ready" while the profile/session is still loading. */
+    function emptyStateText() {
+        if (paneHintText) return paneHintText;
+        if (currentStatus === 'connecting') return currentStatusMessage || locale.statusConnecting;
+        if (currentStatus === 'idle') return locale.statusDisconnected;
+        if (currentStatus === 'error') return currentStatusMessage || locale.statusError;
+        return locale.readyPlaceholder;
+    }
+
+    function syncEmptyState() {
+        const el = document.getElementById('placeholder');
+        if (el) el.textContent = emptyStateText();
+    }
+
     function updateStatus(status, message) {
         statusDot.className = 'dot ' + status;
         const labels = {
@@ -5807,8 +5934,24 @@ mark.search-mark-active {
         if (text.startsWith('Session:')) {
             text = labels[status] || status;
         }
+        let vendorOverride = false;
+        if (status === 'prompting') {
+            // AcpClient's "Hermes is thinking..." is a placeholder, not information: it is
+            // the vendor's model that thinks. A real message (initializing, failure) stays.
+            const placeholder = !message || message === locale.statusThinking
+                || message === locale.statusHermesThinking;
+            const vendor = placeholder ? currentProviderVendor() : '';
+            const template = locale.statusThinkingProvider;
+            if (vendor && template && template.indexOf('{provider}') >= 0) {
+                text = template.split('{provider}').join(vendor);
+                vendorOverride = true;
+            }
+        }
         statusText.textContent = text;
-        statusText.title = message || text;
+        statusText.title = message && !vendorOverride ? message : text;
+        currentStatus = status;
+        currentStatusMessage = message || '';
+        syncEmptyState();
         updateRetryVisibility(status);
     }
 
@@ -5987,7 +6130,6 @@ mark.search-mark-active {
     function updateQuickActionBtns() {
         const hasMessages = messagesEl.querySelectorAll('.message-group').length > 0;
         const hasInput = !!inputEl.value.trim();
-        if (clearChatBtn) clearChatBtn.disabled = !hasMessages;
         if (copySessionBtn) copySessionBtn.disabled = !hasMessages;
         if (clearInputBtn) clearInputBtn.disabled = !hasInput;
         if (chatSearchInput) chatSearchInput.disabled = !hasMessages;
@@ -6169,9 +6311,9 @@ mark.search-mark-active {
         const lines = [];
         groups.forEach(function(group) {
             const role = group.classList.contains('user') ? locale.roleYou
-                : group.classList.contains('assistant') ? locale.roleHermes
-                : group.classList.contains('thought') ? locale.roleThought
-                : group.classList.contains('tool') ? locale.roleTool
+                : group.classList.contains('assistant') ? assistantRoleLabel()
+                : group.classList.contains('thought') ? auxiliaryRoleLabel('thought')
+                : group.classList.contains('tool') ? auxiliaryRoleLabel('tool', group._auxState && group._auxState.rawText)
                 : locale.roleMessage;
             const text = getMessagePlainText(group).trim();
             if (!text) return;
@@ -6360,11 +6502,56 @@ mark.search-mark-active {
         });
     }
 
+    let activeProfileName = '';
+    function profileDisplayName() {
+        if (activeProfileName) return activeProfileName;
+        const el = document.getElementById('profileLabel');
+        const text = el && el.textContent ? el.textContent.trim() : '';
+        return text || 'hermes';
+    }
+    function assistantRoleLabel() {
+        return profileDisplayName() + '@HermesHomeBase';
+    }
+    function toolNameFromAuxText(text) {
+        const lines = String(text || '').split('\n');
+        let first = '';
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim()) { first = lines[i].trim(); break; }
+        }
+        if (!first) return '';
+        // tool cards start with "<status icon> <tool_name>: <preview>"
+        first = first.replace(/^[^\w`$\/]+/, '').trim();
+        const name = first.split(':')[0].trim();
+        return name || '';
+    }
+    function auxiliaryRoleLabel(role, text) {
+        const profile = profileDisplayName();
+        if (role === 'thought') return profile + ' thinking';
+        // older cards (and updates that carry no title) fall back to the literal 'Tool'
+        const raw = toolNameFromAuxText(text);
+        const name = raw === 'Tool' ? '' : raw;
+        return profile + ' using Hermes' + (name ? ' ' + name : '');
+    }
+    function refreshRoleLabels() {
+        if (!messagesEl) return;
+        messagesEl.querySelectorAll('.message-group').forEach(function(group) {
+            if (group.classList.contains('assistant')) {
+                const labelEl = group.querySelector('.message.assistant > .label');
+                if (labelEl) labelEl.textContent = assistantRoleLabel();
+            } else if (group.classList.contains('thought') || group.classList.contains('tool')) {
+                const labelEl = group.querySelector('.aux-label');
+                if (labelEl && group._auxState) {
+                    labelEl.textContent = auxiliaryRoleLabel(group._auxState.role, group._auxState.rawText);
+                }
+            }
+        });
+    }
+
     function getGroupRoleLabel(group) {
         if (group.classList.contains('user')) return locale.roleYou;
-        if (group.classList.contains('assistant')) return locale.roleHermes;
-        if (group.classList.contains('thought')) return locale.roleThought;
-        if (group.classList.contains('tool')) return locale.roleTool;
+        if (group.classList.contains('assistant')) return assistantRoleLabel();
+        if (group.classList.contains('thought')) return auxiliaryRoleLabel('thought');
+        if (group.classList.contains('tool')) return auxiliaryRoleLabel('tool', group._auxState && group._auxState.rawText);
         return locale.roleMessage;
     }
 
@@ -6657,7 +6844,7 @@ mark.search-mark-active {
             div.className = 'message ' + role;
             const label = document.createElement('div');
             label.className = 'label';
-            label.textContent = role === 'user' ? locale.roleYou : locale.roleHermes;
+            label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
             div.appendChild(label);
             const content = document.createElement('div');
             content.className = 'content';
@@ -7168,13 +7355,52 @@ mark.search-mark-active {
         }, 120);
     }
 
+    /** Publish the picker row's real width so the composer bar stops reserving a fixed
+     *  350px: at narrow widths that guess left the token ring on top of the Send button.
+     */
+    function pickerRowReserve() {
+        const shell = document.querySelector('.input-composite-shell');
+        const row = document.querySelector('.input-picker-row');
+        if (!shell || !row) return;
+        const shellW = shell.clientWidth;
+        if (!shellW) return;
+        const left = row.getBoundingClientRect().left;
+        let used = 0;
+        Array.prototype.forEach.call(row.children, function(el) {
+            if (el.hidden || el.style.display === 'none') return;
+            const r = el.getBoundingClientRect();
+            if (r.width > 0) used = Math.max(used, r.right - left);
+        });
+        const cap = Math.max(shellW - 104, 0);
+        const reserve = Math.round(Math.min(Math.max(used, 0), cap));
+        if (shell.dataset.pickerReserve === String(reserve)) return;
+        shell.dataset.pickerReserve = String(reserve);
+        shell.style.setProperty('--picker-reserve', reserve + 'px');
+    }
+
+    function wirePickerRowReserve() {
+        const shell = document.querySelector('.input-composite-shell');
+        const row = document.querySelector('.input-picker-row');
+        if (!shell || !row) return;
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(function() { pickerRowReserve(); });
+            ro.observe(shell);
+            Array.prototype.forEach.call(row.children, function(el) { ro.observe(el); });
+        }
+        if (typeof MutationObserver !== 'undefined') {
+            new MutationObserver(function() { pickerRowReserve(); })
+                .observe(row, { childList: true, subtree: false });
+        }
+        window.addEventListener('resize', pickerRowReserve);
+        pickerRowReserve();
+    }
+
     function resetChatView() {
         cancelSessionMarkdownRender();
         clearChatSearch();
         exitMultiSelectMode();
-        removeLocalHistoryDivider();
         forceHideContextAttachPicker();
-        messagesEl.innerHTML = '<div class="placeholder" id="placeholder">' + escapeHtml(locale.readyPlaceholder) + '</div>';
+        messagesEl.innerHTML = '<div class="placeholder" id="placeholder">' + escapeHtml(emptyStateText()) + '</div>';
         placeholder = document.getElementById('placeholder');
         streamingMessageId = null;
         thoughtMsgId = null;
@@ -7192,10 +7418,6 @@ mark.search-mark-active {
         resetChatView();
     }
 
-    function clearChat() {
-        resetChatView();
-    }
-
     function restoreHistory(messages, localHistoryOnly) {
         cancelSessionMarkdownRender();
         streamingMessageId = null;
@@ -7207,8 +7429,7 @@ mark.search-mark-active {
         window._hermesRendered = false;
         exitMultiSelectMode();
         if (!messages || messages.length === 0) {
-            removeLocalHistoryDivider();
-            return;
+                return;
         }
         placeholder.style.display = 'none';
         let cursor = 0;
@@ -7227,11 +7448,6 @@ mark.search-mark-active {
                 return;
             }
             updateQuickActionBtns();
-            if (localHistoryOnly) {
-                insertLocalHistoryDivider();
-            } else {
-                removeLocalHistoryDivider();
-            }
             scheduleSessionMarkdownRender();
         }
         requestAnimationFrame(appendRestoreBatch);
@@ -7325,13 +7541,6 @@ mark.search-mark-active {
     }
     if (chatSearchNext) {
         chatSearchNext.addEventListener('click', function() { gotoChatSearchMatch(1); });
-    }
-
-    if (clearChatBtn) {
-        clearChatBtn.addEventListener('click', function() {
-            if (clearChatBtn.disabled) return;
-            vscode.postMessage({ type: 'clearChat' });
-        });
     }
 
     if (multiSelectAllBtn) {
@@ -7506,9 +7715,77 @@ mark.search-mark-active {
         });
     }
 
-    newChatBtn.addEventListener('click', function() {
-        vscode.postMessage({ type: 'newChat' });
+    openTabBtn.addEventListener('click', function() {
+        vscode.postMessage({ type: 'openTab', sessionId: pendingOpenSessionId || undefined });
+        pendingOpenSessionId = null;
+        renderClosedList();
     });
+
+    closedPickerBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const open = closedDropdown.style.display === 'none';
+        closeAllDropdowns();
+        if (open) {
+            closedPicker.classList.add('is-open');
+            closedDropdown.style.display = 'block';
+            vscode.postMessage({ type: 'getHiddenSessions' });
+            renderClosedList();
+        }
+    });
+    closedDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    let closedSessions = [];
+
+    function renderClosedList() {
+        if (!closedList) return;
+        // Picking a session closes this menu, so the toolbar has to carry the choice or
+        // nothing on screen changes until Open Tab is pressed.
+        const picked = pendingOpenSessionId !== null;
+        if (closedPicker) closedPicker.classList.toggle('is-empty', !picked);
+        if (closedPickerLabel) {
+            closedPickerLabel.textContent = picked
+                ? pendingOpenTitle + (pendingOpenCount ? ' · ' + pendingOpenCount : '')
+                : locale.chooseChat;
+        }
+        if (closedPickerBtn) {
+            closedPickerBtn.title = picked && pendingOpenTitle
+                ? locale.openTab + ': ' + pendingOpenTitle
+                : locale.chooseChat;
+        }
+        const rows = [
+            '<div class="dropdown-item' + (pendingOpenSessionId === null ? ' active' : '') + '" data-closed="new">' +
+                escapeHtml(locale.newChat) + (pendingOpenSessionId === null ? ' ✓' : '') + '</div>'
+        ];
+        if (!closedSessions.length) {
+            rows.push('<div class="dropdown-divider"></div>');
+            rows.push('<div class="dropdown-item disabled">' + escapeHtml(locale.noClosedSessions) + '</div>');
+        } else {
+            rows.push('<div class="dropdown-group-label">' + escapeHtml(locale.closedSessionsHeader) + '</div>');
+            for (const session of closedSessions) {
+                const active = pendingOpenSessionId === session.sessionId;
+                const title = String(session.title || session.sessionId.slice(0, 8));
+                const meta = session.messageCount ? ' · ' + session.messageCount : '';
+                rows.push('<div class="dropdown-item' + (active ? ' active' : '') + '" data-closed="' + escapeHtml(session.sessionId) + '">' +
+                    escapeHtml(title) + '<span class="meta">' + escapeHtml(meta) + '</span>' +
+                    (active ? ' ✓' : '') + '</div>');
+            }
+        }
+        closedList.innerHTML = rows.join('');
+        closedList.querySelectorAll('.dropdown-item[data-closed]').forEach(function(item) {
+            item.addEventListener('click', function() {
+                const pickedId = this.dataset.closed === 'new' ? null : this.dataset.closed;
+                const picked = pickedId
+                    ? closedSessions.find(function(s) { return s.sessionId === pickedId; })
+                    : null;
+                pendingOpenSessionId = pickedId;
+                pendingOpenTitle = picked ? String(picked.title || picked.sessionId.slice(0, 8)) : '';
+                pendingOpenCount = picked && picked.messageCount ? picked.messageCount : 0;
+                closedPicker.classList.remove('is-open');
+                closedDropdown.style.display = 'none';
+                renderClosedList();
+            });
+        });
+    }
 
     // About / Help / FAQ modals (opened from view title bar commands)
     const aboutModal = document.getElementById('aboutModal');
@@ -7616,6 +7893,8 @@ mark.search-mark-active {
     const switchSessionModal = document.getElementById('switchSessionModal');
 
     function closeAllDropdowns() {
+        if (closedPicker) closedPicker.classList.remove('is-open');
+        if (closedDropdown) closedDropdown.style.display = 'none';
         profilePicker.classList.remove('is-open');
         modelPicker.classList.remove('is-open');
         if (contextAttachPicker) contextAttachPicker.classList.remove('is-open');
@@ -7800,6 +8079,7 @@ mark.search-mark-active {
         modelBtn.title = payload.fromAgent
             ? locale.modelFromAgent
             : locale.modelLocalPreference;
+        pickerRowReserve();
     }
 
     function renderModelList(payload) {
@@ -8130,7 +8410,10 @@ mark.search-mark-active {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                vscode.postMessage({ type: 'deleteSession', sessionId: btn.dataset.id });
+                // Closing a tab hides its session; the transcript stays in Hermes and
+                // comes back from the closed-session picker. 'deleteSession' is a real
+                // delete and must not be reachable from the X.
+                vscode.postMessage({ type: 'closeSessions', sessionId: btn.dataset.id, mode: 'self' });
             });
         });
 
@@ -8268,11 +8551,13 @@ mark.search-mark-active {
                 break;
 
             case 'newChat':
+                paneHintText = '';
                 newChat();
                 break;
 
-            case 'clearChat':
-                clearChat();
+            case 'noActiveTab':
+                paneHintText = locale.noActiveTabHint;
+                newChat();
                 break;
 
             case 'insertInput':
@@ -8346,15 +8631,11 @@ mark.search-mark-active {
                     if (lastSessions.length > 0) {
                         renderSessionTabs(lastSessions, lastActiveSessionId);
                     }
-                    const divider = document.getElementById(LOCAL_HISTORY_DIVIDER_ID);
-                    if (divider) {
-                        divider.textContent = locale.localHistoryDivider || '';
-                        divider.title = locale.localHistoryDividerTitle || '';
-                    }
                 }
                 break;
 
             case 'sessionList':
+                if ((msg.sessions || []).length) paneHintText = '';
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
                 break;
 
@@ -8369,6 +8650,17 @@ mark.search-mark-active {
             case 'agentList':
             case 'profileList':
                 renderProfileList(msg.agents || msg.profiles);
+                break;
+
+            case 'hiddenSessions':
+                closedSessions = Array.isArray(msg.sessions) ? msg.sessions : [];
+                if (pendingOpenSessionId !== null && !closedSessions.some(function(s) { return s.sessionId === pendingOpenSessionId; })) {
+                    // It was opened or deleted elsewhere; drop the stale pick.
+                    pendingOpenSessionId = null;
+                    pendingOpenTitle = '';
+                    pendingOpenCount = 0;
+                }
+                renderClosedList();
                 break;
 
             case 'modelList':
@@ -8417,7 +8709,9 @@ mark.search-mark-active {
             case 'activeAgent':
             case 'activeProfile':
                 if (msg.name) {
+                    activeProfileName = msg.name;
                     document.getElementById('profileLabel').textContent = msg.name;
+                    refreshRoleLabels();
                 }
                 break;
 
@@ -8477,14 +8771,12 @@ mark.search-mark-active {
                 hideContextAttachPicker();
                 break;
 
-            case 'markSessionReset':
-                insertLocalHistoryDivider();
-                break;
         }
     });
 
     // Signal ready
         applyLocale();
+        wirePickerRowReserve();
         vscode.postMessage({ type: 'ready' });
     })();
 
@@ -8509,7 +8801,8 @@ mark.search-mark-active {
             'padding:1px 4px', 'border-radius:10px',
             'border:1px solid var(--border)',
             'background:transparent',
-            'font-size:11px', 'color:var(--dim)'
+            'font-size:11px', 'color:var(--dim)',
+            'min-width:0', 'overflow:hidden'
         ].join(';');
         pill.title = 'Chat font size';
 
@@ -8549,6 +8842,7 @@ mark.search-mark-active {
             document.documentElement.style.setProperty('--chat-fs', size + 'px');
             localStorage.setItem(KEY, String(size));
             label.textContent = size;
+            pickerRowReserve();
         }
         apply(size);
     })();

@@ -137,6 +137,21 @@ export interface ReplayMessage {
 
 export type HistoryReplayHandler = (sessionId: string, messages: ReplayMessage[]) => void;
 
+/**
+ * One row of Hermes' own session catalog, hidden rows included.
+ *
+ * ``session/list`` only returns what a client may show, so the sidebar — whose tabs are
+ * the inverse projection (a tab is an *unhidden* session) — reads this instead.
+ */
+export interface CatalogSession {
+    sessionId: string;
+    title?: string;
+    cwd?: string;
+    hidden: boolean;
+    messageCount: number;
+    updatedAt: number;
+}
+
 export class AcpClient {
     private _process: ChildProcess | null = null;
     private _app: ReturnType<typeof client> | null = null;
@@ -293,7 +308,7 @@ export class AcpClient {
     }
 
     async start(cwd: string = process.cwd(), hermesPath?: string, hermesProfile?: string): Promise<void> {
-        if (!this._transitionTo('connecting', 'Starting Hermes ACP...')) {
+        if (!this._transitionTo('connecting', 'Loading profile & session...')) {
             return;
         }
 
@@ -443,11 +458,13 @@ export class AcpClient {
             // doesn't include the fs/terminal capability fields in its schema type.
             // When ACP SDK schema updates, this cast can be removed.
 
-            const builder = this._conn.agent.buildSession(this._buildNewSessionRequest(cwd));
-            this._session = await builder.start();
-            this._activeSessionId = this._session.sessionId;
+            // No session/new here. Connecting used to create one immediately and then
+            // `_resumeOrAdoptSession` loaded the tab's real session on top of it, leaving an
+            // untitled zero-message row in state.db on every activation and profile switch.
+            // A session is created by newSession() when something actually needs one.
+            this._activeSessionId = '';
             this._loadedSessionId = '';
-            this._syncSessionModels(this._session.newSessionResponse);
+            this._onLog('Connected (no session until one is needed)');
             this._transitionTo('ready');
 
         } catch (err) {
@@ -459,7 +476,7 @@ export class AcpClient {
     }
 
     async sendMessage(text: string | any | any[]): Promise<void> {
-        if (this._status !== 'ready') {
+        if (this._status !== 'ready' || !this._activeSessionId) {
             this._onMessage('assistant', 'Please wait for connection...');
             return;
         }
@@ -691,6 +708,46 @@ export class AcpClient {
     }
 
     /**
+     * Every session Hermes has for this profile, hidden ones included.
+     *
+     * Extension methods are ``_``-prefixed ACP requests; the agent answers from its own
+     * session store, so the flag and the tabs can never disagree with Hermes.
+     */
+    async listSessionCatalog(cwd?: string): Promise<CatalogSession[]> {
+        if (!this._conn) {
+            return [];
+        }
+        const response = await this._conn.agent.request(
+            '_session/catalog' as any,
+            (cwd ? { cwd } : {}) as any,
+        ) as any;
+        const rows = Array.isArray(response?.sessions) ? response.sessions : [];
+        return rows
+            .map((row: any) => ({
+                sessionId: String(row?.session_id ?? row?.sessionId ?? ''),
+                title: typeof row?.title === 'string' ? row.title : undefined,
+                cwd: typeof row?.cwd === 'string' ? row.cwd : undefined,
+                hidden: row?.hidden === true,
+                messageCount: Number(row?.message_count ?? row?.messageCount ?? 0) || 0,
+                updatedAt: Number(row?.updated_at ?? row?.updatedAt ?? 0) || 0,
+            }))
+            .filter((row: CatalogSession) => row.sessionId.length > 0);
+    }
+
+    /** Hide/unhide one Hermes session. The tab list is exactly this flag. */
+    async setSessionHidden(sessionId: string, hidden: boolean): Promise<boolean> {
+        if (!this._conn) {
+            throw new Error('Not connected');
+        }
+        this._onLog(`session/setHidden ${sessionId} hidden=${hidden}`);
+        const response = await this._conn.agent.request(
+            '_session/setHidden' as any,
+            { sessionId, hidden } as any,
+        ) as any;
+        return response?.ok === true;
+    }
+
+    /**
      * Resume an existing Hermes session on the live connection.
      *
      * ACP requires the agent to stream prior history as `session/update` before
@@ -761,7 +818,9 @@ export class AcpClient {
     async newSession(cwd: string): Promise<void> {
         if (!this._conn) {
             await this.start(cwd);
-            return;
+            if (!this._conn) {
+                return;
+            }
         }
         if (this._status === 'prompting') {
             await this.cancel();

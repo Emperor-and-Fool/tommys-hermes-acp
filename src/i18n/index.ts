@@ -51,7 +51,7 @@ export function t(key: LocaleKey, ...args: (string | number)[]): string {
 
 /** Map ACP status messages (English from AcpClient) to localized strings. */
 export function localizeStatusMessage(msg: string): string {
-    if (msg === 'Starting Hermes ACP...') {
+    if (msg === 'Loading profile & session...') {
         return t('statusStartingAcp');
     }
     if (msg === 'Hermes is thinking...') {
