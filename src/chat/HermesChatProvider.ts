@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AcpClient, AcpStatus, ModelListState, PermissionRequest, TokenUsage } from '../acp/AcpClient';
+import { AcpClient, AcpStatus, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../acp/modelConfig';
 import { resolveModelCatalog } from '../acp/acpModelCatalog';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
@@ -79,6 +79,13 @@ interface SessionInfo {
     agentEngaged?: boolean;
     /** Pinned tabs stay at the front and reorder only within pinned group. */
     pinned?: boolean;
+    /**
+     * Hermes-side session id backing this tab. Local ids stay for tab/UI history;
+     * this is the id ACP `session/load` addresses, so a tab survives reconnects.
+     */
+    hermesSessionId?: string;
+    /** Working directory the Hermes session was created in (used when resuming). */
+    cwd?: string;
 }
 
 interface HermesAgentConfig {
@@ -150,8 +157,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _promptStallTimer: ReturnType<typeof setTimeout> | undefined;
     /** Chat session that owns the in-flight ACP prompt (may differ from `_sessionId` after tab switch). */
     private _promptSessionId: string | undefined;
+    /**
+     * True only while a load the user asked for (tab switch, adopt, resume) is in
+     * flight; a load fired mid-send must not repaint over the pending turn.
+     */
+    private _renderReplayOnLoad = false;
     /** Chat session currently bound to the single ACP agent runtime context. */
     private _acpBoundSessionId: string = '';
+    /** Hermes session id this workspace last had open (workspaceState-backed). */
+    private _persistedHermesSessionId: string = '';
     /** Messages available for one-time context attach after agent reset. */
     private _contextAttachMessages: ChatMessage[] = [];
     private _contextAttachActive = false;
@@ -175,9 +189,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
-        context: vscode.ExtensionContext
+        private readonly _context: vscode.ExtensionContext
     ) {
+        const context = this._context;
         this._extensionId = context.extension.id;
+        this._persistedHermesSessionId = context.workspaceState.get<string>('hermesSessionId') || '';
         this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
@@ -281,7 +297,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._connect();
                     break;
                 case 'getSessions':
-                    this._postSessionList();
+                    void this._refreshSessionsFromHermes();
                     break;
                 case 'deleteSession':
                     this._handleDeleteSession(message.sessionId);
@@ -475,6 +491,256 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /**
+     * Bind a fresh ACP connection to a logical session.
+     *
+     * Replaces the old behaviour where every connect issued `session/new`, so each
+     * view reload (and each tab round-trip) left an empty session behind in
+     * state.db. Priority: the tab's bound id, then the workspace pointer, then the
+     * session `session/new` just created.
+     */
+    /**
+     * Adopt Hermes sessions into the tab list.
+     *
+     * The extension used to treat its own JSON list as the only truth, so sessions
+     * created by the dashboard or TUI were invisible in the sidebar and every
+     * reconnect added a throwaway row. `session/list` is the real catalog; local
+     * entries become a cache keyed by `hermesSessionId`.
+     */
+    private async _syncSessionsFromHermes(cwd: string): Promise<void> {
+        const acp = this._acp;
+        if (!acp) {
+            return;
+        }
+        let remote: Array<{ sessionId: string; title?: string; updatedAt?: string; cwd?: string }> = [];
+        try {
+            remote = await acp.listSessions(cwd);
+            if (remote.length === 0) {
+                // The open folder rarely matches the folder a session was created in;
+                // fall back to the full catalog instead of showing an empty tab list.
+                remote = await acp.listSessions();
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._log(`session/list failed: ${msg}`);
+            return;
+        }
+        if (remote.length === 0) {
+            return;
+        }
+        let changed = false;
+        for (const item of remote) {
+            const title = (item.title || '').trim();
+            const updated = item.updatedAt ? Date.parse(item.updatedAt) : NaN;
+            const record = this._sessions.find(rec => rec.hermesSessionId === item.sessionId);
+            if (!record) {
+                // Local id mirrors the Hermes id: one identity, no mapping table.
+                this._sessions.push({
+                    id: item.sessionId,
+                    title: title || item.sessionId.slice(0, 8),
+                    createdAt: Number.isFinite(updated) ? updated : Date.now(),
+                    updatedAt: Number.isFinite(updated) ? updated : Date.now(),
+                    messageCount: 0,
+                    agentEngaged: true,
+                    hermesSessionId: item.sessionId,
+                    cwd: item.cwd,
+                });
+                changed = true;
+                continue;
+            }
+            if (!record.titleManual && title && record.title !== title) {
+                record.title = title;
+                changed = true;
+            }
+            if (Number.isFinite(updated) && updated > record.updatedAt) {
+                record.updatedAt = updated;
+                changed = true;
+            }
+            if (!record.cwd && item.cwd) {
+                record.cwd = item.cwd;
+                changed = true;
+            }
+        }
+        if (!changed) {
+            return;
+        }
+        this._sessions.sort((a, b) => {
+            if (!!a.pinned !== !!b.pinned) {
+                return a.pinned ? -1 : 1;
+            }
+            return b.updatedAt - a.updatedAt;
+        });
+        try {
+            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+        } catch { /* non-critical */ }
+        this._postSessionList();
+    }
+
+    /** Refresh the tab list from Hermes, then repaint it. */
+    private async _refreshSessionsFromHermes(): Promise<void> {
+        await this._syncSessionsFromHermes(this._resolveCwd());
+        this._postSessionList();
+    }
+
+    private async _resumeOrAdoptSession(cwd: string): Promise<void> {
+        const acp = this._acp;
+        if (!acp) {
+            return;
+        }
+        await this._syncSessionsFromHermes(cwd);
+        const tabBound = this._sessions.find(rec => rec.id === this._sessionId)?.hermesSessionId;
+        const target = tabBound || this._persistedHermesSessionId;
+        // First run / empty tab: open the most recent Hermes session rather than
+        // leaving the throwaway session `session/new` just created in front of the
+        // user. This is what makes existing conversations reappear as tabs.
+        if (!target && this._sessionMessages.length === 0) {
+            const newest = this._sessions.find(rec => !!rec.hermesSessionId);
+            if (newest?.hermesSessionId) {
+                this._sessionId = newest.id;
+                this._sessionMessages = [];
+                this._loadHistory();
+                this._postMessage({ type: 'newChat' });
+                this._renderReplayOnLoad = true;
+                try {
+                    await acp.loadSession(newest.cwd || cwd, newest.hermesSessionId);
+                } finally {
+                    this._renderReplayOnLoad = false;
+                }
+                this._bindHermesSessionId(newest.hermesSessionId);
+                this._postSessionList();
+                this._log(`Adopted most recent Hermes session ${newest.hermesSessionId}`);
+                return;
+            }
+        }
+        if (target && target !== acp.activeSessionId) {
+            const targetCwd = this._sessions.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
+            try {
+                this._renderReplayOnLoad = true;
+                try {
+                    await acp.loadSession(targetCwd, target);
+                } finally {
+                    this._renderReplayOnLoad = false;
+                }
+                this._bindHermesSessionId(target);
+                this._log(`Resumed Hermes session ${target}`);
+                return;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this._log(`Resume failed for ${target}: ${msg}`);
+            }
+        }
+        this._bindHermesSessionId(acp.activeSessionId);
+    }
+
+    /** Resume one tab's Hermes session; false when the tab has nothing to resume. */
+    private async _resumeTabHermesSession(sessionId: string): Promise<boolean> {
+        const acp = this._acp;
+        const bound = this._sessions.find(rec => rec.id === sessionId)?.hermesSessionId;
+        if (!acp || !bound || bound === acp.activeSessionId) {
+            return false;
+        }
+        try {
+            const record = this._sessions.find(rec => rec.id === sessionId);
+            this._renderReplayOnLoad = true;
+            try {
+                await acp.loadSession(record?.cwd || this._resolveCwd(), bound);
+            } finally {
+                this._renderReplayOnLoad = false;
+            }
+            this._log(`Switched Hermes session to ${bound}`);
+            return true;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._log(`Resume failed for ${bound}: ${msg}`);
+            return false;
+        }
+    }
+
+    /**
+     * Render the transcript Hermes replayed for a loaded session.
+     *
+     * `session/load` streams history as whole-message updates; AcpClient collects
+     * them and hands them over once the load resolves. They are cached to the
+     * tab's message file so the next switch renders from disk instead of
+     * replaying, and only painted when that tab is still the open one.
+     */
+    private _handleHistoryReplay(hermesSessionId: string, replay: ReplayMessage[]): void {
+        const record = this._sessions.find(
+            rec => rec.hermesSessionId === hermesSessionId || rec.id === hermesSessionId
+        );
+        const localId = record?.id || hermesSessionId;
+        const messages: ChatMessage[] = [];
+        const toolIndex = new Map<string, number>();
+        const base = Date.now();
+        for (const item of replay) {
+            const text = (item.text || '').trim();
+            if (!text) {
+                continue;
+            }
+            if (item.role === 'tool' && item.toolCallId) {
+                // tool_call + tool_call_update arrive as a start/complete pair per call.
+                const at = toolIndex.get(item.toolCallId);
+                if (at !== undefined) {
+                    messages[at].text = item.text;
+                    continue;
+                }
+                toolIndex.set(item.toolCallId, messages.length);
+                messages.push({
+                    role: 'tool',
+                    text: item.text,
+                    timestamp: base + messages.length,
+                    toolCallId: item.toolCallId,
+                });
+                continue;
+            }
+            messages.push({ role: item.role, text: item.text, timestamp: base + messages.length });
+        }
+        if (messages.length === 0) {
+            return;
+        }
+        try {
+            fs.writeFileSync(this._msgPath(localId), JSON.stringify(messages, null, 2));
+        } catch { /* non-critical */ }
+        if (record) {
+            record.messageCount = messages.length;
+            record.agentEngaged = true;
+            try {
+                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            } catch { /* non-critical */ }
+        }
+        this._log(`Replayed ${messages.length} messages for session ${localId}`);
+        if (!this._renderReplayOnLoad || this._sessionId !== localId) {
+            // Cached only: the user is either elsewhere or mid-send in this tab.
+            this._postSessionList();
+            return;
+        }
+        this._sessionMessages = messages;
+        this._postMessage({ type: 'newChat' });
+        this._postMessage({
+            type: 'restoreHistory',
+            messages: this._sessionMessages,
+            localHistoryOnly: false,
+        });
+        this._offerContextAttach(this._sessionMessages);
+        this._postSessionList();
+    }
+
+    /** Remember which Hermes session backs the current tab and this workspace. */
+    private _bindHermesSessionId(hermesSessionId: string): void {
+        if (!hermesSessionId) {
+            return;
+        }
+        this._persistedHermesSessionId = hermesSessionId;
+        const rec = this._sessions.find(item => item.id === this._sessionId);
+        if (rec && rec.hermesSessionId !== hermesSessionId) {
+            rec.hermesSessionId = hermesSessionId;
+            try {
+                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            } catch { /* non-critical */ }
+        }
+        void this._context.workspaceState.update('hermesSessionId', hermesSessionId);
+    }
+
     private async _ensureAcpReadyForCurrentSession(): Promise<void> {
         if (!this._acp) {
             return;
@@ -482,8 +748,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (this._otherSessionIsPrompting()) {
             await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
         }
-        const needsContextReset = this._acpBoundSessionId !== this._sessionId;
-        await this._applySessionModelPreference({ forceReset: needsContextReset });
+        // A tab switch used to force a new ACP session (context reset), which is
+        // what littered state.db with empty `acp` rows. Resume the tab's session
+        // instead; only a tab that never got one falls through to session/new.
+        const bound = this._sessions.find(rec => rec.id === this._sessionId)?.hermesSessionId;
+        if (bound && this._acp.activeSessionId !== bound) {
+            const record = this._sessions.find(rec => rec.id === this._sessionId);
+            await this._acp.loadSession(record?.cwd || this._resolveCwd(), bound);
+            this._log(`Switched Hermes session to ${bound}`);
+        } else if (!bound) {
+            await this._acp.newSession(this._resolveCwd());
+            this._bindHermesSessionId(this._acp.activeSessionId);
+        }
+        await this._applySessionModelPreference();
         this._acpBoundSessionId = this._sessionId;
     }
 
@@ -1216,6 +1493,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
                 }
                 return servers;
+            },
+            (sessionId, messages) => {
+                this._handleHistoryReplay(sessionId, messages);
             }
         );
         this._acp.onLog = (line: string) => {
@@ -1227,6 +1507,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._deferReadyUntilSessionSetup = true;
         try {
             await this._acp.start(cwd, resolvedPath, target.cliProfile);
+            await this._resumeOrAdoptSession(cwd);
             await this._syncModelState({ skipModelOptions: true });
             await this._applySessionModelPreference();
             await this._syncModelState();
@@ -1976,6 +2257,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         const cwd = this._resolveCwd();
         await this._acp.newSession(cwd);
+        this._bindHermesSessionId(this._acp.activeSessionId);
         const state = this._modelState ?? this._acp.getModelListState();
         const effectiveConfigId = configId || state?.configId || '';
         if (!state || !isRuntimeModelSource(effectiveConfigId)) {
@@ -2286,6 +2568,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const cwd = this._resolveCwd();
         if (this._acp) {
             await this._acp.newSession(cwd);
+            this._bindHermesSessionId(this._acp.activeSessionId);
             await this._applySessionModelPreference();
             await this._syncModelState();
             this._acpBoundSessionId = this._sessionId;
@@ -2306,6 +2589,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
         this._ensureSessionRegistered();
         this._snapshotSessionModelFromProfile();
+        if (this._acp) {
+            await this._acp.newSession(this._resolveCwd());
+            this._bindHermesSessionId(this._acp.activeSessionId);
+        }
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
         await this._syncModelStateForCurrentSession();
@@ -2335,7 +2622,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._loadHistory();
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
-        this._restoreMessages();
+        // Resumed history arrives as session/update; only fall back to the local
+        // render cache when this tab has no Hermes session to replay.
+        const resumed = await this._resumeTabHermesSession(sessionId);
+        if (!resumed) {
+            this._restoreMessages();
+        }
         await this._syncModelStateForCurrentSession();
         this._syncPromptUiIfReturningToOwner();
     }

@@ -114,10 +114,39 @@ function extractPermissionDetail(toolCall: unknown): string | undefined {
     return parts.join('\n\n');
 }
 
+/** Minimal session metadata used to validate a stored session id. */
+export interface HermesSessionSummary {
+    sessionId: string;
+    title?: string;
+    cwd?: string;
+    updatedAt?: string;
+}
+
+/**
+ * One transcript entry reconstructed from a ``session/load`` history replay.
+ *
+ * ACP replays history as ``session/update`` notifications *before* the load
+ * request answers, and each notification carries one whole message — not a
+ * delta — so entries are appended as they arrive rather than accumulated.
+ */
+export interface ReplayMessage {
+    role: 'user' | 'assistant' | 'thought' | 'tool';
+    text: string;
+    toolCallId?: string;
+}
+
+export type HistoryReplayHandler = (sessionId: string, messages: ReplayMessage[]) => void;
+
 export class AcpClient {
     private _process: ChildProcess | null = null;
     private _app: ReturnType<typeof client> | null = null;
     private _session: ActiveSession | null = null;
+    /** ACP session the view is bound to (either freshly created or resumed). */
+    private _activeSessionId: string = '';
+    /** Set when the active session came from session/load: no builder to prompt through. */
+    private _loadedSessionId: string = '';
+    /** Non-null while ``session/load`` streams its replay: chunks are collected, not rendered. */
+    private _replaySink: ReplayMessage[] | null = null;
     private _conn: ClientConnection | null = null;
     private _status: AcpStatus = 'idle';
     private _onMessage: MessageHandler;
@@ -141,6 +170,7 @@ export class AcpClient {
     private _onUsage: UsageHandler;
     private _onSegmentEnd: SegmentEndHandler;
     private _resolveMcpServers: McpServersResolver;
+    private _onHistoryReplay: HistoryReplayHandler;
     /** Monotonic id so stale prompt rejections after cancel are ignored. */
     private _activePromptId = 0;
     private _promptPromise: Promise<unknown> | null = null;
@@ -177,7 +207,8 @@ export class AcpClient {
         onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler,
         onSegmentEnd?: SegmentEndHandler,
-        resolveMcpServers?: McpServersResolver
+        resolveMcpServers?: McpServersResolver,
+        onHistoryReplay?: HistoryReplayHandler
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
@@ -194,6 +225,7 @@ export class AcpClient {
         this._onModelsChanged = onModelsChanged || (() => {});
         this._onSegmentEnd = onSegmentEnd || (() => {});
         this._resolveMcpServers = resolveMcpServers || (() => []);
+        this._onHistoryReplay = onHistoryReplay || (() => {});
     }
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
@@ -216,7 +248,7 @@ export class AcpClient {
 
     /** Fetch grouped model catalog via Hermes ACP ``model.options`` (best-effort). */
     async fetchModelOptions(): Promise<AcpModelOptionsResponse | null> {
-        if (!this._conn || !this._session || this._modelOptionsKnownUnsupported) {
+        if (!this._conn || !this._activeSessionId || this._modelOptionsKnownUnsupported) {
             return null;
         }
         if (this._modelOptionsFetchPromise) {
@@ -231,12 +263,12 @@ export class AcpClient {
     }
 
     private async _fetchModelOptionsOnce(): Promise<AcpModelOptionsResponse | null> {
-        if (!this._conn || !this._session || this._modelOptionsKnownUnsupported) {
+        if (!this._conn || !this._activeSessionId || this._modelOptionsKnownUnsupported) {
             return null;
         }
         try {
             const response = await this._conn.agent.request('model.options', {
-                sessionId: this._session.sessionId,
+                sessionId: this._activeSessionId,
             } as any);
             if (!response || typeof response !== 'object') {
                 return null;
@@ -413,6 +445,8 @@ export class AcpClient {
 
             const builder = this._conn.agent.buildSession(this._buildNewSessionRequest(cwd));
             this._session = await builder.start();
+            this._activeSessionId = this._session.sessionId;
+            this._loadedSessionId = '';
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
 
@@ -445,7 +479,7 @@ export class AcpClient {
 
         let promptPromise: Promise<unknown>;
         try {
-            promptPromise = this._session!.prompt(text);
+            promptPromise = this._promptActiveSession(text) as Promise<unknown>;
         } catch (err) {
             if (promptId === this._activePromptId) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -486,7 +520,7 @@ export class AcpClient {
     }
 
     async cancel(): Promise<void> {
-        if (!this._session || !this._conn) {
+        if (!this._conn || !this._activeSessionId) {
             return;
         }
         if (this._status !== 'prompting') {
@@ -510,7 +544,7 @@ export class AcpClient {
 
         try {
             await this._conn.agent.notify(methods.agent.session.cancel, {
-                sessionId: this._session.sessionId
+                sessionId: this._activeSessionId
             });
         } catch {
             // best-effort
@@ -546,9 +580,9 @@ export class AcpClient {
 
     private async _abandonOrphanPrompt(promptPromise: Promise<unknown>): Promise<void> {
         try {
-            if (this._session && this._conn) {
+            if (this._conn && this._activeSessionId) {
                 await this._conn.agent.notify(methods.agent.session.cancel, {
-                    sessionId: this._session.sessionId
+                    sessionId: this._activeSessionId
                 });
             }
         } catch {
@@ -558,7 +592,7 @@ export class AcpClient {
     }
 
     async setModel(configId: string, valueId: string): Promise<void> {
-        if (!this._session || !this._conn) {
+        if (!this._conn || !this._activeSessionId) {
             throw new Error('Not connected');
         }
         if (this._status === 'prompting') {
@@ -577,7 +611,7 @@ export class AcpClient {
             this._onLog(`session/set_model → ${valueId}`);
             try {
                 await this._conn.agent.request('session/set_model', {
-                    sessionId: this._session.sessionId,
+                    sessionId: this._activeSessionId,
                     modelId: valueId,
                 } as any);
                 this._runtimeModelId = valueId;
@@ -608,7 +642,7 @@ export class AcpClient {
 
         try {
             const response = await this._conn.agent.request(methods.agent.session.setConfigOption, {
-                sessionId: this._session.sessionId,
+                sessionId: this._activeSessionId,
                 configId: effectiveConfigId,
                 value: valueId,
             } as any);
@@ -629,6 +663,101 @@ export class AcpClient {
         }
     }
 
+    /** ACP session id the view is bound to. */
+    get activeSessionId(): string {
+        return this._activeSessionId;
+    }
+
+    /**
+     * Sessions Hermes already knows about for this cwd (newest first).
+     *
+     * Read-only: lets callers validate a stored id instead of creating another.
+     */
+    async listSessions(cwd?: string): Promise<HermesSessionSummary[]> {
+        if (!this._conn) {
+            return [];
+        }
+        const params = cwd ? { cwd } : {};
+        const response = await this._conn.agent.request(methods.agent.session.list as any, params as any) as any;
+        const sessions = (response as any)?.sessions ?? [];
+        return sessions
+            .map((s: any) => ({
+                sessionId: String(s?.sessionId ?? ''),
+                title: typeof s?.title === 'string' ? s.title : undefined,
+                cwd: typeof s?.cwd === 'string' ? s.cwd : undefined,
+                updatedAt: s?.updatedAt == null ? undefined : String(s.updatedAt),
+            }))
+            .filter((s: HermesSessionSummary) => s.sessionId.length > 0);
+    }
+
+    /**
+     * Resume an existing Hermes session on the live connection.
+     *
+     * ACP requires the agent to stream prior history as `session/update` before
+     * this resolves, so update routing (already registered app-wide) must exist.
+     * Loaded sessions have no SessionBuilder, hence `_promptActiveSession`.
+     */
+    async loadSession(cwd: string, sessionId: string): Promise<void> {
+        if (!this._conn) {
+            throw new Error('Not connected');
+        }
+        if (this._status === 'prompting') {
+            await this.cancel();
+        }
+        const request = this._buildNewSessionRequest(cwd);
+        this._onLog(`session/load ${sessionId} cwd=${cwd}`);
+        this._session?.dispose();
+        this._session = null;
+        this._responseBuffer = '';
+        this._thoughtBuffer = '';
+        this._toolCallTracker.clear();
+        // Hermes streams the persisted transcript as `session/update` notifications
+        // before answering `session/load`; collect it so the tab can render it.
+        const replay: ReplayMessage[] = [];
+        this._replaySink = replay;
+        let response: any;
+        try {
+            response = await this._conn.agent.request(
+                methods.agent.session.load as any,
+                { ...request, sessionId } as any,
+            ) as any;
+        } finally {
+            this._replaySink = null;
+        }
+        this._loadedSessionId = sessionId;
+        this._activeSessionId = sessionId;
+        try {
+            this._syncSessionModels(response as any);
+        } catch { /* load responses may omit the model block */ }
+        this._transitionTo('ready');
+        if (replay.length > 0) {
+            this._onLog(`Replayed ${replay.length} history update(s) for session ${sessionId}`);
+            try {
+                this._onHistoryReplay(sessionId, replay);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this._onLog(`History replay handling failed: ${msg}`);
+            }
+        }
+    }
+
+    /** Prompt whichever session is active; loaded sessions use a raw request. */
+    private async _promptActiveSession(text: string | any | any[]): Promise<unknown> {
+        if (this._session && !this._loadedSessionId) {
+            return this._session.prompt(text);
+        }
+        if (!this._conn || !this._activeSessionId) {
+            throw new Error('No active session');
+        }
+        const prompt = typeof text === 'string'
+            ? [{ type: 'text', text }]
+            : Array.isArray(text) ? text : [text];
+        return this._conn.agent.request(methods.agent.session.prompt, {
+            sessionId: this._activeSessionId,
+            prompt,
+        } as any);
+    }
+
     async newSession(cwd: string): Promise<void> {
         if (!this._conn) {
             await this.start(cwd);
@@ -644,6 +773,8 @@ export class AcpClient {
             this._toolCallTracker.clear();
             const builder = this._conn.agent.buildSession(this._buildNewSessionRequest(cwd));
             this._session = await builder.start();
+            this._activeSessionId = this._session.sessionId;
+            this._loadedSessionId = '';
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
         } catch (err) {
@@ -662,6 +793,9 @@ export class AcpClient {
         try {
             this._session?.dispose();
         } catch { /* ignore */ }
+        this._session = null;
+        this._activeSessionId = '';
+        this._loadedSessionId = '';
         for (const [, term] of this._terminals) {
             try { term.process.kill(); } catch { /* ignore */ }
         }
@@ -782,6 +916,12 @@ export class AcpClient {
         const update = notification.update;
         const kind = update.sessionUpdate;
 
+        // Replay updates are whole messages, so they bypass the prompt-only
+        // `_acceptStreamOutput` gate and never touch the streaming buffers.
+        if (this._replaySink && this._collectReplayUpdate(update, kind)) {
+            return;
+        }
+
         switch (kind) {
             case 'agent_message_chunk': {
                 if (!this._acceptStreamOutput) {
@@ -842,6 +982,48 @@ export class AcpClient {
                 }
                 break;
             }
+        }
+    }
+
+    /** Collect one replayed transcript update; false when it is not transcript content. */
+    private _collectReplayUpdate(update: Record<string, unknown>, kind: string): boolean {
+        const sink = this._replaySink;
+        if (!sink) {
+            return false;
+        }
+        switch (kind) {
+            case 'user_message_chunk': {
+                const text = extractTextFromContentBlock(update.content);
+                if (text) {
+                    sink.push({ role: 'user', text });
+                }
+                return true;
+            }
+
+            case 'agent_message_chunk': {
+                const text = extractTextFromContentBlock(update.content);
+                if (text) {
+                    sink.push({ role: 'assistant', text });
+                }
+                return true;
+            }
+
+            case 'agent_thought_chunk': {
+                const text = extractTextFromContentBlock(update.content);
+                if (text) {
+                    sink.push({ role: 'thought', text });
+                }
+                return true;
+            }
+
+            case 'tool_call':
+            case 'tool_call_update': {
+                this._emitToolCallUpdate(update, kind);
+                return true;
+            }
+
+            default:
+                return false;
         }
     }
 
@@ -914,7 +1096,12 @@ export class AcpClient {
             return;
         }
         const merged = this._toolCallTracker.apply(parsed);
-        this._onMessage('tool', formatToolCallDisplay(merged), merged.toolCallId);
+        const text = formatToolCallDisplay(merged);
+        if (this._replaySink) {
+            this._replaySink.push({ role: 'tool', text, toolCallId: merged.toolCallId });
+            return;
+        }
+        this._onMessage('tool', text, merged.toolCallId);
     }
 
     private _emitCancelledToolCalls(): void {
