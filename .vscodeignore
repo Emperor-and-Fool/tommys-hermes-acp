@@ -12,3 +12,10 @@ CODE_REVIEW*.md
 out/tests/
 docs/**
 media/icon.svg
+scripts/**
+.github/**
+packaging/**
+.mocharc.yml
+.vscode-test/**
+package-lock.json
+*.vsix

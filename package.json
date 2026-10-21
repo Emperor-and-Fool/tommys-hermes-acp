@@ -321,7 +321,9 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package",
+    "check": "tsc -p ./ --noEmit --noUnusedLocals --noUnusedParameters",
+    "deploy": "node scripts/deploy.mjs",
+    "package": "npx --no-install @vscode/vsce package --allow-missing-repository",
     "test": "node ./out/tests/runTest.js"
   },
   "devDependencies": {

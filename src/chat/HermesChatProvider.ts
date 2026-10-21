@@ -3442,11 +3442,16 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (webview) {
             const vendorUri = (file: string) =>
                 webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'vendor', file)).toString();
+            // The chat's own stylesheet and script live beside chat.html, not in vendor/.
+            const mediaUri = (file: string) =>
+                webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', file)).toString();
             html = html
                 .replace('{{MARKED_URI}}', vendorUri('marked.min.js'))
                 .replace('{{HIGHLIGHT_URI}}', vendorUri('highlight.min.js'))
                 .replace('{{HIGHLIGHT_CSS_URI}}', vendorUri('github-dark.min.css'))
                 .replace('{{PURIFY_URI}}', vendorUri('purify.min.js'))
+                .replace('{{CHAT_CSS_URI}}', mediaUri('chat.css'))
+                .replace('{{CHAT_JS_URI}}', mediaUri('chat.js'))
                 .replace('{{LOCALE_JSON}}', JSON.stringify(getWebviewLocale()).replace(/</g, '\\u003c'))
                 .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
         } else {
