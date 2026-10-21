@@ -27,8 +27,16 @@ import {
 } from './profileStorage';
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
-import { SupportedLocale, LocaleStrings } from '../i18n/types';
-import { formatLocaleString, WEBVIEW_LOCALE_HELPER } from '../i18n/format';
+import { SupportedLocale } from '../i18n/types';
+import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
+import {
+    detectStepLabel,
+    formatDetectBrokenMessage,
+    formatDetectProgressPercent,
+    formatDetectStepDetail,
+    formatDetectSummaryForReport,
+} from './detectFormat';
+import { buildSessionExportPayload } from './sessionExport';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
@@ -63,7 +71,7 @@ interface StoredPermissionOption {
     kind?: string;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
     role: string;
     text: string;
     timestamp: number;
@@ -79,7 +87,7 @@ interface ChatMessage {
     selectedLabel?: string;
 }
 
-interface SessionInfo {
+export interface SessionInfo {
     id: string;
     title: string;
     createdAt: number;
@@ -1594,7 +1602,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             }
             if (!resolvedPath) {
                 const msg = report.status === 'broken'
-                    ? this._formatDetectBrokenMessage(report)
+                    ? formatDetectBrokenMessage(report)
                     : t('detectEnvironmentNotFound');
                 this._log(`Connect failed: ${msg}`);
                 this._postMessage({ type: 'status', status: 'error', message: msg });
@@ -1877,7 +1885,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postDetectProgress(event: HermesDetectProgressEvent): void {
-        const brief = this._formatDetectProgressPercent(event);
+        const brief = formatDetectProgressPercent(event, this._detectStepOrder);
         this._postMessage({
             type: 'detectEnvironmentProgress',
             step: event.step,
@@ -1899,130 +1907,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._setDetectContext(false, false);
     }
 
-    private _detectStepLabel(step: HermesDetectStepId): string {
-        const keyMap: Record<HermesDetectStepId, keyof LocaleStrings> = {
-            config: 'detectEnvironmentStepConfig',
-            path_lookup: 'detectEnvironmentStepPath',
-            known_path: 'detectEnvironmentStepKnownPath',
-            pip: 'detectEnvironmentStepPip',
-            python_import: 'detectEnvironmentStepPython',
-            hermes_home: 'detectEnvironmentStepHermesHome',
-            verify: 'detectEnvironmentStepVerify',
-            acp_check: 'detectEnvironmentStepAcpCheck',
-            acp_install: 'detectEnvironmentStepAcpInstall',
-            summary: 'detectEnvironmentStepSummary',
-        };
-        return t(keyMap[step]);
-    }
-
-    private _formatDetectStepDetail(event: HermesDetectProgressEvent): string {
-        if (event.status === 'running') {
-            return '…';
-        }
-        if (event.status === 'skip') {
-            return t('detectEnvironmentStepSkipped');
-        }
-        if (event.step === 'verify') {
-            return formatLocaleString(
-                t('detectEnvironmentStepVerifyCount'),
-                event.verifiedCount ?? 0,
-                event.totalCount ?? 0,
-            );
-        }
-        if (event.step === 'acp_check') {
-            if (event.status === 'ok') {
-                return event.detail || t('detectEnvironmentStepAcpOk');
-            }
-            if (event.status === 'fail') {
-                return event.detail || t('detectEnvironmentStepAcpFail');
-            }
-        }
-        if (event.step === 'acp_install') {
-            if (event.status === 'ok') {
-                return event.detail || t('detectEnvironmentStepAcpInstallOk');
-            }
-            if (event.status === 'fail') {
-                return event.detail || t('detectEnvironmentStepAcpInstallFail');
-            }
-        }
-        if (event.step === 'summary') {
-            if (event.detail) {
-                return event.detail;
-            }
-            if (event.reportStatus === 'ready') return t('detectEnvironmentSummaryReady');
-            if (event.reportStatus === 'broken') return t('detectEnvironmentSummaryBroken');
-            return t('detectEnvironmentSummaryInstall');
-        }
-        if ((event.count ?? 0) > 0) {
-            const summary = formatLocaleString(t('detectEnvironmentStepFoundCount'), event.count ?? 0);
-            if (event.detail) {
-                return `${summary}\n${event.detail}`;
-            }
-            return summary;
-        }
-        if (event.status === 'fail' && event.detail) {
-            return event.detail;
-        }
-        return t('detectEnvironmentStepNotFound');
-    }
-
-    private _formatDetectProgressPercent(event: HermesDetectProgressEvent): string {
-        const total = this._detectStepOrder.length;
-        if (total === 0) {
-            return '0%';
-        }
-        const stepIndex = this._detectStepOrder.indexOf(event.step);
-        if (stepIndex < 0) {
-            return '0%';
-        }
-        let completed = stepIndex;
-        if (event.status !== 'running') {
-            completed = stepIndex + 1;
-        }
-        if (event.step === 'summary' && event.status !== 'running') {
-            completed = total;
-        }
-        const percent = Math.min(100, Math.max(0, Math.round((completed / total) * 100)));
-        return `${percent}%`;
-    }
-
-    private _formatDetectBrokenMessage(report: HermesEnvironmentReport): string {
-        const hasVerifiedHermes = report.executables.some((item) => item.verified);
-        if (hasVerifiedHermes && !report.diagnostics.acpOk) {
-            return report.diagnostics.acpInstallAttempted
-                ? t('detectEnvironmentSummaryAcpManual')
-                : t('detectEnvironmentSummaryAcpBroken');
-        }
-        return t('detectEnvironmentBroken');
-    }
-
-    private _formatDetectSummaryForReport(report: HermesEnvironmentReport): string {
-        if (report.status === 'not_found') {
-            return t('detectEnvironmentSummaryInstall');
-        }
-        if (report.status === 'broken') {
-            const hasVerifiedHermes = report.executables.some((item) => item.verified);
-            if (hasVerifiedHermes && !report.diagnostics.acpOk) {
-                if (report.diagnostics.acpInstallAttempted) {
-                    return t('detectEnvironmentSummaryAcpManual');
-                }
-                return t('detectEnvironmentSummaryAcpBroken');
-            }
-            return t('detectEnvironmentSummaryBroken');
-        }
-        if (
-            report.recommendation.action === 'configure_plugin'
-        ) {
-            return t('detectEnvironmentSummaryConfigureViaMenu');
-        }
-        return t('detectEnvironmentSummaryReady');
-    }
-
     private _recordDetectStep(event: HermesDetectProgressEvent): void {
         const entry: DetectStepLogEntry = {
             step: event.step,
-            label: this._detectStepLabel(event.step),
-            detail: this._formatDetectStepDetail(event),
+            label: detectStepLabel(event.step),
+            detail: formatDetectStepDetail(event),
             status: event.status,
         };
         const index = this._detectStepLog.findIndex((item) => item.step === event.step);
@@ -2074,7 +1963,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._logEnvironmentReport(report);
         this._lastDetectReport = report;
         const summaryStatus: HermesDetectStepStatus = report.status === 'ready' ? 'ok' : 'fail';
-        const summaryText = this._formatDetectSummaryForReport(report);
+        const summaryText = formatDetectSummaryForReport(report);
         const summaryEvent: HermesDetectProgressEvent = {
             step: 'summary',
             status: summaryStatus,
@@ -2121,7 +2010,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         if (report.status === 'broken') {
-            await vscode.window.showErrorMessage(this._formatDetectBrokenMessage(report));
+            await vscode.window.showErrorMessage(formatDetectBrokenMessage(report));
             return;
         }
     }
@@ -2154,7 +2043,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postConfigureDetectProgress(event: HermesDetectProgressEvent): void {
-        const brief = this._formatDetectProgressPercent(event);
+        const brief = formatDetectProgressPercent(event, this._detectStepOrder);
         this._postMessage({
             type: 'configureEnvironmentDetectProgress',
             step: event.step,
@@ -3050,7 +2939,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             );
             messages = messages.filter((_, index) => pick.has(index));
         }
-        const payload = this._buildSessionExportPayload(session, messages);
+        const payload = buildSessionExportPayload(session, messages, this._modelState?.currentLabel);
         this._postMessage({
             type: 'sessionExport',
             action,
@@ -3069,76 +2958,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } catch {
             return [];
         }
-    }
-
-    private _buildSessionExportPayload(session: SessionInfo, messages: ChatMessage[]): {
-        sessionId: string;
-        title: string;
-        markdown: string;
-        filename: string;
-    } {
-        const loc = getWebviewLocale();
-        const title = session.title || t('newChat');
-        const model = session.modelLabel || session.modelId || this._modelState?.currentLabel || '—';
-        const exportedAt = new Date();
-        const header = [
-            `# ${title}`,
-            `> ${formatLocaleString(loc.sessionExportSessionId, session.id)}`,
-            `> ${formatLocaleString(loc.sessionExportModel, model)}`,
-            `> ${formatLocaleString(loc.sessionExportDate, this._formatExportDateTime(exportedAt))}`,
-            '',
-        ].join('\n');
-        const body = this._formatMessagesAsMarkdown(messages);
-        return {
-            sessionId: session.id,
-            title,
-            markdown: body ? `${header}\n${body}` : header,
-            filename: `${this._sanitizeExportFilename(title)}-${this._formatExportDateFilename(exportedAt)}.md`,
-        };
-    }
-
-    private _formatMessagesAsMarkdown(messages: ChatMessage[]): string {
-        const loc = getWebviewLocale();
-        const parts: string[] = [];
-        for (const message of messages) {
-            const text = (message.text || '').trim();
-            if (!text) {
-                continue;
-            }
-            parts.push(`## ${this._exportRoleLabel(message.role, loc)}\n\n${text}`);
-        }
-        return parts.join('\n\n');
-    }
-
-    private _exportRoleLabel(role: string, loc: LocaleStrings): string {
-        switch (role) {
-            case 'user':
-                return loc.roleYou;
-            case 'assistant':
-                return loc.roleHermes;
-            case 'thought':
-                return loc.roleThought;
-            case 'tool':
-                return loc.roleTool;
-            case 'permission':
-                return loc.permissionTitle;
-            default:
-                return loc.roleMessage;
-        }
-    }
-
-    private _formatExportDateTime(date: Date): string {
-        const pad = (value: number) => String(value).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    }
-
-    private _formatExportDateFilename(date: Date): string {
-        const pad = (value: number) => String(value).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    }
-
-    private _sanitizeExportFilename(name: string): string {
-        return name.replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80) || 'chat';
     }
 
     private async _handleSwitchAgent(selectionId: string): Promise<void> {
