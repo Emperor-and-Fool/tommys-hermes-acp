@@ -91,10 +91,14 @@ for (const rel of files) {
     if (sha(from) !== sha(to)) mismatched.push(rel);
 }
 
-// The installed manifest must declare the same views the JS registers.
+// The installed manifest must declare the views the JS registers.
 const installedPkg = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
-const viewIds = (installedPkg.contributes?.views?.tommysChat ?? []).map((v) => v.id);
-const hostJs = readFileSync(path.join(target, 'out', 'extension.js'), 'utf8');
+const views = Object.values(installedPkg.contributes?.views ?? {}).flat();
+const viewIds = views.map((v) => v.id);
+const chatView = 'tommysChat';
+// The view is registered in extension.ts, not in the provider.
+const entry = readFileSync(path.join(target, 'out', 'extension.js'), 'utf8');
+const registersChat = entry.includes(`registerWebviewViewProvider('${chatView}'`);
 
 console.log(`deploy: ${copied} files -> ${target}`);
 if (mismatched.length) {
@@ -102,5 +106,9 @@ if (mismatched.length) {
     process.exit(1);
 }
 console.log(`deploy: verified ${copied}/${files.length} files by sha256`);
-console.log(`deploy: view(s) ${viewIds.join(', ') || '(none)'} registered by the host build`);
+console.log(`deploy: manifest declares views [${viewIds.join(', ')}]; host registers '${chatView}': ${registersChat}`);
+if (viewIds.length === 0 || !registersChat) {
+    console.error('deploy: manifest and host build disagree about the view — the pane will not resolve');
+    process.exit(1);
+}
 console.log('deploy: reload the window (Developer: Reload Window) to run it.');
