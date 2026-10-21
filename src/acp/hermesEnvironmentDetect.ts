@@ -1,5 +1,4 @@
 import { execFile, spawn } from 'child_process';
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
@@ -479,7 +478,7 @@ export function inferInstallMethod(
 
 export function buildRecommendation(
     executables: HermesExecutableCandidate[],
-    registryPath?: string,
+    _registryPath?: string,
 ): HermesEnvironmentRecommendation {
     if (executables.length === 0) {
         return { action: 'reinstall' };

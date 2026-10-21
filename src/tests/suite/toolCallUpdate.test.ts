@@ -5,7 +5,6 @@ import {
     extractToolCallBody,
     formatToolCallDisplay,
     formatToolCallSummary,
-    normalizeToolCallStatus,
     parseToolCallSessionUpdate,
 } from '../../acp/toolCallUpdate';
 

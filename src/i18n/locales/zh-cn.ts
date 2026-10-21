@@ -8,7 +8,7 @@ export const zhCn: LocaleStrings = {
     waitForResponse: '请等待当前回复完成后再切换模型。',
     failedSwitchModel: '切换模型失败：{0}',
     savedModelUnavailable: '已保存的模型「{0}」不可用。',
-    modelPreferenceSaved: '模型偏好已本地保存。请在设置中配置 Hermes 模型或 hermes.models。',
+    modelPreferenceSaved: '模型偏好已本地保存。请在设置中配置 Hermes 模型或 tommys.models。',
     hermesNotConnected: 'Hermes 未连接。',
     couldNotOpenFile: '无法打开文件：{0}',
     hermesNotConnectedConnecting: 'Hermes 未连接，正在连接…',
@@ -235,7 +235,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. 切换 Profile 会引起什么变化？</h3>
             <p>Profile 切换等于<strong>重连 Hermes 子进程</strong>（类似 <code>hermes --profile &lt;name&gt; acp</code> 重新启动）。</p>
             <ul>
-                <li><strong>会话列表换一套</strong> — 每个 Profile / <code>hermes.agents</code> 命名 Agent 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
+                <li><strong>会话列表换一套</strong> — 每个 Profile / <code>tommys.agents</code> 命名 Agent 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
                 <li><strong>模型列表刷新</strong> — 来自新 Profile 下 Hermes 暴露的可用模型，可能与旧 Profile 完全不同</li>
                 <li><strong>聊天内容</strong> — 按新 Profile 下的活跃会话重新加载</li>
                 <li><strong>Settings 变更</strong> — 修改 <code>tommys.profile</code>、<code>tommys.path</code> 等连接项也会自动重连，效果类似切换 Profile</li>
@@ -248,7 +248,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
                 <li>Profile 未配置对应 Provider 或 API Key</li>
                 <li>该 Profile 只启用了部分模型</li>
                 <li>Hermes 版本或 ACP 未返回完整列表</li>
-                <li>Agent 未连接或未返回列表 — 可在 Settings 配置备用列表 <code>hermes.models</code></li>
+                <li>Agent 未连接或未返回列表 — 可在 Settings 配置备用列表 <code>tommys.models</code></li>
             </ul>
             <p class="dim">排查：用相同 Profile 在终端运行 <code>hermes acp</code> 确认 Hermes 侧是否正常；检查 Hermes 配置文件。</p>
 
@@ -294,8 +294,8 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '（空文件）',
     noMatchingFiles: '没有匹配的文件',
     searchingFiles: '搜索文件中…',
-    configureAgents: '请在 Settings 中配置 hermes.agents',
-    noModels: '无可用模型 — 请检查 Hermes profile 或 hermes.models',
+    configureAgents: '请在 Settings 中配置 tommys.agents',
+    noModels: '无可用模型 — 请检查 Hermes profile 或 tommys.models',
     modelFromAgent: '来自 Hermes profile 的模型',
     modelLocalPreference: '本地模型偏好（Settings 回退）',
     tokenUsageLabel: '输入 TOKEN: {0} / {1} ({2}%)',

@@ -2,7 +2,7 @@
   "name": "tommys-hermes-acp",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",

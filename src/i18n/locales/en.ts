@@ -8,7 +8,7 @@ export const en: LocaleStrings = {
     waitForResponse: 'Wait for the current response before changing model.',
     failedSwitchModel: 'Failed to switch model: {0}',
     savedModelUnavailable: 'Saved model "{0}" is no longer available.',
-    modelPreferenceSaved: 'Model preference saved locally. Configure Hermes models or hermes.models in Settings.',
+    modelPreferenceSaved: 'Model preference saved locally. Configure Hermes models or tommys.models in Settings.',
     hermesNotConnected: 'Hermes is not connected.',
     couldNotOpenFile: 'Could not open file: {0}',
     hermesNotConnectedConnecting: 'Hermes is not connected. Connecting...',
@@ -235,7 +235,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. What changes when I switch Profile?</h3>
             <p>Switching Profile <strong>reconnects the Hermes subprocess</strong> (like restarting <code>hermes --profile &lt;name&gt; acp</code>).</p>
             <ul>
-                <li><strong>Different session list</strong> — each Profile / named agent in <code>hermes.agents</code> has separate local storage; tab history, active tab, and model preferences do not carry over</li>
+                <li><strong>Different session list</strong> — each Profile / named agent in <code>tommys.agents</code> has separate local storage; tab history, active tab, and model preferences do not carry over</li>
                 <li><strong>Model list refreshes</strong> — from models exposed by Hermes under the new Profile; may differ completely</li>
                 <li><strong>Chat content</strong> — reloads the active session under the new Profile</li>
                 <li><strong>Settings changes</strong> — editing <code>tommys.profile</code>, <code>tommys.path</code>, etc. also reconnects, similar to switching Profile</li>
@@ -248,7 +248,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
                 <li>Provider or API key not configured in the Profile</li>
                 <li>Profile only enables a subset of models</li>
                 <li>Hermes version or ACP did not return the full list</li>
-                <li>Agent not connected or returned no list — configure fallback <code>hermes.models</code> in Settings</li>
+                <li>Agent not connected or returned no list — configure fallback <code>tommys.models</code> in Settings</li>
             </ul>
             <p class="dim">Check: run <code>hermes acp</code> in a terminal with the same Profile; review Hermes config files.</p>
 
@@ -294,8 +294,8 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '(empty file)',
     noMatchingFiles: 'No matching files',
     searchingFiles: 'Searching files…',
-    configureAgents: 'Configure hermes.agents in Settings',
-    noModels: 'No models — check Hermes profile or hermes.models',
+    configureAgents: 'Configure tommys.agents in Settings',
+    noModels: 'No models — check Hermes profile or tommys.models',
     modelFromAgent: 'Model from Hermes profile',
     modelLocalPreference: 'Local model preference (Settings fallback)',
     tokenUsageLabel: 'Input TOKEN: {0} / {1} ({2}%)',

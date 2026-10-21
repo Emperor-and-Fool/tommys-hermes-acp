@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AcpClient, AcpStatus, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
+import { AcpClient, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../acp/modelConfig';
 import { resolveModelCatalog } from '../acp/acpModelCatalog';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
@@ -370,9 +370,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'openTab':
                     this._enqueueChatOp(() => this._handleOpenTab(message.sessionId));
-                    break;
-                case 'deleteSession':
-                    this._handleDeleteSession(message.sessionId);
                     break;
                 case 'renameSession':
                     this._handleRenameSession(message.sessionId, message.title);
@@ -1249,21 +1246,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._persistMessages();
     }
 
-    private _updatePermissionRequestContent(id: string, title?: string, detail?: string): void {
-        const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
-        if (!stored || stored.resolved) {
-            return;
-        }
-        if (title !== undefined) {
-            stored.title = title;
-        }
-        if (detail !== undefined) {
-            stored.detail = detail;
-        }
-        stored.text = this._permissionBodyText(stored.title, stored.detail);
-        this._persistMessages();
-    }
-
     private _resolvePermissionHistory(
         id: string,
         outcome: 'selected' | 'cancelled',
@@ -1863,7 +1845,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._restoreMessages();
     }
 
-    private async _handleRetry(): Promise<void> {
+    private async _handleRetry(): Promise<void> {
         this._log('Retry connection requested');
         this._acp?.dispose();
         this._acp = undefined;
@@ -2002,12 +1984,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         const percent = Math.min(100, Math.max(0, Math.round((completed / total) * 100)));
         return `${percent}%`;
-    }
-
-    private _formatDetectProgressBrief(event: HermesDetectProgressEvent): string {
-        const label = this._detectStepLabel(event.step);
-        const detail = this._formatDetectStepDetail(event).split('\n')[0] || '';
-        return detail ? `${label} · ${detail}` : label;
     }
 
     private _formatDetectBrokenMessage(report: HermesEnvironmentReport): string {
@@ -2888,36 +2864,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             && this._promptSessionId === this._sessionId;
     }
 
-    private async _handleDeleteSession(sessionId: string): Promise<void> {
-        this._log(`Delete session: ${sessionId}`);
-        const idx = this._sessions.findIndex(s => s.id === sessionId);
-        if (idx === -1) {
-            return;
-        }
-        if (sessionId === this._promptSessionId) {
-            await this._detachActivePrompt(sessionId, { savePartial: false });
-        }
-        this._sessions = this._sessions.filter(s => s.id !== sessionId);
-        try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions, null, 2));
-            fs.unlinkSync(this._msgPath(sessionId));
-        } catch { /* ignore */ }
-
-        if (sessionId !== this._sessionId) {
-            this._postSessionList();
-            return;
-        }
-
-        if (this._sessions.length > 0) {
-            const nextIdx = Math.min(idx, this._sessions.length - 1);
-            // Skip save: deleted session is no longer in _sessions and must not be re-added.
-            await this._handleSwitchSession(this._sessions[nextIdx].id, { skipSaveCurrent: true });
-            return;
-        }
-
-        await this._createBlankTab();
-    }
-
     private _handleRenameSession(sessionId: string, title: string): void {
         const session = this._sessions.find(s => s.id === sessionId);
         if (!session) {
@@ -3056,42 +3002,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             await this._refreshSessionsFromHermes();
         }
         await this._handleSwitchSession(sessionId);
-    }
-
-    private async _deleteSessionsBatch(toDelete: string[], focusSessionId?: string): Promise<void> {
-        const deletingActive = toDelete.includes(this._sessionId);
-        const deletedIndex = this._sessions.findIndex(s => s.id === this._sessionId);
-        for (const id of toDelete) {
-            this._sessions = this._sessions.filter(s => s.id !== id);
-            try {
-                fs.unlinkSync(this._msgPath(id));
-            } catch { /* ignore */ }
-        }
-        try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
-        } catch { /* ignore */ }
-
-        if (this._sessions.length === 0) {
-            await this._createBlankTab();
-            return;
-        }
-
-        if (deletingActive) {
-            // Stay where the eye is: the tab that took the deleted one's place, else the
-            // one before it. Never an arbitrary session picked by list order.
-            const nextId = focusSessionId && this._sessions.some(s => s.id === focusSessionId)
-                ? focusSessionId
-                : this._sessions[Math.max(0, Math.min(deletedIndex, this._sessions.length - 1))].id;
-            await this._handleSwitchSession(nextId, { skipSaveCurrent: true });
-            return;
-        }
-
-        if (focusSessionId && focusSessionId !== this._sessionId && this._sessions.some(s => s.id === focusSessionId)) {
-            await this._handleSwitchSession(focusSessionId, { skipSaveCurrent: true });
-            return;
-        }
-
-        this._postSessionList();
     }
 
     private _handleTogglePinSession(sessionId: string): void {
@@ -3493,13 +3403,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (e.affectsConfiguration('tommys.contextAttachVisibility')) {
             this._applyContextAttachVisibility();
         }
-        if (e.affectsConfiguration('hermes.models') || e.affectsConfiguration('hermes.defaultModel')) {
+        if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
             if (!this._modelState || !isRuntimeModelSource(this._modelState.configId)) {
                 this._modelState = null;
             }
             void this._syncModelState();
         }
-        if (e.affectsConfiguration('hermes.agents')) {
+        if (e.affectsConfiguration('tommys.agents')) {
             this._discoveredProfiles = null;
             this._postProfileList();
         }

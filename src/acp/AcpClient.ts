@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
 import {
     client,
