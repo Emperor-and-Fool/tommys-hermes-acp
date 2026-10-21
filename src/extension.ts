@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HermesChatProvider } from './chat/HermesChatProvider';
+import { CHAT_PANEL_VIEW_TYPE, HermesChatProvider } from './chat/HermesChatProvider';
 import { initI18n, t } from './i18n';
 
 let chatProvider: HermesChatProvider | undefined;
@@ -28,6 +28,22 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('tommysChat', chatProvider, {
             webviewOptions: { retainContextWhenHidden: true }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('tommys.toggleChatSurface', () => {
+            chatProvider?.toggleChatSurface();
+        })
+    );
+
+    // Restores the editor-tab chat after a window reload / app restart.
+    context.subscriptions.push(
+        vscode.window.registerWebviewPanelSerializer(CHAT_PANEL_VIEW_TYPE, {
+            deserializeWebviewPanel(panel: vscode.WebviewPanel) {
+                chatProvider?.restoreChatPanel(panel);
+                return Promise.resolve();
+            },
         })
     );
 

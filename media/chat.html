@@ -752,6 +752,40 @@ body {
 #tab-bar::-webkit-scrollbar {
     height: 4px;
 }
+/* Editor-tab mode: this webview is the chat rail. No transcript, no composer —
+   just the open chats, stacked, under the profile / Choose Chat toolbar. */
+body.surface-rail #chat-body,
+body.surface-rail #input-area {
+    display: none !important;
+}
+body.surface-rail #tab-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-bottom: none;
+}
+body.surface-rail #tab-bar::-webkit-scrollbar {
+    width: 4px;
+    height: auto;
+}
+body.surface-rail .session-tab {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-radius: 4px;
+}
+body.surface-rail .session-tab .tab-close {
+    margin-left: auto;
+}
+/* Editor panel: the conversation only, the rail carries the tabs. */
+body.surface-notabs #tab-bar {
+    display: none !important;
+}
 .session-tab {
     display: inline-flex;
     align-items: center;
@@ -8553,6 +8587,11 @@ mark.search-mark-active {
             case 'newChat':
                 paneHintText = '';
                 newChat();
+                break;
+
+            case 'surfaceRole':
+                document.body.classList.toggle('surface-rail', msg.role === 'rail');
+                document.body.classList.toggle('surface-notabs', !!msg.hideTabs);
                 break;
 
             case 'noActiveTab':
