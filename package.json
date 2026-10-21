@@ -20,7 +20,7 @@
         {
           "id": "tommys-sidebar",
           "title": "%viewsContainers.activitybar.title%",
-          "icon": "$(comment-discussion)"
+          "icon": "media/activitybar.svg"
         }
       ]
     },

@@ -1,7 +1,7 @@
 {
   "extension.displayName": "Tommys Hermes ACP",
   "extension.description": "Chat with Hermes Agent directly inside VS Code",
-  "viewsContainers.activitybar.title": "Hermes Agent",
+  "viewsContainers.activitybar.title": "Tommys Dev Chat",
   "views.tommysChat.name": "Chat",
   "commands.tommys.newChat.title": "Hermes: New Chat",
   "commands.tommys.openChat.title": "Hermes: Open Chat",
