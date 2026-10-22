@@ -1775,7 +1775,7 @@
         hideFilePicker();
         resetAutoScrollFollow();
         const imagesForBubble = pendingImages.slice();
-        addMessage('user', text, imagesForBubble.length ? { images: imagesForBubble } : undefined);
+        appendMessage('user', text, imagesForBubble.length ? { images: imagesForBubble } : undefined);
         inputEl.value = '';
         syncInputHeightFromContent();
         updateQuickActionBtns();
@@ -2067,7 +2067,7 @@
             }
         }
 
-        const id = addMessage('tool', text);
+        const id = appendMessage('tool', text);
         toolCallMap[toolCallId] = id;
         toolAggregateGroupId = id;
     }
@@ -2326,12 +2326,9 @@
         status.textContent = statusText;
     }
 
-    function createPermissionCard(id, msg, cardOptions) {
+    /** The permission card: header, detail area and actions. No wrapper, no mount. */
+    function buildPermissionCard(id, msg, cardOptions) {
         const readOnly = !!(cardOptions && cardOptions.readOnly);
-        const group = document.createElement('div');
-        group.className = 'message-group permission';
-        group.id = 'perm-' + id;
-        group.dataset.permissionId = id;
 
         const div = document.createElement('div');
         div.className = 'message permission' + (readOnly || msg.resolved ? ' resolved' : ' pending');
@@ -2380,8 +2377,7 @@
         const options = msg.options || [];
         div.appendChild(buildPermissionActions(id, options, readOnly));
 
-        group.appendChild(div);
-        group._permissionState = {
+        const state = {
             text: permissionBodyText(msg.title, msg.detail),
             detailExpanded: !!(readOnly || msg.resolved),
             cardCollapsed: false,
@@ -2395,23 +2391,36 @@
             readOnly: readOnly,
         };
 
-        cardToggle.addEventListener('click', function(e) {
+        return { card: div, state: state };
+    }
+
+    /** Identity from the request's own id, then the card, then the handlers. */
+    function mountPermissionCard(id, msg, cardOptions) {
+        const group = createGroup('permission', 'perm-' + id);
+        group.dataset.permissionId = id;
+        const built = buildPermissionCard(id, msg, cardOptions);
+        const card = built.card;
+        group._permissionState = built.state;
+        const readOnly = built.state.readOnly;
+
+        built.state.cardToggle.addEventListener('click', function(e) {
             e.stopPropagation();
             group._permissionState.cardCollapsed = !group._permissionState.cardCollapsed;
-            div.classList.toggle('is-card-collapsed', group._permissionState.cardCollapsed);
+            card.classList.toggle('is-card-collapsed', group._permissionState.cardCollapsed);
             syncPermissionDetailView(group);
         });
-        moreBtn.addEventListener('click', function(e) {
+        built.state.moreBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             group._permissionState.detailExpanded = true;
             syncPermissionDetailView(group);
         });
-        lessBtn.addEventListener('click', function(e) {
+        built.state.lessBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             group._permissionState.detailExpanded = false;
             syncPermissionDetailView(group);
         });
 
+        group.appendChild(card);
         updatePermissionContent(group, msg.title, msg.detail);
         if (readOnly || msg.resolved) {
             let statusText = locale.permissionCancelled || 'Cancelled';
@@ -2422,13 +2431,12 @@
             }
             applyPermissionResolvedUI(group, statusText);
         }
-        assignSessionIndex(group);
         return group;
     }
 
     function restorePermissionMessage(m) {
         const id = m.permissionId || ('perm_hist_' + (m.timestamp || Date.now()));
-        const group = createPermissionCard(id, {
+        const group = mountPermissionCard(id, {
             title: m.title || m.text || '',
             detail: m.detail || '',
             options: m.options || [],
@@ -3486,26 +3494,21 @@
         if (inner) attachMessageActions(group, inner);
     }
 
-    function addMessage(role, text, options) {
-        const restoring = options && options.restore;
-        placeholder.style.display = 'none';
+    /** Every card carries an element id; search, selection and streaming use it. */
+    function newMessageId() {
+        return 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    }
 
-        // For streaming assistant messages, update the last one (not when restoring history)
-        if (!restoring && role === 'assistant' && streamingMessageId) {
-            const last = document.getElementById(streamingMessageId);
-            if (last) {
-                last.querySelector('.content').textContent = text;
-                last._rawText = text;
-                if (chatSearchState.query) scheduleChatSearch();
-                maybeScrollToBottom();
-                return;
-            }
-        }
-
-        const id = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    /**
+     * The wrapper a message lives in: identity, selection and order.
+     *
+     * The id is minted here unless the caller brings its own, which a permission
+     * request does. Nothing about the card lives here.
+     */
+    function createGroup(role, id) {
         const group = document.createElement('div');
         group.className = 'message-group ' + role;
-        group.id = id;
+        group.id = id || newMessageId();
         if (isSelectableRole(role)) {
             group.classList.add('selectable');
             const selectWrap = document.createElement('label');
@@ -3523,71 +3526,66 @@
             wireSelectableGroup(group);
         }
         assignSessionIndex(group);
+        return group;
+    }
 
+    /**
+     * The card itself: structure and class names only. Colour, radius, spacing and
+     * font all come from chat.css reading those classes.
+     */
+    function buildMessage(role, text, options) {
+        const card = document.createElement('div');
+        card.className = 'message ' + role;
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
+        card.appendChild(label);
+        const content = document.createElement('div');
+        content.className = 'content';
+        content.textContent = text;
+        card.appendChild(content);
+        // Render staged/pasted images inline in the sent user bubble.
+        const images = options && options.images;
+        if (role === 'user' && Array.isArray(images) && images.length > 0) {
+            const gallery = document.createElement('div');
+            gallery.className = 'message-image-gallery';
+            for (const img of images) {
+                if (!img || !img.data) continue;
+                const el = document.createElement('img');
+                el.className = 'message-image';
+                el.src = 'data:' + (img.mimeType || 'image/png') + ';base64,' + img.data;
+                el.alt = 'pasted image';
+                gallery.appendChild(el);
+            }
+            if (gallery.childNodes.length > 0) card.appendChild(gallery);
+        }
+        if (role === 'user') {
+            processFileRefs(content);
+        }
+        return card;
+    }
+
+    /** The card plus the pieces the caller has to wire. */
+    function buildCard(role, text, options) {
+        if (role === 'tool' || role === 'thought') {
+            const auxParts = buildAuxiliaryMessage(role, text);
+            if (!(options && options.restore)) {
+                auxParts.div.classList.add('is-live');
+            }
+            return { card: auxParts.div, auxParts: auxParts };
+        }
+        return { card: buildMessage(role, text, options), auxParts: null };
+    }
+
+    /** Put one card in the transcript: identity first, then the card, then mount. */
+    function mountMessage(group, built, options) {
+        const restoring = options && options.restore;
+        const role = group.classList[1];
         const inner = document.createElement('div');
         inner.className = 'message-group-inner';
-
-        let div;
-        let auxParts = null;
-        if (role === 'tool' || role === 'thought') {
-            auxParts = buildAuxiliaryMessage(role, text);
-            div = auxParts.div;
-            if (!restoring) {
-                div.classList.add('is-live');
-            }
-        } else {
-            div = document.createElement('div');
-            div.className = 'message ' + role;
-            const label = document.createElement('div');
-            label.className = 'label';
-            label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
-            div.appendChild(label);
-            const content = document.createElement('div');
-            content.className = 'content';
-            content.textContent = text;
-            div.appendChild(content);
-            // Render staged/pasted images inline in the sent user bubble.
-            const images = options && options.images;
-            if (role === 'user' && Array.isArray(images) && images.length > 0) {
-                const gallery = document.createElement('div');
-                gallery.className = 'message-image-gallery';
-                for (const img of images) {
-                    if (!img || !img.data) continue;
-                    const el = document.createElement('img');
-                    el.className = 'message-image';
-                    el.src = 'data:' + (img.mimeType || 'image/png') + ';base64,' + img.data;
-                    el.alt = 'pasted image';
-                    gallery.appendChild(el);
-                }
-                if (gallery.childNodes.length > 0) div.appendChild(gallery);
-            }
-            group._rawText = text;
-            if (role === 'user') {
-                processFileRefs(content);
-            }
-        }
-
-        // Mark as streaming if assistant message (live stream only)
-        if (role === 'assistant' && !restoring) {
-            resetToolAggregation();
-            div.classList.add('streaming');
-            streamingMessageId = id;
-            clearAllToolLive();
-            enableStopAfterAgentOutput();
-        }
-        if (role === 'assistant') {
-            group._rawText = text;
-        }
-
-        inner.appendChild(div);
-        if (auxParts) {
-            wireAuxiliaryMessage(group, auxParts, !!(restoring && options && options.deferMarkdown));
-        }
-        if (!restoring && role === 'thought') {
-            resetToolAggregation();
-        }
-        if (!restoring && (role === 'thought' || role === 'tool')) {
-            enableStopAfterAgentOutput();
+        inner.appendChild(built.card);
+        if (built.auxParts) {
+            wireAuxiliaryMessage(group, built.auxParts, !!(restoring && options && options.deferMarkdown));
         }
         attachMessageActions(group, inner);
         group.appendChild(inner);
@@ -3595,6 +3593,51 @@
         // Apply visibility filter for thought/tool messages
         if (role === 'thought' && !window._showThoughts) group.style.display = 'none';
         if (role === 'tool' && !window._showToolCalls) group.style.display = 'none';
+        return group.id;
+    }
+
+    /** Add one message of any role to the transcript. */
+    function appendMessage(role, text, options) {
+        const restoring = options && options.restore;
+        placeholder.style.display = 'none';
+
+        // For streaming assistant messages, update the last one (not when restoring history)
+        if (!restoring && role === 'assistant' && streamingMessageId) {
+            const last = document.getElementById(streamingMessageId);
+            if (last) {
+                last.querySelector('.content').textContent = text;
+                last._rawText = text;
+                if (chatSearchState.query) scheduleChatSearch();
+                maybeScrollToBottom();
+                return streamingMessageId;
+            }
+        }
+
+        const group = createGroup(role);
+        const built = buildCard(role, text, options);
+        if (built.auxParts === null) {
+            group._rawText = text;
+        }
+
+        // Mark as streaming if assistant message (live stream only)
+        if (role === 'assistant' && !restoring) {
+            resetToolAggregation();
+            built.card.classList.add('streaming');
+            streamingMessageId = group.id;
+            clearAllToolLive();
+            enableStopAfterAgentOutput();
+        }
+        if (role === 'assistant') {
+            group._rawText = text;
+        }
+        if (!restoring && role === 'thought') {
+            resetToolAggregation();
+        }
+        if (!restoring && (role === 'thought' || role === 'tool')) {
+            enableStopAfterAgentOutput();
+        }
+
+        const id = mountMessage(group, built, options);
         updateQuickActionBtns();
         if (chatSearchState.query) scheduleChatSearch();
         maybeScrollToBottom();
@@ -4136,7 +4179,7 @@
                 if (m.role === 'permission') {
                     restorePermissionMessage(m);
                 } else {
-                    addMessage(m.role, m.text, { restore: true, deferMarkdown: true });
+                    appendMessage(m.role, m.text, { restore: true, deferMarkdown: true });
                 }
             }
             if (cursor < messages.length) {
@@ -5132,7 +5175,7 @@
             updatePermissionContent(pendingPermissions.get(id), msg.title, msg.detail);
             return;
         }
-        const group = createPermissionCard(id, msg);
+        const group = mountPermissionCard(id, msg);
         messagesEl.appendChild(group);
         pendingPermissions.set(id, group);
         maybeScrollToBottom();
@@ -5170,7 +5213,7 @@
                     break;
                 }
                 if (msg.role === 'assistant') {
-                    addMessage('assistant', msg.text);
+                    appendMessage('assistant', msg.text);
                 } else if (msg.role === 'tool' && msg.toolCallId) {
                     handleToolMessage(msg.text, msg.toolCallId);
                 } else if (msg.role === 'thought') {
@@ -5184,10 +5227,10 @@
                             break;
                         }
                     }
-                    const id = addMessage('thought', msg.text);
+                    const id = appendMessage('thought', msg.text);
                     thoughtMsgId = id;
                 } else {
-                    addMessage(msg.role, msg.text);
+                    appendMessage(msg.role, msg.text);
                 }
                 break;
 
