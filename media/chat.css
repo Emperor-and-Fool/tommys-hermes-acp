@@ -1202,29 +1202,45 @@ body.surface-notabs #tab-bar {
     border-radius: 0;
     min-height: 0;
 }
+/* The record: identity and attributes only. No box, so layout cannot leak into it. */
 .message-group {
+    display: contents;
+}
+
+/* The container: one box per message, and the only thing that places it. */
+.message-container {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
     max-width: 95%;
 }
-.message-group.user {
+.message-group.user > .message-container {
     align-self: flex-end;
 }
-.message-group.assistant {
+.message-group.assistant > .message-container {
     align-self: flex-start;
     max-width: 98%;
 }
-.message-group.thought {
+.message-group.thought > .message-container {
     align-self: flex-start;
 }
-.message-group.tool {
+.message-group.tool > .message-container {
     align-self: flex-start;
     max-width: 100%;
 }
-.message-group.permission {
+.message-group.permission > .message-container {
     align-self: stretch;
     max-width: 100%;
+}
+
+/* The stack: card above its action bar, in every mode. */
+.message-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
 }
 .message.permission {
     background: color-mix(in srgb, #f0ad4e 12%, var(--text-block));
@@ -1631,16 +1647,16 @@ body.surface-notabs #tab-bar {
 }
 
 /* Multi-select mode */
-#messages.multi-select-active .message-group.selectable {
+#messages.multi-select-active .message-container {
     flex-direction: row;
     align-items: flex-start;
     gap: 6px;
     max-width: 100%;
 }
-#messages.multi-select-active .message-group.selectable.user {
+#messages.multi-select-active .message-group.user > .message-container {
     align-self: stretch;
 }
-#messages.multi-select-active .message-group.selectable .msg-select-wrap {
+#messages.multi-select-active .message-container .msg-select-wrap {
     display: flex;
     align-items: flex-start;
     padding-top: 8px;
@@ -1659,18 +1675,12 @@ body.surface-notabs #tab-bar {
     cursor: pointer;
     accent-color: var(--primary);
 }
-.message-group.selectable.is-selected > .message,
-.message-group.selectable.is-selected > .message-group-inner > .message {
+.message-group.selectable.is-selected .message {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
 }
-.message-group-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1;
-}
-#messages.multi-select-active .message-group.selectable.user .message-group-inner {
+/* LEGACY: the container and the stack carry these now. */
+
+#messages.multi-select-active .message-group.user > .message-container > .message-stack {
     align-items: flex-end;
 }
 .multi-select-toolbar {

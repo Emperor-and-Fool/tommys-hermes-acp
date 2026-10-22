@@ -2420,7 +2420,14 @@
             syncPermissionDetailView(group);
         });
 
-        group.appendChild(card);
+        // Same shape as every other message: container, stack, card.
+        const container = document.createElement('div');
+        container.className = 'message-container';
+        const stack = document.createElement('div');
+        stack.className = 'message-stack';
+        stack.appendChild(card);
+        container.appendChild(stack);
+        group.appendChild(container);
         updatePermissionContent(group, msg.title, msg.detail);
         if (readOnly || msg.resolved) {
             let statusText = locale.permissionCancelled || 'Cancelled';
@@ -3490,8 +3497,8 @@
     }
 
     function attachCopyButton(group) {
-        const inner = group.querySelector('.message-group-inner');
-        if (inner) attachMessageActions(group, inner);
+        const stack = group.querySelector('.message-stack');
+        if (stack) attachMessageActions(group, stack);
     }
 
     /** Every card carries an element id; search, selection and streaming use it. */
@@ -3581,14 +3588,23 @@
     function mountMessage(group, built, options) {
         const restoring = options && options.restore;
         const role = group.classList[1];
-        const inner = document.createElement('div');
-        inner.className = 'message-group-inner';
-        inner.appendChild(built.card);
+        const container = document.createElement('div');
+        container.className = 'message-container';
+        // The checkbox is created with the record but has to live in the row that
+        // places it, so the container adopts it before the stack goes in.
+        const selectWrap = group.querySelector('.msg-select-wrap');
+        if (selectWrap) {
+            container.appendChild(selectWrap);
+        }
+        const stack = document.createElement('div');
+        stack.className = 'message-stack';
+        stack.appendChild(built.card);
         if (built.auxParts) {
             wireAuxiliaryMessage(group, built.auxParts, !!(restoring && options && options.deferMarkdown));
         }
-        attachMessageActions(group, inner);
-        group.appendChild(inner);
+        attachMessageActions(group, stack);
+        container.appendChild(stack);
+        group.appendChild(container);
         messagesEl.appendChild(group);
         // Apply visibility filter for thought/tool messages
         if (role === 'thought' && !window._showThoughts) group.style.display = 'none';
