@@ -23,6 +23,117 @@ body.vscode-high-contrast-light {
     --assistant-bg: color-mix(in srgb, var(--primary) 8%, var(--vscode-editor-background, #ffffff));
     --assistant-border: color-mix(in srgb, var(--primary) 55%, var(--border));
 }
+
+/* --- Buttons: one base, one modifier per difference -------------------
+   Send, Stop and Open Tab. The box is set once here; the modifiers carry
+   only the colour. Width follows the content through padding plus one
+   min-width that fits the widest case (Stop: spinner + word). */
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+.button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.button.hidden {
+    display: none;
+}
+
+/* Send and Open Tab */
+.button--primary {
+    background: var(--primary);
+    color: var(--primary-fg);
+}
+.button--primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+/* Stop */
+.button--danger {
+    background: var(--error);
+    color: #fff;
+}
+.button--danger:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+/* Open Tab sits flush against the closed-chat picker. */
+#closedPicker + .button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* The trigger of a menu: one look for profile, choose chat, model and
+   session memory. Only the empty state and the composer's width differ. */
+.menu__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 140px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.menu__trigger:hover:not(:disabled) {
+    border-color: var(--primary);
+}
+/* Nothing picked yet: dashed, so the empty state names itself. */
+.is-empty > .menu__trigger {
+    border-style: dashed;
+}
+.menu[data-open="true"] > .menu__trigger {
+    border-color: var(--primary);
+}
+
+/* --- Menus: one wrapper owns its trigger and its panel ----------------
+   Open state lives on the wrapper as data-open, so no inline styles and no
+   per-menu JavaScript. The panel carries only the shell; rows keep their
+   .dropdown-* names. */
+.menu {
+    position: relative;
+    display: inline-flex;
+}
+.menu__panel {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 100;
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 200px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.menu[data-open="true"] > .menu__panel {
+    display: block;
+}
 /* Image-paste preview bar (staged images pending send). */
 .image-paste-bar {
     display: flex; flex-wrap: wrap; gap: 6px;
@@ -371,22 +482,9 @@ body {
 .picker.is-open {
     z-index: 120;
 }
+/* LEGACY: the look and the hover now live in .menu__trigger at the top. */
 .picker-btn {
-    background: var(--input-bg);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
     max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    line-height: 1.4;
-}
-.picker-btn:hover {
-    border-color: var(--primary);
 }
 .picker-btn .picker-label {
     color: var(--dim);
@@ -400,10 +498,7 @@ body {
     align-items: center;
     gap: 4px;
 }
-/* Empty state: nothing has been picked yet, so show a dashed chip that still names itself. */
-#closedPicker.is-empty .picker-btn {
-    border-style: dashed;
-}
+/* Empty state is handled by .is-empty > .menu__trigger at the top. */
 #closedPicker .picker-caret {
     color: var(--dim);
     font-size: 9px;
@@ -418,15 +513,18 @@ body {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #closedPicker + .toolbar-btn {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
 }
+*/
 /* Right-aligned control: the menu must not run off the sidebar. */
-#closedPicker .dropdown {
+#closedPicker .menu__panel {
     left: auto;
     right: 0;
 }
+/* LEGACY: the shell now lives in .menu__panel at the top of this file.
 .dropdown {
     position: absolute;
     top: calc(100% + 2px);
@@ -440,7 +538,8 @@ body {
     overflow-y: auto;
     box-shadow: 0 4px 12px rgba(0,0,0,0.35);
 }
-.dropdown .dropdown-header {
+*/
+.menu__panel .dropdown-header {
     padding: 6px 10px;
     font-size: 10px;
     font-weight: 600;
@@ -1956,25 +2055,12 @@ body.surface-notabs #tab-bar {
             0 0 14px 2px color-mix(in srgb, var(--primary) 35%, transparent);
     }
 }
+/* Specifics only: the look is .menu__trigger at the top of this file. */
 .input-model-picker .input-model-btn,
 .input-context-picker .input-context-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
     max-width: min(160px, 36vw);
     min-width: 0;
     width: 100%;
-    padding: 3px 6px;
-    font-size: 11px;
-    line-height: 1.35;
-    font-family: inherit;
-    background: transparent;
-    color: var(--dim);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow: hidden;
-    transition: color 0.15s, background 0.15s;
 }
 .input-picker-icon {
     display: inline-flex;
@@ -2008,8 +2094,8 @@ body.surface-notabs #tab-bar {
 .input-context-picker.is-open .input-context-btn {
     color: var(--fg);
 }
-.input-model-picker .dropdown,
-.input-context-picker .dropdown {
+.input-model-picker .menu__panel,
+.input-context-picker .menu__panel {
     top: auto;
     bottom: calc(100% + 6px);
     left: 0;
@@ -2866,6 +2952,7 @@ mark.search-mark-active {
 @keyframes input-spin {
     to { transform: rotate(360deg); }
 }
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 .input-action button {
     border: none;
     border-radius: 4px;
@@ -2876,21 +2963,31 @@ mark.search-mark-active {
     min-width: 48px;
     line-height: 1.2;
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #sendBtn {
     background: var(--primary);
     color: var(--primary-fg);
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #sendBtn:hover:not(:disabled) {
     background: var(--primary-hover);
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #sendBtn:disabled {
     opacity: 0.4;
     cursor: default;
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #sendBtn.hidden,
 #cancelBtn.hidden {
     display: none !important;
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #cancelBtn.stop-btn:not(.hidden) {
     display: inline-flex;
     align-items: center;
@@ -2901,9 +2998,12 @@ mark.search-mark-active {
     min-width: 58px;
     padding: 6px 8px;
 }
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
 #cancelBtn.stop-btn:not(.hidden):hover {
     opacity: 0.9;
 }
+*/
 .stop-btn-spinner {
     width: 12px;
     height: 12px;

@@ -1779,9 +1779,15 @@
         inputEl.value = '';
         syncInputHeightFromContent();
         updateQuickActionBtns();
-        inputEl.disabled = true;
+        // The composer stays enabled for the whole turn, so the caret never leaves it
+        // and the next message can be typed while Hermes works. Sending is blocked by
+        // canSend (see sendMessage), and the Send button by setInputMode('waiting');
+        // disabling the textarea was what blurred the composer on every send.
         awaitingFirstChunk = true;
         setInputMode('waiting');
+        // Sending by clicking the button leaves focus on the button, which made the box
+        // look dead until the turn ended. The next thing typed belongs in the composer.
+        inputEl.focus();
 
         const payload = attachOverride !== undefined
             ? attachOverride
@@ -4413,11 +4419,10 @@
 
     closedPickerBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const open = closedDropdown.style.display === 'none';
+        const open = closedPicker.dataset.open !== 'true';
         closeAllDropdowns();
         if (open) {
-            closedPicker.classList.add('is-open');
-            closedDropdown.style.display = 'block';
+            setMenuOpen(closedPicker, true);
             vscode.postMessage({ type: 'getHiddenSessions' });
             renderClosedList();
         }
@@ -4470,8 +4475,7 @@
                 pendingOpenSessionId = pickedId;
                 pendingOpenTitle = picked ? String(picked.title || picked.sessionId.slice(0, 8)) : '';
                 pendingOpenCount = picked && picked.messageCount ? picked.messageCount : 0;
-                closedPicker.classList.remove('is-open');
-                closedDropdown.style.display = 'none';
+                setMenuOpen(closedPicker, false);
                 renderClosedList();
             });
         });
@@ -4582,15 +4586,21 @@
     const contextAttachSendModal = document.getElementById('contextAttachSendModal');
     const switchSessionModal = document.getElementById('switchSessionModal');
 
+
+    /** Open state lives on the wrapper: data-open drives the panel, is-open the trigger. */
+    function setMenuOpen(picker, open) {
+        if (!picker) {
+            return;
+        }
+        picker.dataset.open = open ? 'true' : 'false';
+        picker.classList.toggle('is-open', open);
+    }
+
     function closeAllDropdowns() {
-        if (closedPicker) closedPicker.classList.remove('is-open');
-        if (closedDropdown) closedDropdown.style.display = 'none';
-        profilePicker.classList.remove('is-open');
-        modelPicker.classList.remove('is-open');
-        if (contextAttachPicker) contextAttachPicker.classList.remove('is-open');
-        profileDropdown.style.display = 'none';
-        modelDropdown.style.display = 'none';
-        if (contextAttachDropdown) contextAttachDropdown.style.display = 'none';
+        setMenuOpen(closedPicker, false);
+        setMenuOpen(profilePicker, false);
+        setMenuOpen(modelPicker, false);
+        setMenuOpen(contextAttachPicker, false);
         hideContextAttachTooltip();
         hideContextAttachPreview();
     }
@@ -4610,11 +4620,10 @@
 
     profileBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const open = profileDropdown.style.display === 'none';
+        const open = profilePicker.dataset.open !== 'true';
         closeAllDropdowns();
         if (open) {
-            profilePicker.classList.add('is-open');
-            profileDropdown.style.display = 'block';
+            setMenuOpen(profilePicker, true);
             vscode.postMessage({ type: 'getProfiles' });
         }
     });
@@ -4622,11 +4631,10 @@
 
     modelBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const open = modelDropdown.style.display === 'none';
+        const open = modelPicker.dataset.open !== 'true';
         closeAllDropdowns();
         if (open) {
-            modelPicker.classList.add('is-open');
-            modelDropdown.style.display = 'block';
+            setMenuOpen(modelPicker, true);
             vscode.postMessage({ type: 'getModels' });
         }
     });
@@ -4635,11 +4643,10 @@
     if (contextAttachBtn && contextAttachDropdown) {
         contextAttachBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const open = contextAttachDropdown.style.display === 'none';
+            const open = contextAttachPicker.dataset.open !== 'true';
             closeAllDropdowns();
             if (open) {
-                contextAttachPicker.classList.add('is-open');
-                contextAttachDropdown.style.display = 'block';
+                setMenuOpen(contextAttachPicker, true);
                 renderContextAttachOptions();
             }
         });
@@ -5209,7 +5216,9 @@
                     isPrompting = true;
                     resetAutoScrollFollow();
                     canSend = false;
-                    inputEl.disabled = true;
+                    // Deliberately not disabling the textarea: the busy look comes from
+                    // .input-composite-shell.waiting and the Send/Stop swap, not from a
+                    // blurred input.
                     if (!awaitingFirstChunk) {
                         setInputMode('stop');
                     }
