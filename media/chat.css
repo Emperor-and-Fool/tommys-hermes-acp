@@ -134,6 +134,401 @@ body.vscode-high-contrast-light {
 .menu[data-open="true"] > .menu__panel {
     display: block;
 }
+
+/* ============================ Card ============================
+   The box a message is painted on: one base, one variant per role.
+   Nothing about placement or identity lives here. */
+.message {
+    padding: 6px 10px;
+    border-radius: 6px;
+    line-height: 1.35;
+    word-break: break-word;
+    white-space: pre-wrap;
+    min-width: 96px;
+}
+/* The reader's own turn reads as a quoted document: graphite edge, warm grey card.
+   Distinct from the assistant card (blue left bar) and from the bare thinking/tool cards. */
+/* "You" = the editor background, the lightest surface in the pane. The block-quote wash
+   (--text-block, #8080801a in VS Code's default registry) is 10% alpha, so it just
+   tracked the pane/composer instead of being a colour of its own. */
+.message.user {
+    background: var(--vscode-editor-background, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
+    border-left: 4px solid color-mix(in srgb, var(--fg) 75%, transparent);
+    border-radius: 6px;
+}
+.message.assistant {
+    background: var(--assistant-bg);
+    border: 1px solid var(--assistant-border);
+    border-left: 3px solid var(--primary);
+    padding-left: 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.message.assistant.streaming {
+    border-left-color: var(--primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent),
+                0 1px 4px rgba(0, 0, 0, 0.12);
+}
+/* Thinking/tool cards are the grey ones: they sit behind the conversation, so they get
+   the tinted grey card instead of the pane colour. "You" keeps the white card. */
+.message.thought,
+.message.tool {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--fg) 14%, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
+    white-space: normal;
+}
+.message.thought {
+    border-left: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
+}
+.message.tool {
+    color: var(--dim);
+    border-left: 3px solid color-mix(in srgb, var(--dim) 55%, transparent);
+}
+.message.permission {
+    background: color-mix(in srgb, #f0ad4e 12%, var(--text-block));
+    border: 1px solid color-mix(in srgb, #f0ad4e 55%, var(--border));
+    border-left: 3px solid #f0ad4e;
+    padding: 10px 12px;
+    white-space: normal;
+}
+
+/* ========================= Auxiliary ==========================
+   The collapsible header/body that thinking and tool cards share.
+   Written once; :is(.thought, .tool) keeps the specificity the
+   old per-role pairs had. */
+.message:is(.thought, .tool) .aux-header {
+    margin-bottom: 4px;
+}
+.message:is(.thought, .tool) .aux-body-scroll {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--fg);
+    word-break: break-word;
+}
+.message:is(.thought, .tool) .aux-body-scroll.is-collapsed {
+    overflow: auto;
+    scrollbar-width: thin;
+}
+.message:is(.thought, .tool) .aux-body-content > :first-child {
+    margin-top: 0;
+}
+.message:is(.thought, .tool) .aux-body-content > :last-child {
+    margin-bottom: 0;
+}
+.message:is(.thought, .tool) .aux-body-content p {
+    margin: 0 0 4px;
+}
+.message:is(.thought, .tool) .aux-body-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.message:is(.thought, .tool) .aux-body-toggle {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+.message:is(.thought, .tool) .aux-body-toggle:hover {
+    text-decoration: underline;
+}
+.message:is(.thought, .tool) .aux-body-toggle[hidden] {
+    display: none;
+}
+
+/* ====================== Card specifics ========================
+   What a particular card carries inside: role labels, permission
+   insides, the live markers, and the markdown that paints content. */
+/* Inline images in the sent user bubble. */
+.message-image-gallery {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.message-image {
+    max-width: 100%; max-height: 320px;
+    border: 1px solid var(--border); border-radius: 4px; display: block;
+}
+.message.permission .permission-label {
+    color: #f0ad4e;
+    font-weight: 600;
+    margin-bottom: 0;
+    flex: 1;
+}
+.message.permission .permission-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.message.permission .permission-card-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--dim);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.message.permission .permission-card-toggle:hover {
+    border-color: var(--border);
+    color: var(--fg);
+}
+.message.permission .permission-card-toggle .permission-card-arrow {
+    display: inline-block;
+    transition: transform 0.15s;
+}
+.message.permission .permission-detail-wrap {
+    margin-bottom: 10px;
+}
+.message.permission .permission-detail-scroll {
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+.message.permission .permission-detail-scroll.is-collapsed {
+    overflow: auto;
+    scrollbar-width: thin;
+}
+.message.permission .permission-detail-text {
+    display: block;
+}
+.message.permission .permission-detail-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.message.permission .permission-detail-toggle {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+.message.permission .permission-detail-toggle:hover {
+    text-decoration: underline;
+}
+.message.permission .permission-detail-toggle[hidden] {
+    display: none;
+}
+.message.permission .permission-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.message.permission .permission-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 5px 10px;
+}
+.message.permission .permission-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+}
+.message.permission .permission-btn.allow {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-fg);
+}
+.message.permission .permission-btn.allow:hover:not(:disabled) {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+.message.permission .permission-btn.reject:hover:not(:disabled) {
+    border-color: var(--error);
+    color: var(--error);
+}
+.message.permission.resolved {
+    opacity: 0.72;
+}
+.message.permission.resolved .permission-actions {
+    display: none;
+}
+.message.permission .permission-status {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 4px;
+}
+.message.user .label {
+    color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+.message.assistant .label {
+    color: var(--primary);
+    opacity: 1;
+    letter-spacing: 0.02em;
+}
+.message .label {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 1px;
+    opacity: 0.7;
+}
+/* Code blocks */
+.message pre {
+    background: var(--vscode-textCodeBlock-background, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 0;
+}
+.message pre code {
+    background: none;
+    padding: 0;
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
+    user-select: text;
+}
+.message code {
+    background: var(--vscode-textCodeBlock-background, #2d2d2d);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
+}
+.message p { margin: 2px 0; }
+.message ul, .message ol { padding-left: 18px; margin: 2px 0; }
+.message li { margin: 1px 0; }
+.message li > p { margin: 0; }
+.message h1, .message h2, .message h3, .message h4 {
+    margin: 4px 0 2px;
+    line-height: 1.3;
+}
+.message a { color: var(--primary); }
+.message blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 10px;
+    margin: 3px 0;
+    opacity: 0.8;
+}
+.message .block-actions-wrap:has(table) {
+    background: var(--input-bg);
+    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    overflow-x: auto;
+}
+.message table {
+    border-collapse: collapse;
+    margin: 0;
+    font-size: 12px;
+    width: 100%;
+}
+.message th, .message td {
+    border: 1px solid color-mix(in srgb, var(--border) 70%, var(--fg));
+    padding: 5px 10px;
+    text-align: left;
+}
+.message th {
+    background: color-mix(in srgb, var(--primary) 18%, var(--input-bg));
+    font-weight: 600;
+    color: var(--fg);
+}
+.message td {
+    background: color-mix(in srgb, var(--fg) 3%, var(--input-bg));
+}
+.message tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--fg) 7%, var(--input-bg));
+}
+/* File reference links */
+.message .file-ref {
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+    border-bottom: 1px dashed var(--primary);
+    padding: 0 1px;
+}
+.message .file-ref:hover {
+    opacity: 0.8;
+}
+/* Block actions on code blocks and tables */
+.message .block-actions-wrap {
+    margin: 4px 0;
+}
+.message .block-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 4px;
+}
+.message .block-actions .block-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 2px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.message .block-actions .block-btn:hover {
+    border-color: var(--primary);
+}
+.message .block-actions .block-btn.copied {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.message .block-actions .block-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+.message .insert-dropdown {
+    position: relative;
+}
+.message .insert-dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 4px);
+    min-width: 140px;
+    background: var(--vscode-dropdown-background, var(--input-bg));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 40;
+    overflow: hidden;
+}
+.message .insert-dropdown.is-open .insert-dropdown-menu {
+    display: block;
+}
+.message .insert-dropdown-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 6px 10px;
+}
+.message .insert-dropdown-menu button:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+/* Streaming cursor */
+.message.assistant.streaming::after {
+    content: '▎';
+    animation: blink 0.8s step-end infinite;
+    margin-left: 2px;
+}
 /* Image-paste preview bar (staged images pending send). */
 .image-paste-bar {
     display: flex; flex-wrap: wrap; gap: 6px;
@@ -152,14 +547,8 @@ body.vscode-high-contrast-light {
     cursor: pointer;
 }
 .image-paste-remove:hover { background: var(--error, #c33); color: #fff; }
-/* Inline images in the sent user bubble. */
-.message-image-gallery {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
-}
-.message-image {
-    max-width: 100%; max-height: 320px;
-    border: 1px solid var(--border); border-radius: 4px; display: block;
-}
+
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
@@ -1242,181 +1631,13 @@ body.surface-notabs #tab-bar {
     min-width: 0;
     flex: 1;
 }
-.message.permission {
-    background: color-mix(in srgb, #f0ad4e 12%, var(--text-block));
-    border: 1px solid color-mix(in srgb, #f0ad4e 55%, var(--border));
-    border-left: 3px solid #f0ad4e;
-    padding: 10px 12px;
-    white-space: normal;
-}
-.message.permission .permission-label {
-    color: #f0ad4e;
-    font-weight: 600;
-    margin-bottom: 0;
-    flex: 1;
-}
-.message.permission .permission-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
-}
-.message.permission .permission-card-toggle {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--dim);
-    cursor: pointer;
-    flex-shrink: 0;
-    font-size: 10px;
-    line-height: 1;
-    padding: 2px 6px;
-}
-.message.permission .permission-card-toggle:hover {
-    border-color: var(--border);
-    color: var(--fg);
-}
-.message.permission .permission-card-toggle .permission-card-arrow {
-    display: inline-block;
-    transition: transform 0.15s;
-}
+
+
 .message.permission.is-card-collapsed .permission-card-toggle .permission-card-arrow {
     transform: rotate(-90deg);
 }
-.message.permission .permission-detail-wrap {
-    margin-bottom: 10px;
-}
-.message.permission .permission-detail-scroll {
-    font-size: 12px;
-    line-height: 1.45;
-    word-break: break-word;
-    white-space: pre-wrap;
-}
-.message.permission .permission-detail-scroll.is-collapsed {
-    overflow: auto;
-    scrollbar-width: thin;
-}
-.message.permission .permission-detail-text {
-    display: block;
-}
-.message.permission .permission-detail-controls {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-}
-.message.permission .permission-detail-toggle {
-    background: transparent;
-    border: none;
-    color: var(--primary);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 0;
-}
-.message.permission .permission-detail-toggle:hover {
-    text-decoration: underline;
-}
-.message.permission .permission-detail-toggle[hidden] {
-    display: none;
-}
-.message.permission .permission-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-.message.permission .permission-btn {
-    background: var(--input-bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--fg);
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1.3;
-    padding: 5px 10px;
-}
-.message.permission .permission-btn:hover:not(:disabled) {
-    border-color: var(--primary);
-}
-.message.permission .permission-btn.allow {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--primary-fg);
-}
-.message.permission .permission-btn.allow:hover:not(:disabled) {
-    background: var(--primary-hover);
-    border-color: var(--primary-hover);
-}
-.message.permission .permission-btn.reject:hover:not(:disabled) {
-    border-color: var(--error);
-    color: var(--error);
-}
-.message.permission.resolved {
-    opacity: 0.72;
-}
-.message.permission.resolved .permission-actions {
-    display: none;
-}
-.message.permission .permission-status {
-    font-size: 11px;
-    color: var(--dim);
-    margin-top: 4px;
-}
-.message {
-    padding: 6px 10px;
-    border-radius: 6px;
-    line-height: 1.35;
-    word-break: break-word;
-    white-space: pre-wrap;
-    min-width: 96px;
-}
-/* The reader's own turn reads as a quoted document: graphite edge, warm grey card.
-   Distinct from the assistant card (blue left bar) and from the bare thinking/tool cards. */
-/* "You" = the editor background, the lightest surface in the pane. The block-quote wash
-   (--text-block, #8080801a in VS Code's default registry) is 10% alpha, so it just
-   tracked the pane/composer instead of being a colour of its own. */
-.message.user {
-    background: var(--vscode-editor-background, var(--text-block));
-    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
-    border-left: 4px solid color-mix(in srgb, var(--fg) 75%, transparent);
-    border-radius: 6px;
-}
-.message.user .label {
-    color: color-mix(in srgb, var(--fg) 65%, transparent);
-}
-.message.assistant {
-    background: var(--assistant-bg);
-    border: 1px solid var(--assistant-border);
-    border-left: 3px solid var(--primary);
-    padding-left: 12px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-}
-.message.assistant .label {
-    color: var(--primary);
-    opacity: 1;
-    letter-spacing: 0.02em;
-}
-.message.assistant.streaming {
-    border-left-color: var(--primary);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent),
-                0 1px 4px rgba(0, 0, 0, 0.12);
-}
-/* Thinking/tool cards are the grey ones: they sit behind the conversation, so they get
-   the tinted grey card instead of the pane colour. "You" keeps the white card. */
-.message.thought,
-.message.tool {
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--fg) 14%, var(--text-block));
-    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
-    white-space: normal;
-}
-.message.thought {
-    border-left: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
-}
-.message.tool {
-    color: var(--dim);
-    border-left: 3px solid color-mix(in srgb, var(--dim) 55%, transparent);
-}
+
+
 .message.thought .aux-label {
     color: var(--primary);
     opacity: 0.85;
@@ -1424,63 +1645,7 @@ body.surface-notabs #tab-bar {
 .message.tool .aux-label {
     opacity: 0.7;
 }
-.message.thought .aux-header,
-.message.tool .aux-header {
-    margin-bottom: 4px;
-}
-.message.thought .aux-body-scroll,
-.message.tool .aux-body-scroll {
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--fg);
-    word-break: break-word;
-}
-.message.thought .aux-body-scroll.is-collapsed,
-.message.tool .aux-body-scroll.is-collapsed {
-    overflow: auto;
-    scrollbar-width: thin;
-}
-.message.thought .aux-body-content > :first-child,
-.message.tool .aux-body-content > :first-child {
-    margin-top: 0;
-}
-.message.thought .aux-body-content > :last-child,
-.message.tool .aux-body-content > :last-child {
-    margin-bottom: 0;
-}
-.message.thought .aux-body-content p,
-.message.tool .aux-body-content p {
-    margin: 0 0 4px;
-}
-.message.thought .aux-body-controls,
-.message.tool .aux-body-controls {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-}
-.message.thought .aux-body-toggle,
-.message.tool .aux-body-toggle {
-    background: transparent;
-    border: none;
-    color: var(--primary);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 0;
-}
-.message.thought .aux-body-toggle:hover,
-.message.tool .aux-body-toggle:hover {
-    text-decoration: underline;
-}
-.message.thought .aux-body-toggle[hidden],
-.message.tool .aux-body-toggle[hidden] {
-    display: none;
-}
-.message .label {
-    font-size: 11px;
-    font-weight: 600;
-    margin-bottom: 1px;
-    opacity: 0.7;
-}
+
 
 /* Live activity labels — unified breathing pulse */
 .message.assistant.streaming .label,
@@ -1502,75 +1667,6 @@ body.surface-notabs #tab-bar {
     }
 }
 
-/* Code blocks */
-.message pre {
-    background: var(--vscode-textCodeBlock-background, #1e1e1e);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
-    overflow-x: auto;
-    font-size: 12px;
-    line-height: 1.4;
-    margin: 0;
-}
-.message pre code {
-    background: none;
-    padding: 0;
-    font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
-    user-select: text;
-}
-.message code {
-    background: var(--vscode-textCodeBlock-background, #2d2d2d);
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-size: 0.9em;
-    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
-}
-.message p { margin: 2px 0; }
-.message ul, .message ol { padding-left: 18px; margin: 2px 0; }
-.message li { margin: 1px 0; }
-.message li > p { margin: 0; }
-.message h1, .message h2, .message h3, .message h4 {
-    margin: 4px 0 2px;
-    line-height: 1.3;
-}
-.message a { color: var(--primary); }
-.message blockquote {
-    border-left: 3px solid var(--border);
-    padding-left: 10px;
-    margin: 3px 0;
-    opacity: 0.8;
-}
-.message .block-actions-wrap:has(table) {
-    background: var(--input-bg);
-    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
-    border-radius: 6px;
-    padding: 6px 8px;
-    margin: 6px 0;
-    overflow-x: auto;
-}
-.message table {
-    border-collapse: collapse;
-    margin: 0;
-    font-size: 12px;
-    width: 100%;
-}
-.message th, .message td {
-    border: 1px solid color-mix(in srgb, var(--border) 70%, var(--fg));
-    padding: 5px 10px;
-    text-align: left;
-}
-.message th {
-    background: color-mix(in srgb, var(--primary) 18%, var(--input-bg));
-    font-weight: 600;
-    color: var(--fg);
-}
-.message td {
-    background: color-mix(in srgb, var(--fg) 3%, var(--input-bg));
-}
-.message tr:nth-child(even) td {
-    background: color-mix(in srgb, var(--fg) 7%, var(--input-bg));
-}
 
 /* Copy action below each bubble (outside bubble body) */
 .message-actions {
@@ -1752,87 +1848,6 @@ body.surface-notabs #tab-bar {
     }
 }
 
-/* File reference links */
-.message .file-ref {
-    color: var(--primary);
-    text-decoration: underline;
-    cursor: pointer;
-    border-bottom: 1px dashed var(--primary);
-    padding: 0 1px;
-}
-.message .file-ref:hover {
-    opacity: 0.8;
-}
-
-/* Block actions on code blocks and tables */
-.message .block-actions-wrap {
-    margin: 4px 0;
-}
-.message .block-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 4px;
-    margin-top: 4px;
-}
-.message .block-actions .block-btn {
-    background: var(--input-bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--fg);
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1.3;
-    padding: 2px 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-.message .block-actions .block-btn:hover {
-    border-color: var(--primary);
-}
-.message .block-actions .block-btn.copied {
-    border-color: var(--primary);
-    color: var(--primary);
-}
-.message .block-actions .block-btn svg {
-    width: 12px;
-    height: 12px;
-    fill: currentColor;
-}
-.message .insert-dropdown {
-    position: relative;
-}
-.message .insert-dropdown-menu {
-    display: none;
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 4px);
-    min-width: 140px;
-    background: var(--vscode-dropdown-background, var(--input-bg));
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    z-index: 40;
-    overflow: hidden;
-}
-.message .insert-dropdown.is-open .insert-dropdown-menu {
-    display: block;
-}
-.message .insert-dropdown-menu button {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    color: var(--fg);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 6px 10px;
-}
-.message .insert-dropdown-menu button:hover {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
-}
 
 /* File mention picker (@ in input) */
 .file-picker {
@@ -1916,12 +1931,7 @@ body.surface-notabs #tab-bar {
     color: var(--error);
 }
 
-/* Streaming cursor */
-.message.assistant.streaming::after {
-    content: '▎';
-    animation: blink 0.8s step-end infinite;
-    margin-left: 2px;
-}
+
 @keyframes blink {
     50% { opacity: 0; }
 }
