@@ -3264,10 +3264,20 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             // The chat's own stylesheet and script live beside chat.html, not in vendor/.
             const mediaUri = (file: string) =>
                 webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', file)).toString();
+            // Syntax colours ship in two variants. The dark sheet sets .hljs{color:#c9d1d9}
+            // and `.message pre code` cancels its background, so on a light theme it paints
+            // pale grey on a pale chip. Pick the variant that matches the active theme;
+            // a theme switch takes effect when the webview resolves again.
+            const themeKind = vscode.window.activeColorTheme.kind;
+            const highlightSheet =
+                themeKind === vscode.ColorThemeKind.Light
+                || themeKind === vscode.ColorThemeKind.HighContrastLight
+                    ? 'github-light.min.css'
+                    : 'github-dark.min.css';
             html = html
                 .replace('{{MARKED_URI}}', vendorUri('marked.min.js'))
                 .replace('{{HIGHLIGHT_URI}}', vendorUri('highlight.min.js'))
-                .replace('{{HIGHLIGHT_CSS_URI}}', vendorUri('github-dark.min.css'))
+                .replace('{{HIGHLIGHT_CSS_URI}}', vendorUri(highlightSheet))
                 .replace('{{PURIFY_URI}}', vendorUri('purify.min.js'))
                 .replace('{{CHAT_CSS_URI}}', mediaUri('chat.css'))
                 .replace('{{CHAT_JS_URI}}', mediaUri('chat.js'))
