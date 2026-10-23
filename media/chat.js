@@ -57,6 +57,8 @@
     let multiSelectMode = false;
     let multiSelectPurpose = 'normal';
     let sessionRenderJobId = 0;
+    /** True while messages are still waiting to be converted from raw text to markdown. */
+    let sessionMarkdownPending = false;
     const SESSION_RENDER_BANNER_ID = 'sessionRenderBanner';
     const RESTORE_BATCH_SIZE = 30;
     const MARKDOWN_RENDER_BATCH_SIZE = 4;
@@ -1173,15 +1175,8 @@
     }
 
     function getContextAttachRegionGroups() {
-        const divider = document.getElementById(LOCAL_HISTORY_DIVIDER_ID);
-        const groups = [];
-        messagesEl.querySelectorAll('.message-group').forEach(function(group) {
-            if (divider && !(group.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-                return;
-            }
-            groups.push(group);
-        });
-        return groups;
+        // The prior-session divider is gone from the markup, so every group is attachable.
+        return Array.from(messagesEl.querySelectorAll('.message-group'));
     }
 
     function ensureGroupSelectableForContextAttach(group) {
@@ -3054,11 +3049,9 @@
     }
 
     function isGroupInContextAttachRegion(group) {
-        const divider = document.getElementById(LOCAL_HISTORY_DIVIDER_ID);
-        if (!divider) {
-            return true;
-        }
-        return !!(group.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING);
+        // No divider: nothing sits outside the attachable region.
+        void group;
+        return true;
     }
 
     function getSelectableGroups() {
@@ -3335,13 +3328,15 @@
 
     function cancelSessionMarkdownRender() {
         sessionRenderJobId++;
+        // The cancelled job leaves raw text behind, so the work is still owed: remember it
+        // instead of letting a newer restore silently inherit a half-converted transcript.
+        sessionMarkdownPending = true;
         forceHideSessionRenderBanner();
     }
 
     function collectMarkdownRenderTargets() {
         const targets = [];
         messagesEl.querySelectorAll('.message-group').forEach(function(group) {
-            if (group.id === LOCAL_HISTORY_DIVIDER_ID) return;
             const assistantContent = group.querySelector('.message.assistant .content');
             if (assistantContent) {
                 const text = group._rawText || assistantContent.textContent || '';
@@ -3373,14 +3368,23 @@
     }
 
     function scheduleSessionMarkdownRender() {
+        // requestAnimationFrame does not fire while the webview is off screen, so a pane
+        // restored in the background would keep its raw text forever. Record the debt and
+        // let the visibility handler below resume it.
+        if (document.visibilityState === 'hidden') {
+            sessionMarkdownPending = true;
+            return;
+        }
         const jobId = ++sessionRenderJobId;
         const targets = collectMarkdownRenderTargets();
         if (!targets.length) {
+            sessionMarkdownPending = false;
             hideSessionRenderBanner();
             window._hermesRendered = true;
             if (chatSearchState.query) scheduleChatSearch();
             return;
         }
+        sessionMarkdownPending = true;
         showSessionRenderBanner();
         let index = 0;
         function runBatch() {
@@ -3392,6 +3396,7 @@
             if (index < targets.length) {
                 requestAnimationFrame(runBatch);
             } else {
+                sessionMarkdownPending = false;
                 hideSessionRenderBanner();
                 window._hermesRendered = true;
                 if (chatSearchState.query) scheduleChatSearch();
@@ -3399,6 +3404,17 @@
         }
         requestAnimationFrame(runBatch);
     }
+
+    // The sweep only runs while the page can animate; resume it the moment the pane is
+    // shown again, instead of leaving the transcript as raw text until the next reload.
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState !== 'visible') {
+            return;
+        }
+        if (sessionMarkdownPending || !window._hermesRendered) {
+            scheduleSessionMarkdownRender();
+        }
+    });
 
     function getSelectedMessageIndices(groups) {
         return (groups || getSelectedGroups()).map(function(group) {
