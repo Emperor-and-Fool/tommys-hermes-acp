@@ -3655,6 +3655,9 @@
                 sessionMarkdownPending = false;
                 hideSessionRenderBanner();
                 window._hermesRendered = true;
+                // The sweep replaced raw text with formatted blocks, so the transcript is
+                // taller than it was when the batches scrolled: land on the new bottom.
+                maybeScrollToBottom(true);
                 if (chatSearchState.query) scheduleChatSearch();
             }
         }
@@ -4494,6 +4497,9 @@
 
     function restoreHistory(messages, localHistoryOnly) {
         cancelSessionMarkdownRender();
+        // A freshly restored transcript opens at its end; a pin left over from the previous
+        // page would otherwise keep the pane wherever it happened to be.
+        scrollPinnedByUser = false;
         streamingMessageId = null;
         thoughtMsgId = null;
         toolCallMap = {};
@@ -4523,6 +4529,7 @@
             }
             updateQuickActionBtns();
             scheduleSessionMarkdownRender();
+            maybeScrollToBottom(true);
         }
         requestAnimationFrame(appendRestoreBatch);
     }
