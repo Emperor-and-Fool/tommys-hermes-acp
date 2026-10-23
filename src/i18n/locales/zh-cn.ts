@@ -142,7 +142,7 @@ export const zhCn: LocaleStrings = {
     retryConnect: '重新连接',
     detectEnvironment: '检测环境',
 
-    inputPlaceholder: '给 Hermes 发消息…（输入 @ 引用文件）',
+    inputPlaceholder: '与 {profile} 对话（使用 @ 引用文件）',
     resizeHandle: '拖拽调整输入框高度',
     filePicker: '文件选择器',
     searchChat: '搜索当前对话…',
@@ -161,6 +161,14 @@ export const zhCn: LocaleStrings = {
 
     hermesLogs: 'Hermes 日志',
     copy: '复制',
+    copyCode: '复制代码',
+    replyAction: '引用',
+    replyActionBlocked: '无法引用',
+    replySelectionLost: '选中内容已丢失——请重新选择。',
+    replyStreamingBlocked: '选中内容包含正在写入的消息，引用未采集。请在回复结束后重新选择。',
+    replyTitle: '引用 {count} 条消息',
+    replyTruncated: '已在 6,000 字符处截断',
+    imageMissing: '图片不在聊天中——修复将在更新中提供',
     clear: '清空',
     noLogs: '（暂无日志）',
     aboutTitle: '关于 Tommys Hermes ACP',

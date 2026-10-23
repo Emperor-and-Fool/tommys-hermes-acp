@@ -166,6 +166,14 @@ export interface LocaleStrings {
     // WebView — modals
     hermesLogs: string;
     copy: string;
+    copyCode: string;
+    replyAction: string;
+    replyActionBlocked: string;
+    replySelectionLost: string;
+    replyStreamingBlocked: string;
+    replyTitle: string;
+    replyTruncated: string;
+    imageMissing: string;
     clear: string;
     noLogs: string;
     aboutTitle: string;

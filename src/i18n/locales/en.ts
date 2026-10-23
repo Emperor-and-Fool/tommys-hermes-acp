@@ -142,7 +142,7 @@ export const en: LocaleStrings = {
     retryConnect: 'Reconnect',
     detectEnvironment: 'Detect environment',
 
-    inputPlaceholder: 'Message Hermes... (type @ to reference a file)',
+    inputPlaceholder: 'Chat with {profile} (use @ to reference a file)',
     resizeHandle: 'Drag to resize input area',
     filePicker: 'File picker',
     searchChat: 'Search current conversation…',
@@ -161,6 +161,14 @@ export const en: LocaleStrings = {
 
     hermesLogs: 'Hermes Logs',
     copy: 'Copy',
+    copyCode: 'Copy code',
+    replyAction: 'Reply',
+    replyActionBlocked: 'Reply unavailable',
+    replySelectionLost: 'The selection was lost before the quote was taken — select again.',
+    replyStreamingBlocked: 'The selection touched the message still being written, so the quote was not captured. Select again once the turn ends.',
+    replyTitle: 'Replying to {count} message(s)',
+    replyTruncated: 'truncated at 6,000 characters',
+    imageMissing: 'image outside chat — fix will arrive in updates',
     clear: 'Clear',
     noLogs: '(no logs yet)',
     aboutTitle: 'About Tommys Hermes ACP',
