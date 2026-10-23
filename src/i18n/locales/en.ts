@@ -20,7 +20,7 @@ export const en: LocaleStrings = {
     sessionNotWritable: 'This chat is not connected to a Hermes session, so nothing was sent. Reopen it from the closed chats.',
     modelSwitchIncomplete: 'The model did not change to {0}. The chat was left as it was.',
     openTab: 'Open',
-    chooseChat: 'Open a Session in a new tab',
+    chooseChat: 'Closed Sessions',
     closedSessionsHeader: 'Closed sessions',
     noClosedSessions: 'No closed sessions',
     defaultAgent: 'Default',

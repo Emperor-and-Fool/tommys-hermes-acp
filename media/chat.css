@@ -862,7 +862,7 @@ body {
     display: flex;
     align-items: center;
     gap: 4px;
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: visible;
 }
@@ -870,8 +870,15 @@ body {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* The picker takes the free space on both sides, so it sits centred between the
+   profile switcher and Open while Open keeps the right edge. */
+.toolbar-actions #closedPicker {
     margin-left: auto;
-    flex-shrink: 0;
+    margin-right: auto;
 }
 .picker {
     position: relative;
@@ -893,6 +900,7 @@ body {
    bare caret it replaced; .picker-btn already ellipsises. */
 #closedPicker .picker-btn {
     max-width: 190px;
+    font-size: 12px;
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -3122,7 +3130,7 @@ mark.search-mark-active {
     .picker-btn .picker-label { display: none; }
     /* this one is the only content of its button — hide it and the chip is blank */
     #closedPicker .picker-btn .picker-label { display: inline; }
-    #closedPicker .picker-btn { max-width: 82px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
     .picker-btn { max-width: 96px; padding: 3px 6px; }
     .toolbar-status #statusText { max-width: 64px; }
     .session-tab { max-width: 120px; padding: 6px 8px; }
@@ -3137,6 +3145,7 @@ mark.search-mark-active {
     #toolbar { padding: 4px 6px; gap: 4px; }
     .toolbar-status #statusText { display: none; }
     .picker-btn { max-width: 72px; font-size: 10px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
     .toolbar-btn { padding: 4px 7px; font-size: 10px; min-height: 24px; }
     .new-label-full { display: none; }
     .new-label-short { display: inline; }
@@ -3148,6 +3157,7 @@ mark.search-mark-active {
 @container app (max-width: 260px) {
     .toolbar-pickers { gap: 2px; }
     .picker-btn { max-width: 56px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
     .toolbar-actions { gap: 2px; }
     .input-composite textarea { padding: 6px 8px; min-height: 32px; }
     .input-action { padding: 3px; }
@@ -3160,7 +3170,7 @@ mark.search-mark-active {
 @media (max-width: 420px) {
     .picker-btn .picker-label { display: none; }
     #closedPicker .picker-btn .picker-label { display: inline; }
-    #closedPicker .picker-btn { max-width: 82px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
     .picker-btn { max-width: 96px; }
     .session-tab { max-width: 120px; }
     .message { max-width: 100%; }
