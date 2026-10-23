@@ -3714,16 +3714,42 @@
         return id;
     }
 
+    function escapeHtmlEntities(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     function renderMarkdown(text) {
-        const html = marked.parse(text);
+        // A message is data, not markup. Raw HTML in it is turned into characters before
+        // rendering, so nothing typed or echoed into the transcript — a tool result printing
+        // the pane's own HTML included — can create elements the pane later looks up by id.
+        // Markdown still formats; fenced code still shows its tags literally.
+        let html;
+        if (typeof marked.lexer === 'function' && typeof marked.parser === 'function') {
+            const tokens = marked.lexer(String(text == null ? '' : text));
+            const scrubRawHtml = function(list) {
+                for (const token of list) {
+                    if (!token) continue;
+                    if (token.type === 'html') {
+                        const raw = token.text != null ? token.text : token.raw;
+                        token.text = escapeHtmlEntities(raw);
+                        token.raw = token.text;
+                    }
+                    if (Array.isArray(token.tokens)) scrubRawHtml(token.tokens);
+                    if (Array.isArray(token.items)) scrubRawHtml(token.items);
+                }
+            };
+            scrubRawHtml(tokens);
+            html = marked.parser(tokens);
+        } else {
+            html = marked.parse(String(text == null ? '' : text).replace(/</g, '&lt;'));
+        }
         if (typeof DOMPurify !== 'undefined') {
             return DOMPurify.sanitize(html, {
                 USE_PROFILES: { html: true },
                 ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-                // Message text must never be able to define an element the pane looks up
-                // by id: a tool card once carried <div id="inputComposite"> and captured
-                // the composer's own getElementById.
-                FORBID_ATTR: ['id', 'name'],
             });
         }
         const div = document.createElement('div');
@@ -3732,9 +3758,7 @@
             if (!n.attributes) return;
             for (let i = n.attributes.length - 1; i >= 0; i--) {
                 const attr = n.attributes[i];
-                if (attr.name === 'id' || attr.name === 'name'
-                    || attr.name.startsWith('on')
-                    || (attr.name === 'href' && attr.value.toLowerCase().startsWith('javascript:'))) {
+                if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.toLowerCase().startsWith('javascript:'))) {
                     n.removeAttribute(attr.name);
                 }
             }
