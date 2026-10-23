@@ -29,7 +29,7 @@ import {
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
-import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
+import { buildWebviewHtml } from './webviewHtml';
 import {
     detectStepLabel,
     formatDetectBrokenMessage,
@@ -3410,42 +3410,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtml(target?: vscode.Webview): string {
-        const htmlPath = path.join(this._extensionUri.fsPath, 'media', 'chat.html');
-        let html = fs.readFileSync(htmlPath, 'utf-8');
         const webview = target ?? this._view?.webview;
-
-        if (webview) {
-            const vendorUri = (file: string) =>
-                webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'vendor', file)).toString();
-            // The chat's own stylesheet and script live beside chat.html, not in vendor/.
-            const mediaUri = (file: string) =>
-                webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', file)).toString();
-            // Syntax colours ship in two variants. The dark sheet sets .hljs{color:#c9d1d9}
-            // and `.message pre code` cancels its background, so on a light theme it paints
-            // pale grey on a pale chip. Pick the variant that matches the active theme;
-            // a theme switch takes effect when the webview resolves again.
-            const themeKind = vscode.window.activeColorTheme.kind;
-            const highlightSheet =
-                themeKind === vscode.ColorThemeKind.Light
-                || themeKind === vscode.ColorThemeKind.HighContrastLight
-                    ? 'github-light.min.css'
-                    : 'github-dark.min.css';
-            html = html
-                .replace('{{MARKED_URI}}', vendorUri('marked.min.js'))
-                .replace('{{HIGHLIGHT_URI}}', vendorUri('highlight.min.js'))
-                .replace('{{HIGHLIGHT_CSS_URI}}', vendorUri(highlightSheet))
-                .replace('{{PURIFY_URI}}', vendorUri('purify.min.js'))
-                .replace('{{CHAT_CSS_URI}}', mediaUri('chat.css'))
-                .replace('{{CHAT_JS_URI}}', mediaUri('chat.js'))
-                .replace('{{LOCALE_JSON}}', JSON.stringify(getWebviewLocale()).replace(/</g, '\\u003c'))
-                .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
-        } else {
-            html = html
-                .replace('{{LOCALE_JSON}}', '{}')
-                .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
-        }
-
-        return html;
+        return buildWebviewHtml({
+            htmlPath: path.join(this._extensionUri.fsPath, 'media', 'chat.html'),
+            resourceUri: webview
+                ? (relative: string) => webview
+                    .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', relative))
+                    .toString()
+                : undefined,
+            themeKind: vscode.window.activeColorTheme.kind,
+            locale: getWebviewLocale(),
+        });
     }
 
     private _resolveCwd(configCwd?: string): string {
