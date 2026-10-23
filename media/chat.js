@@ -2284,15 +2284,15 @@
         (options || []).forEach(function(opt) {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'permission-btn';
+            btn.className = 'permission-btn button';
             btn.dataset.optionId = opt.optionId;
             const kind = String(opt.kind || '').toLowerCase();
             const idLower = String(opt.optionId || '').toLowerCase();
             if (kind.indexOf('allow') === 0 || idLower.indexOf('allow') === 0) {
-                btn.classList.add('allow');
+                btn.classList.add('allow', 'button--primary');
             } else if (kind.indexOf('reject') === 0 || kind.indexOf('deny') === 0
                 || idLower.indexOf('reject') >= 0 || idLower.indexOf('deny') >= 0) {
-                btn.classList.add('reject');
+                btn.classList.add('reject', 'button--reject');
             }
             btn.textContent = permissionOptionLabel(opt);
             btn.addEventListener('click', function() {
