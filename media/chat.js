@@ -3910,7 +3910,8 @@
         return dropdown;
     }
 
-    function addBlockActions(container, getText) {
+    /** copyPayload is what the clipboard gets; getText stays the Insert menu's payload. */
+    function addBlockActions(container, getText, copyPayload) {
         if (container.querySelector('.block-actions')) return;
         const actions = document.createElement('div');
         actions.className = 'block-actions';
@@ -3922,7 +3923,7 @@
         copyBtn.innerHTML = COPY_ICON_SVG;
         copyBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            copyToClipboard(getText()).then(function() {
+            copyToClipboard((copyPayload || getText)()).then(function() {
                 copyBtn.classList.add('copied');
                 copyBtn.title = locale.copied;
                 setTimeout(function() {
@@ -3987,10 +3988,15 @@
         wrap.className = 'block-actions-wrap';
         pre.parentNode.insertBefore(wrap, pre);
         wrap.appendChild(pre);
+        // Copy hands over the code itself: a shell command with a fence around it is not
+        // a command. The Insert menu keeps the fenced form, which is the portable one for
+        // pasting into a document.
         addBlockActions(wrap, function() {
             const code = codeBlock.textContent || '';
             if (!lang) return code;
             return '```' + lang + '\n' + code + '\n```';
+        }, function() {
+            return codeBlock.textContent || '';
         });
     }
 
