@@ -35,14 +35,6 @@
     const closedDropdown = document.getElementById('closedDropdown');
     const closedList = document.getElementById('closedList');
     const closedPickerLabel = document.getElementById('closedPickerLabel');
-    const undeliveredNotice = document.getElementById('undeliveredNotice');
-    const undeliveredNoticeText = document.getElementById('undeliveredNoticeText');
-    const undeliveredPrimaryBtn = document.getElementById('undeliveredPrimaryBtn');
-    const undeliveredDiscardBtn = document.getElementById('undeliveredDiscardBtn');
-    /** The message the provider says Hermes never received, held until the user decides. */
-    let undeliveredText = '';
-    /** True when the notice itself put the text in the composer and could clear it again. */
-    let undeliveredFilledComposer = false;
     /** null = "new session"; a string = the closed session the user picked. */
     let pendingOpenSessionId = null;
     /** Title/count of the pending pick, so the toolbar can show what Open Tab will open. */
@@ -4249,71 +4241,7 @@
         requestAnimationFrame(appendRestoreBatch);
     }
 
-    /**
-     * Hermes has no record of the last message. Offer it back rather than leave the user to
-     * retype it — never auto-send, and never overwrite a draft that is already there.
-     */
-    function offerUndeliveredMessage(text) {
-        const value = (text || '').trim();
-        if (!value || !undeliveredNotice) {
-            return;
-        }
-        undeliveredText = text;
-        undeliveredFilledComposer = inputEl.value.trim() === '';
-        if (undeliveredFilledComposer) {
-            inputEl.value = text;
-            syncInputHeightFromContent();
-            updateQuickActionBtns();
-        }
-        undeliveredNoticeText.textContent = locale.undeliveredNotice;
-        // Only promise Send when a send can actually go; otherwise the honest action is to
-        // put the text back and let the user press Send when the agent is free.
-        const canSendIt = undeliveredFilledComposer && canSend;
-        undeliveredPrimaryBtn.textContent = canSendIt ? locale.send : locale.undeliveredRestore;
-        undeliveredDiscardBtn.textContent = locale.undeliveredDiscard;
-        undeliveredNotice.hidden = false;
-        undeliveredPrimaryBtn.focus();
-    }
-
-    function closeUndeliveredNotice(clearComposer) {
-        if (clearComposer && undeliveredFilledComposer) {
-            inputEl.value = '';
-            syncInputHeightFromContent();
-            updateQuickActionBtns();
-        }
-        if (undeliveredNotice) {
-            undeliveredNotice.hidden = true;
-        }
-        undeliveredText = '';
-        undeliveredFilledComposer = false;
-    }
-
-    if (undeliveredPrimaryBtn) {
-        undeliveredPrimaryBtn.addEventListener('click', function() {
-            const text = undeliveredText;
-            const wasFilled = undeliveredFilledComposer;
-            closeUndeliveredNotice(false);
-            if (!text) {
-                return;
-            }
-            if (wasFilled && canSend) {
-                sendMessage();
-                return;
-            }
-            // A draft was in the way, so restoring is all the user asked for.
-            inputEl.value = text;
-            syncInputHeightFromContent();
-            updateQuickActionBtns();
-            inputEl.focus();
-        });
-    }
-    if (undeliveredDiscardBtn) {
-        undeliveredDiscardBtn.addEventListener('click', function() {
-            closeUndeliveredNotice(true);
-        });
-    }
-
-    function sendMessage() {
+        function sendMessage() {
         const text = inputEl.value.trim();
         const hasImages = pendingImages.length > 0;
         // Allow sending with either text OR staged images.
@@ -5434,10 +5362,6 @@
 
             case 'restoreHistory':
                 restoreHistory(msg.messages, msg.localHistoryOnly);
-                break;
-
-            case 'undeliveredMessage':
-                offerUndeliveredMessage(msg.text);
                 break;
 
             case 'detectEnvironmentStart':

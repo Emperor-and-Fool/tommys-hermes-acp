@@ -272,9 +272,6 @@ export interface LocaleStrings {
     contextAttachSendPrompt: string;
     contextAttachSendYes: string;
     contextAttachSendNo: string;
-    undeliveredNotice: string;
-    undeliveredRestore: string;
-    undeliveredDiscard: string;
     contextAttachPreviewTitle: string;
 }
 

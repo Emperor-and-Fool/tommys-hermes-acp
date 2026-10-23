@@ -357,8 +357,5 @@ hermes --profile &lt;name&gt; acp</code></pre>
     contextAttachSendPrompt: '您已选择了会话记忆，是否要附带？',
     contextAttachSendYes: '附带',
     contextAttachSendNo: '不附带',
-    undeliveredNotice: '你的上一条消息未送达——Hermes 没有它的记录。',
-    undeliveredRestore: '恢复',
-    undeliveredDiscard: '丢弃',
     contextAttachPreviewTitle: '将附带的记忆（已选{0}条/约{1}输入Token）',
 };

@@ -357,8 +357,5 @@ hermes --profile &lt;name&gt; acp</code></pre>
     contextAttachSendPrompt: 'You selected session memory. Attach it to this message?',
     contextAttachSendYes: 'Attach',
     contextAttachSendNo: 'Do not attach',
-    undeliveredNotice: 'Your last message was not delivered — Hermes has no record of it.',
-    undeliveredRestore: 'Restore',
-    undeliveredDiscard: 'Discard',
     contextAttachPreviewTitle: 'Memory to attach ({0} selected / ~{1} input tokens)',
 };
