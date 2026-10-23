@@ -3616,6 +3616,8 @@
             target.el.innerHTML = renderMarkdown(target.text);
             setupContentBlocks(target.el);
             processFileRefs(target.el);
+            const card = target.el.closest('.message');
+            markMissingImages(target.el, !!(card && card._hasImages));
             return;
         }
         if (target.kind === 'aux') {
@@ -3849,6 +3851,10 @@
             }
             if (gallery.childNodes.length > 0) card.appendChild(gallery);
         }
+        card._hasImages = !!(role === 'user' && Array.isArray(images) && images.length > 0);
+        if (role === 'user' || role === 'assistant') {
+            markMissingImages(content, card._hasImages);
+        }
         if (role === 'user') {
             processFileRefs(content);
         }
@@ -3941,6 +3947,50 @@
         if (chatSearchState.query) scheduleChatSearch();
         maybeScrollToBottom();
         return id;
+    }
+
+    /** A "[screenshot]" with no attachment behind it: say so in red instead of leaving the token. */
+    function markMissingImages(root, hasImages) {
+        if (!root) return;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const hits = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            if (/\[(screenshot|image)\]/i.test(node.textContent)) hits.push(node);
+        }
+        hits.forEach(function(textNode) {
+            const parts = textNode.textContent.split(/(\[(?:screenshot|image)\])/i);
+            const frag = document.createDocumentFragment();
+            let lastNode = null;
+            const appendText = function(value) {
+                if (!value) return;
+                let text = value;
+                // Only fold the space when the previous sibling is text: a red statement in
+                // between keeps the two words apart.
+                if (lastNode && lastNode.nodeType === 3 && /\s$/.test(lastNode.textContent) && /^\s/.test(text)) {
+                    text = text.replace(/^\s+/, '');
+                }
+                if (!text) return;
+                const node = document.createTextNode(text);
+                frag.appendChild(node);
+                lastNode = node;
+            };
+            parts.forEach(function(part) {
+                if (/^\[(screenshot|image)\]$/i.test(part)) {
+                    // With the attachment present the token is noise; without it the user has to
+                    // know the picture exists and is not here.
+                    if (hasImages) return;
+                    const span = document.createElement('span');
+                    span.className = 'image-missing';
+                    span.textContent = locale.imageMissing;
+                    frag.appendChild(span);
+                    lastNode = span;
+                } else if (part) {
+                    appendText(part);
+                }
+            });
+            if (textNode.parentNode) textNode.parentNode.replaceChild(frag, textNode);
+        });
     }
 
     function escapeHtmlEntities(value) {
@@ -4520,7 +4570,7 @@
                 if (m.role === 'permission') {
                     restorePermissionMessage(m);
                 } else {
-                    appendMessage(m.role, m.text, { restore: true, deferMarkdown: true });
+                    appendMessage(m.role, m.text, { restore: true, deferMarkdown: true, images: m.images });
                 }
             }
             if (cursor < messages.length) {

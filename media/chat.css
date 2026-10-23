@@ -2076,6 +2076,11 @@ body.surface-notabs #tab-bar {
     box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 .quote-action[hidden] { display: none; }
+/* An attachment that only exists as a marker: the bytes never left this machine. */
+.image-missing {
+    color: var(--error);
+    font-weight: 600;
+}
 .input-composite-shell {
     position: relative;
     overflow: visible;
