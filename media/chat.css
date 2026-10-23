@@ -79,10 +79,12 @@ body.vscode-high-contrast-light {
 }
 
 /* Open Tab sits flush against the closed-chat picker. */
+/* LEGACY: the picker and Open are separate controls, so neither loses its radius.
 #closedPicker + .button {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
 }
+*/
 
 /* The trigger of a menu: one look for profile, choose chat, model and
    session memory. Only the empty state and the composer's width differ. */
@@ -902,14 +904,17 @@ body {
     line-height: 1;
     margin-left: auto;
 }
-/* Sits against Open Tab as one control pair rather than next to the status cluster. */
+/* LEGACY: the picker and Open are separate controls; the negative margin made them one block.
 .toolbar-actions #closedPicker {
     margin-right: -4px;
 }
+*/
+/* LEGACY: see above; the picker keeps its own radius.
 #closedPicker .picker-btn {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
+*/
 /* LEGACY: replaced by .button / .button--* at the top of this file.
 #closedPicker + .toolbar-btn {
     border-top-left-radius: 0;
