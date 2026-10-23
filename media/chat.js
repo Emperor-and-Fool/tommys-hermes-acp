@@ -3059,7 +3059,7 @@
                 : group.classList.contains('thought') ? auxiliaryRoleLabel('thought')
                 : group.classList.contains('tool') ? auxiliaryRoleLabel('tool', group._auxState && group._auxState.rawText)
                 : locale.roleMessage;
-            const text = getMessagePlainText(group).trim();
+            const text = getGroupMarkdownText(group).trim();
             if (!text) return;
             lines.push(role + ':\n' + text);
         });
@@ -3297,6 +3297,12 @@
         return locale.roleMessage;
     }
 
+    /**
+     * The card's own source text. Copying a message must not read the rendered DOM: the
+     * per-block chrome (copy button, Insert menu and its labels) lives inside .content, so
+     * DOM text carries button labels into the clipboard. The source text is what the card
+     * is presenting; the DOM is one rendering of it.
+     */
     function getGroupMarkdownText(group) {
         if (group._auxState && group._auxState.rawText) {
             return group._auxState.rawText;
@@ -3523,7 +3529,7 @@
         copyBtn.innerHTML = COPY_ICON_SVG;
         copyBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const text = getMessagePlainText(group);
+            const text = getGroupMarkdownText(group).trim();
             if (!text) return;
             copyToClipboard(text).then(function() {
                 copyBtn.classList.add('copied');
@@ -3911,7 +3917,7 @@
     }
 
     /** copyPayload is what the clipboard gets; getText stays the Insert menu's payload. */
-    function addBlockActions(container, getText, copyPayload) {
+    function addBlockActions(container, getText, copyPayload, copyTitle) {
         if (container.querySelector('.block-actions')) return;
         const actions = document.createElement('div');
         actions.className = 'block-actions';
@@ -3919,7 +3925,8 @@
         const copyBtn = document.createElement('button');
         copyBtn.type = 'button';
         copyBtn.className = 'block-btn';
-        copyBtn.title = locale.copy;
+        const copyLabel = copyTitle || locale.copy;
+        copyBtn.title = copyLabel;
         copyBtn.innerHTML = COPY_ICON_SVG;
         copyBtn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -3928,7 +3935,7 @@
                 copyBtn.title = locale.copied;
                 setTimeout(function() {
                     copyBtn.classList.remove('copied');
-                    copyBtn.title = locale.copy;
+                    copyBtn.title = copyLabel;
                 }, 1500);
             });
         });
@@ -3996,8 +4003,10 @@
             if (!lang) return code;
             return '```' + lang + '\n' + code + '\n```';
         }, function() {
-            return codeBlock.textContent || '';
-        });
+            // No trailing newline: pasting into a terminal would run it. Whether a command
+            // executes is the developer's decision, not the clipboard's.
+            return (codeBlock.textContent || '').replace(/[\r\n]+$/, '');
+        }, locale.copyCode);
     }
 
     function setupContentBlocks(container) {
