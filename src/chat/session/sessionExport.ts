@@ -1,8 +1,8 @@
 /** Markdown/JSON export of a chat. Pure: the provider supplies the model label. */
-import { getWebviewLocale, t } from '../i18n';
-import { formatLocaleString } from '../i18n/format';
-import type { LocaleStrings } from '../i18n/types';
-import type { ChatMessage, SessionInfo } from './HermesChatProvider';
+import { getWebviewLocale, t } from '../../i18n';
+import { formatLocaleString } from '../../i18n/format';
+import type { LocaleStrings } from '../../i18n/types';
+import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
 
 export function buildSessionExportPayload(session: SessionInfo, messages: ChatMessage[], modelFallback?: string): {
     sessionId: string;

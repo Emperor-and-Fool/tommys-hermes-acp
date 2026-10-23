@@ -36,12 +36,12 @@ import {
     formatDetectProgressPercent,
     formatDetectStepDetail,
     formatDetectSummaryForReport,
-} from './detectFormat';
-import { buildSessionExportPayload } from './sessionExport';
+} from './transcript/detectFormat';
+import { buildSessionExportPayload } from './session/sessionExport';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
-} from './toolAggregate';
+} from './transcript/toolAggregate';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import {
     composePromptWithContext,
