@@ -1743,7 +1743,15 @@
     function bindImagePasteOnce() {
         if (__imgPasteBound || !inputEl) return;
         __imgPasteBound = true;
-        inputEl.addEventListener('paste', async (e) => {
+        // Bound to the document, not the textarea: a screenshot pasted while the caret is
+        // elsewhere in the pane used to vanish, because a paste only reaches a focused
+        // element. Other text fields keep their own paste.
+        document.addEventListener('paste', async (e) => {
+            const target = e.target;
+            if (target && target.tagName === 'INPUT') return;
+            if (target && target.tagName === 'TEXTAREA' && target !== inputEl) return;
+            // The rail surface has no composer, so staging there would be invisible.
+            if (document.body.classList.contains('surface-rail')) return;
             const items = e.clipboardData && e.clipboardData.items;
             if (!items) return;
             const files = [];
