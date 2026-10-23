@@ -1704,7 +1704,10 @@
     let __imgPasteBound = false;
 
     function renderPendingImagesBar() {
-        const composite = document.getElementById('inputComposite') || inputEl.parentElement;
+        // Mount by reference: a message in the transcript can define an element with this
+        // id (tool cards render their body as HTML), and getElementById then returns that
+        // copy — which sits thousands of pixels up the scrolled transcript.
+        const composite = inputEl.closest('.input-composite') || inputEl.parentElement;
         if (!composite) { hostLog('[paste-bar] no composite to mount into'); return; }
         let bar = document.getElementById('imagePasteBar');
         if (pendingImages.length === 0) {
