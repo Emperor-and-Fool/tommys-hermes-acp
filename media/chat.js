@@ -35,6 +35,16 @@
     const closedDropdown = document.getElementById('closedDropdown');
     const closedList = document.getElementById('closedList');
     const closedPickerLabel = document.getElementById('closedPickerLabel');
+    const replyQuoteEl = document.getElementById('replyQuote');
+    const replyQuoteTitle = document.getElementById('replyQuoteTitle');
+    const replyQuoteToggle = document.getElementById('replyQuoteToggle');
+    const replyQuoteClear = document.getElementById('replyQuoteClear');
+    const replyQuoteBody = document.getElementById('replyQuoteBody');
+    const composerHint = document.getElementById('composerHint');
+    /** The quote the user assembled from a selection, and the floating action that makes one. */
+    let replyQuote = null;
+    let quoteActionEl = null;
+    let composerHintTimer = null;
     /** null = "new session"; a string = the closed session the user picked. */
     let pendingOpenSessionId = null;
     /** Title/count of the pending pick, so the toolbar can show what Open Tab will open. */
@@ -1807,8 +1817,9 @@
     function executeSendMessage(text, attachOverride) {
         hideFilePicker();
         resetAutoScrollFollow();
+        const outgoing = withReplyQuote(text);
         const imagesForBubble = pendingImages.slice();
-        appendMessage('user', text, imagesForBubble.length ? { images: imagesForBubble } : undefined);
+        appendMessage('user', outgoing, imagesForBubble.length ? { images: imagesForBubble } : undefined);
         inputEl.value = '';
         syncInputHeightFromContent();
         updateQuickActionBtns();
@@ -1827,12 +1838,13 @@
             : buildContextAttachPayload(false);
         vscode.postMessage({
             type: 'sendMessage',
-            text: text,
+            text: outgoing,
             contextAttach: payload,
             images: imagesForBubble.length ? imagesForBubble : undefined,
         });
         pendingImages.length = 0;
         renderPendingImagesBar();
+        clearReplyQuote();
     }
 
     function openSwitchSessionModal(sessionId) {
@@ -3313,11 +3325,213 @@
         return getMessagePlainText(group);
     }
 
+    /** Selection capture: how much quoted context one reply may carry. */
+    const QUOTE_MAX_CHARS = 6000;
+    /** Last non-empty selection, split per card. A click clears the selection before it
+     *  reaches a handler, so this has to be computed on selectionchange, not on click. */
+    let lastSelectionQuote = null;
+    let selectionQuoteTimer = null;
+
+    function groupsInOrder() {
+        return Array.from(messagesEl.querySelectorAll('.message-group'));
+    }
+
+    /** The quoted text for one card, or null when the selection misses it. */
+    function quoteSegmentForGroup(group, range) {
+        // Clip against the card's body, never the record: the record also holds the role
+        // label and the action chrome, and a quote must not carry either.
+        const bubble = group.querySelector('.message') || group;
+        const body = bubble.querySelector('.content') || bubble.querySelector('.aux-body-content') || bubble;
+        const groupRange = document.createRange();
+        groupRange.selectNodeContents(body);
+        if (range.compareBoundaryPoints(Range.END_TO_START, groupRange) >= 0) return null;
+        if (range.compareBoundaryPoints(Range.START_TO_END, groupRange) <= 0) return null;
+        const clipped = range.cloneRange();
+        if (clipped.compareBoundaryPoints(Range.START_TO_START, groupRange) < 0) {
+            clipped.setStart(groupRange.startContainer, groupRange.startOffset);
+        }
+        if (clipped.compareBoundaryPoints(Range.END_TO_END, groupRange) > 0) {
+            clipped.setEnd(groupRange.endContainer, groupRange.endOffset);
+        }
+        const text = (clipped.toString() || '').trim();
+        if (!text) return null;
+        return { role: getGroupRoleLabel(group), text: text, group: group };
+    }
+
+    /**
+     * Turns the current selection into a structured quote: one segment per card it touches,
+     * capped at QUOTE_MAX_CHARS. Returns { blocked } instead of failing silently when the
+     * selection touches the bubble currently being streamed — that bubble is rebuilt on every
+     * chunk, so the selection cannot survive it.
+     */
+    function captureSelectionQuote() {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+        const range = sel.getRangeAt(0);
+        const anchorEl = range.commonAncestorContainer.nodeType === 1
+            ? range.commonAncestorContainer
+            : range.commonAncestorContainer.parentElement;
+        if (!anchorEl || !messagesEl.contains(anchorEl)) return null;
+        if (streamingMessageId) {
+            const streaming = document.getElementById(streamingMessageId);
+            if (streaming) {
+                const sr = document.createRange();
+                sr.selectNodeContents(streaming);
+                const touches = !(range.compareBoundaryPoints(Range.END_TO_START, sr) >= 0
+                    || range.compareBoundaryPoints(Range.START_TO_END, sr) <= 0);
+                if (touches) return { blocked: 'streaming' };
+            }
+        }
+        const segments = [];
+        let chars = 0;
+        let truncated = false;
+        for (const group of groupsInOrder()) {
+            const seg = quoteSegmentForGroup(group, range);
+            if (!seg) continue;
+            const room = QUOTE_MAX_CHARS - chars;
+            if (room <= 0) { truncated = true; break; }
+            if (seg.text.length > room) {
+                seg.text = seg.text.slice(0, room);
+                truncated = true;
+            }
+            chars += seg.text.length;
+            segments.push(seg);
+            if (truncated) break;
+        }
+        if (!segments.length) return null;
+        return { segments: segments, chars: chars, truncated: truncated };
+    }
+
+    document.addEventListener('selectionchange', function() {
+        if (selectionQuoteTimer) clearTimeout(selectionQuoteTimer);
+        selectionQuoteTimer = setTimeout(function() {
+            selectionQuoteTimer = null;
+            lastSelectionQuote = captureSelectionQuote();
+            updateQuoteAction(lastSelectionQuote);
+        }, 120);
+    });
+
+    /** Read-only hook so the harness (and CDP) can assert the capture without a UI. */
+    window.__tommysQuote = function() { return lastSelectionQuote; };
+
+    function showComposerHint(message, seconds) {
+        if (!composerHint) return;
+        composerHint.textContent = message;
+        composerHint.hidden = false;
+        if (composerHintTimer) clearTimeout(composerHintTimer);
+        composerHintTimer = setTimeout(function() {
+            composerHint.hidden = true;
+            composerHintTimer = null;
+        }, (seconds || 10) * 1000);
+    }
+
+    function ensureQuoteAction() {
+        if (quoteActionEl) return quoteActionEl;
+        quoteActionEl = document.createElement('button');
+        quoteActionEl.type = 'button';
+        quoteActionEl.className = 'quote-action';
+        quoteActionEl.hidden = true;
+        quoteActionEl.addEventListener('click', function() {
+            const stash = lastSelectionQuote;
+            quoteActionEl.hidden = true;
+            if (!stash) {
+                showComposerHint(locale.replySelectionLost);
+                return;
+            }
+            if (stash.blocked === 'streaming') {
+                showComposerHint(locale.replyStreamingBlocked);
+                return;
+            }
+            replyQuote = { segments: stash.segments.map(function(seg) { return { role: seg.role, text: seg.text }; }),
+                           chars: stash.chars, truncated: stash.truncated };
+            renderReplyQuote();
+            inputEl.focus();
+        });
+        document.body.appendChild(quoteActionEl);
+        return quoteActionEl;
+    }
+
+    function updateQuoteAction(stash) {
+        const el = ensureQuoteAction();
+        const sel = window.getSelection();
+        if (!stash || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
+            el.hidden = true;
+            return;
+        }
+        if (!stash.segments && stash.blocked !== 'streaming') {
+            el.hidden = true;
+            return;
+        }
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        el.textContent = stash.blocked === 'streaming' ? locale.replyActionBlocked : locale.replyAction;
+        el.hidden = false;
+        const top = Math.min(window.innerHeight - 34, Math.max(8, rect.bottom + 6));
+        const left = Math.min(window.innerWidth - 90, Math.max(8, rect.left));
+        el.style.top = Math.round(top) + 'px';
+        el.style.left = Math.round(left) + 'px';
+    }
+
+    function renderReplyQuote() {
+        if (!replyQuoteEl) return;
+        if (!replyQuote || !replyQuote.segments.length) {
+            replyQuoteEl.hidden = true;
+            return;
+        }
+        const count = replyQuote.segments.length;
+        replyQuoteTitle.textContent = String(locale.replyTitle || '{count}').replace('{count}', count)
+            + (replyQuote.truncated ? ' · ' + locale.replyTruncated : '');
+        replyQuoteBody.innerHTML = '';
+        replyQuote.segments.forEach(function(seg) {
+            const row = document.createElement('div');
+            row.className = 'reply-quote-segment';
+            const role = document.createElement('span');
+            role.className = 'reply-quote-role';
+            role.textContent = seg.role + ': ';
+            row.appendChild(role);
+            row.appendChild(document.createTextNode(seg.text));
+            replyQuoteBody.appendChild(row);
+        });
+        replyQuoteEl.classList.remove('is-collapsed');
+        replyQuoteToggle.setAttribute('aria-expanded', 'true');
+        replyQuoteToggle.textContent = '▾';
+        replyQuoteEl.hidden = false;
+        updateQuickActionBtns();
+    }
+
+    function clearReplyQuote() {
+        replyQuote = null;
+        if (replyQuoteEl) replyQuoteEl.hidden = true;
+    }
+
+    if (replyQuoteToggle) {
+        replyQuoteToggle.addEventListener('click', function() {
+            const collapsed = replyQuoteEl.classList.toggle('is-collapsed');
+            replyQuoteToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            replyQuoteToggle.textContent = collapsed ? '▸' : '▾';
+        });
+    }
+    if (replyQuoteClear) {
+        replyQuoteClear.addEventListener('click', function() { clearReplyQuote(); });
+    }
+
+    /** The structured block a profile reads: delimiters, a role line per card, the text. */
+    function withReplyQuote(text) {
+        if (!replyQuote || !replyQuote.segments.length) return text;
+        const lines = ['[replying-to]'];
+        replyQuote.segments.forEach(function(seg) {
+            lines.push('--- ' + seg.role + ' ---');
+            lines.push(seg.text);
+        });
+        lines.push('[/replying-to]');
+        const quoted = lines.join('\n');
+        return text ? quoted + '\n\n' + text : quoted;
+    }
+
     function getGroupsPlainText(groups) {
         const lines = [];
         groups.forEach(function(group) {
             const role = getGroupRoleLabel(group);
-            const text = getMessagePlainText(group).trim();
+            const text = getGroupMarkdownText(group).trim();
             if (!text) return;
             lines.push(role + ':\n' + text);
         });

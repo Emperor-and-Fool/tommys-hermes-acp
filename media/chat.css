@@ -2011,6 +2011,71 @@ body.surface-notabs #tab-bar {
     position: relative;
     margin-top: 6px;
 }
+/* A quote lifted out of the transcript: content the user assembled, so it sits on the
+   composer shell with its own border, not inside the input box. */
+.reply-quote {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 4px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 4px;
+    background: var(--text-block);
+}
+.reply-quote[hidden] { display: none; }
+.reply-quote-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: var(--dim);
+}
+.reply-quote-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-quote-toggle, .reply-quote-clear {
+    background: none; border: none; padding: 0 4px;
+    color: var(--dim); cursor: pointer; font-size: 11px; line-height: 1;
+}
+.reply-quote-toggle:hover, .reply-quote-clear:hover { color: var(--fg); }
+.reply-quote-body {
+    max-height: 120px;
+    overflow-y: auto;
+    padding: 0 8px 6px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg);
+    white-space: pre-wrap;
+}
+.reply-quote.is-collapsed .reply-quote-body { display: none; }
+.reply-quote-segment { margin: 0 0 4px; }
+.reply-quote-role { color: var(--dim); font-weight: 600; }
+.reply-quote-more { color: var(--dim); font-style: italic; }
+.composer-hint {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    padding: 4px 8px 0;
+    font-size: 11px;
+    color: var(--dim);
+}
+.composer-hint[hidden] { display: none; }
+/* The Reply action floats at the end of the selection. */
+.quote-action {
+    position: fixed;
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.quote-action[hidden] { display: none; }
 .input-composite-shell {
     position: relative;
     overflow: visible;
