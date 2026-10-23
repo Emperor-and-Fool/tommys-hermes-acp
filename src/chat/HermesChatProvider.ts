@@ -417,6 +417,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 case 'openSettings':
                     void this._openSettings();
                     break;
+                case 'webviewLog':
+                    // Pane-side diagnostics, so paste/render behaviour is observable
+                    // from the extension output channel instead of the webview devtools.
+                    this._log(`[webview] ${String(message.line ?? '')}`.slice(0, 400));
+                    break;
                 case 'openExternal':
                     if (message.url) {
                         void vscode.env.openExternal(vscode.Uri.parse(message.url));

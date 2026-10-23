@@ -1,5 +1,13 @@
 (function() {
     const vscode = acquireVsCodeApi();
+    /** Report one line to the extension host's output channel (no devtools needed). */
+    function hostLog(line) {
+        try {
+            vscode.postMessage({ type: 'webviewLog', line: String(line) });
+        } catch (err) {
+            /* ignore */
+        }
+    }
     const messagesEl = document.getElementById('messages');
     const chatBodyEl = document.getElementById('chat-body');
     const inputEl = document.getElementById('input');
@@ -1705,7 +1713,7 @@
 
     function renderPendingImagesBar() {
         const composite = document.getElementById('inputComposite') || inputEl.parentElement;
-        if (!composite) return;
+        if (!composite) { hostLog('[paste-bar] no composite to mount into'); return; }
         let bar = document.getElementById('imagePasteBar');
         if (pendingImages.length === 0) {
             if (bar) bar.remove();
@@ -1717,6 +1725,7 @@
             bar.className = 'image-paste-bar';
             composite.insertBefore(bar, composite.firstChild);
         }
+        hostLog('[paste-bar] rendering ' + pendingImages.length + ' thumbnail(s) in #' + composite.id);
         bar.innerHTML = '';
         pendingImages.forEach((img, i) => {
             const wrap = document.createElement('div');
@@ -1744,8 +1753,10 @@
         if (__imgPasteBound || !inputEl) return;
         __imgPasteBound = true;
         inputEl.addEventListener('paste', async (e) => {
+            const active = document.activeElement;
+            hostLog('[paste] fired on #input, active=' + (active && (active.id || active.tagName)));
             const items = e.clipboardData && e.clipboardData.items;
-            if (!items) return;
+            if (!items) { hostLog('[paste] no clipboardData.items'); return; }
             const files = [];
             for (const it of items) {
                 if (it.kind === 'file' && it.type.startsWith('image/')) {
@@ -1753,6 +1764,9 @@
                     if (f) files.push(f);
                 }
             }
+            const kinds = [];
+            for (const it of items) kinds.push(it.kind + ':' + it.type);
+            hostLog('[paste] items=' + items.length + ' [' + kinds.join(', ') + '] images=' + files.length);
             if (files.length === 0) return; // plain-text paste proceeds normally
             e.preventDefault();
             for (const f of files) {
@@ -1766,13 +1780,16 @@
                     }
                     pendingImages.push({ mimeType: f.type || 'image/png', data: btoa(bin) });
                 } catch (err) {
+                    hostLog('[paste] stage failed: ' + (err && err.message));
                     console.error('[image-paste] stage failed', err);
                 }
             }
+            hostLog('[paste] staged, pending=' + pendingImages.length);
             renderPendingImagesBar();
         });
     }
     bindImagePasteOnce();
+    hostLog('[paste] listener bound on #input');
 
     function executeSendMessage(text, attachOverride) {
         hideFilePicker();
