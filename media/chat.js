@@ -1739,6 +1739,14 @@
             wrap.appendChild(rm);
             bar.appendChild(wrap);
         });
+        const rect = bar.getBoundingClientRect();
+        const first = bar.querySelector('img');
+        const cs = getComputedStyle(bar);
+        hostLog('[paste-bar] box=' + Math.round(rect.width) + 'x' + Math.round(rect.height)
+            + ' top=' + Math.round(rect.top) + ' display=' + cs.display + ' vis=' + cs.visibility
+            + ' opacity=' + cs.opacity
+            + ' imgDecoded=' + (first ? first.complete + '/' + first.naturalWidth + 'x' + first.naturalHeight : 'none')
+            + ' dataLen=' + (pendingImages[0] ? pendingImages[0].data.length : 0));
     }
 
     function bindImagePasteOnce() {
