@@ -666,7 +666,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         session.modelId = profileState.modelId;
         session.modelLabel = profileState.modelLabel;
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* ignore */ }
     }
 
@@ -794,7 +794,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._sessions = next;
         this._hiddenSessions = rows.filter(row => row.hidden);
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
         this._postHiddenSessions();
@@ -965,7 +965,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             record.messageCount = messages.length;
             record.agentEngaged = true;
             try {
-                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+                this._saveCatalog();
             } catch { /* non-critical */ }
         }
         this._log(`Replayed ${messages.length} messages for session ${localId}`);
@@ -995,7 +995,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (rec && rec.hermesSessionId !== hermesSessionId) {
             rec.hermesSessionId = hermesSessionId;
             try {
-                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+                this._saveCatalog();
             } catch { /* non-critical */ }
         }
         void this._context.workspaceState.update('hermesSessionId', hermesSessionId);
@@ -1465,8 +1465,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             });
         }
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
-            this._saveActiveSession();
+            if (this._saveCatalog()) {
+                this._saveActiveSession();
+            }
         } catch { /* non-critical */ }
         this._postSessionList();
     }
@@ -1484,7 +1485,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             messageCount: this._sessionMessages.length,
         });
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
     }
 
@@ -1502,6 +1503,20 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             type: 'hiddenSessions',
             sessions: this._hiddenSessions,
         });
+    }
+
+    /**
+     * One write point for the session catalog: the same 50-record snapshot was assembled in
+     * eleven places, and the store that owns this file needs a single seam to cut along.
+     * Returns whether the write happened, for the one caller that does more on success.
+     */
+    private _saveCatalog(): boolean {
+        try {
+            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     private _loadSessions(): void {
@@ -1550,7 +1565,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         session.agentEngaged = true;
         session.updatedAt = Date.now();
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
     }
@@ -2533,7 +2548,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             session.modelId = valueId;
             session.modelLabel = label;
             try {
-                fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+                this._saveCatalog();
             } catch { /* ignore */ }
         }
         saveProfileState(this._historyDir, this._scopeKey, { modelId: valueId, modelLabel: label });
@@ -2920,7 +2935,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         session.updatedAt = Date.now();
         this._log(`Rename session ${sessionId}: ${trimmed}`);
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
     }
@@ -2952,7 +2967,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._sessions = [...pinned, ...unpinned];
         this._log(`Reorder sessions: ${this._sessions.map(s => s.id).join(', ')}`);
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
     }
@@ -3073,7 +3088,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         session.updatedAt = Date.now();
         this._log(`${session.pinned ? 'Pin' : 'Unpin'} session ${sessionId}`);
         try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
+            this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
     }
