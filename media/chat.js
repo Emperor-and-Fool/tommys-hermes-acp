@@ -1742,6 +1742,16 @@
         const rect = bar.getBoundingClientRect();
         const first = bar.querySelector('img');
         const cs = getComputedStyle(bar);
+        const r2 = (el) => { if (!el) return 'none'; const b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height) + '@' + Math.round(b.top); };
+        const area = document.getElementById('input-area');
+        const chatBody = document.getElementById('chat-body');
+        const scroller = document.scrollingElement || document.body;
+        hostLog('[paste-bar] mount parent=' + (bar.parentElement && bar.parentElement.id)
+            + ' dupIds=' + document.querySelectorAll('#inputComposite').length
+            + ' inInputArea=' + !!(area && area.contains(bar))
+            + ' area=' + r2(area) + ' areaDisplay=' + (area ? getComputedStyle(area).display : 'none')
+            + ' chatBody=' + r2(chatBody) + ' msgs=' + r2(document.getElementById('messages'))
+            + ' scrollTop=' + Math.round(scroller.scrollTop) + ' scrollHeight=' + Math.round(scroller.scrollHeight));
         hostLog('[paste-bar] box=' + Math.round(rect.width) + 'x' + Math.round(rect.height)
             + ' top=' + Math.round(rect.top) + ' display=' + cs.display + ' vis=' + cs.visibility
             + ' opacity=' + cs.opacity
