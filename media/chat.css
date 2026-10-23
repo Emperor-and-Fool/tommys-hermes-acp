@@ -874,6 +874,35 @@ body {
     min-width: 0;
 }
 
+/* One notice line in the composer: it reports a state and offers the two ways out.
+   No fill of its own — it sits on the shell like the picker row does. */
+.composer-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--dim);
+}
+.composer-notice[hidden] {
+    display: none;
+}
+.composer-notice-text {
+    flex: 1;
+    min-width: 0;
+}
+.composer-notice-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.composer-notice .button {
+    font-size: 11px;
+    padding: 3px 8px;
+}
+
 /* The picker takes the free space on both sides, so it sits centred between the
    profile switcher and Open while Open keeps the right edge. */
 .toolbar-actions #closedPicker {

@@ -919,6 +919,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (messages.length === 0) {
             return;
         }
+        // A send that died between the pane and the agent leaves a user message in the
+        // local mirror that Hermes never received. Read it before the replay overwrites.
+        const undelivered = this._takeUndeliveredMessage(localId, messages);
         try {
             fs.writeFileSync(this._msgPath(localId), JSON.stringify(messages, null, 2));
         } catch { /* non-critical */ }
@@ -943,7 +946,40 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             localHistoryOnly: false,
         });
         this._offerContextAttach(this._sessionMessages);
+        if (undelivered) {
+            this._log(`Undelivered message offered back to the composer: ${localId}`);
+            this._postMessage({ type: 'undeliveredMessage', text: undelivered });
+        }
         this._postSessionList();
+    }
+
+    /**
+     * The local mirror is the only place a message Hermes never received still exists.
+     * Returns the last local user message when the agent's replay does not contain it.
+     */
+    private _takeUndeliveredMessage(localId: string, replayMessages: ChatMessage[]): string | null {
+        let cached: ChatMessage[] = [];
+        try {
+            const parsed = JSON.parse(fs.readFileSync(this._msgPath(localId), 'utf-8'));
+            if (Array.isArray(parsed)) {
+                cached = parsed;
+            }
+        } catch {
+            return null;
+        }
+        let lastLocalUser = '';
+        for (const m of cached) {
+            if (m && m.role === 'user' && typeof m.text === 'string' && m.text.trim()) {
+                lastLocalUser = m.text;
+            }
+        }
+        if (!lastLocalUser) {
+            return null;
+        }
+        const seen = new Set(
+            replayMessages.filter(m => m.role === 'user').map(m => (m.text || '').trim())
+        );
+        return seen.has(lastLocalUser.trim()) ? null : lastLocalUser;
     }
 
     /** Remember which Hermes session backs the current tab and this workspace. */
