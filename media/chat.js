@@ -845,7 +845,7 @@
             quickToggleBtn.title = locale.quickActions;
             quickToggleBtn.setAttribute('aria-label', locale.quickActions);
         }
-        if (inputEl) inputEl.placeholder = locale.inputPlaceholder;
+        applyInputPlaceholder();
         if (tokenUsageRing) {
             tokenUsageRing.title = locale.tokenUsage;
             tokenUsageRing.setAttribute('aria-label', locale.tokenUsage);
@@ -3262,6 +3262,12 @@
         const el = document.getElementById('profileLabel');
         const text = el && el.textContent ? el.textContent.trim() : '';
         return text || 'hermes';
+    }
+    /** The composer says who you are talking to, which is the profile, not the product. */
+    function applyInputPlaceholder() {
+        if (!inputEl) return;
+        const template = locale.inputPlaceholder || 'Chat with {profile}';
+        inputEl.placeholder = String(template).replace('{profile}', profileDisplayName());
     }
     function assistantRoleLabel() {
         return profileDisplayName() + '@HermesHomeBase';
@@ -5788,6 +5794,7 @@
                     activeProfileName = msg.name;
                     document.getElementById('profileLabel').textContent = msg.name;
                     refreshRoleLabels();
+                    applyInputPlaceholder();
                 }
                 break;
 
