@@ -3720,6 +3720,10 @@
             return DOMPurify.sanitize(html, {
                 USE_PROFILES: { html: true },
                 ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+                // Message text must never be able to define an element the pane looks up
+                // by id: a tool card once carried <div id="inputComposite"> and captured
+                // the composer's own getElementById.
+                FORBID_ATTR: ['id', 'name'],
             });
         }
         const div = document.createElement('div');
@@ -3728,7 +3732,9 @@
             if (!n.attributes) return;
             for (let i = n.attributes.length - 1; i >= 0; i--) {
                 const attr = n.attributes[i];
-                if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.toLowerCase().startsWith('javascript:'))) {
+                if (attr.name === 'id' || attr.name === 'name'
+                    || attr.name.startsWith('on')
+                    || (attr.name === 'href' && attr.value.toLowerCase().startsWith('javascript:'))) {
                     n.removeAttribute(attr.name);
                 }
             }
