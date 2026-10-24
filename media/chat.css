@@ -1325,6 +1325,23 @@ body.surface-notabs #tab-bar {
     text-overflow: ellipsis;
     min-width: 0;
 }
+/* Inline rename: the field replaces the label in place, so the strip keeps its height. */
+.session-tab.editing {
+    cursor: text;
+    background: var(--text-block);
+}
+.session-tab .tab-rename-input {
+    font: inherit;
+    color: var(--input-fg);
+    background: var(--input-bg);
+    border: 1px solid var(--primary);
+    border-radius: 3px;
+    padding: 0 3px;
+    width: 12ch;
+    max-width: 140px;
+    min-width: 0;
+    outline: none;
+}
 .session-tab .tab-close {
     opacity: 0.5;
     font-size: 12px;

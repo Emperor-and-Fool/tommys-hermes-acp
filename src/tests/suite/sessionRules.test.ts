@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import {
     backfillAgentEngaged,
+    hermesSessionIdFor,
     markAgentEngaged,
     normalizePinnedOrder,
     pinSession,
@@ -75,5 +76,17 @@ describe('session rules', () => {
         assert.deepStrictEqual(reorderSessions(sessions, ['zzz', 'b'])?.map(s => s.id), ['p', 'b', 'a']);
         assert.strictEqual(reorderSessions(sessions, []), null, 'an empty list is not an order');
         assert.deepStrictEqual(reorderSessions(sessions, ['b', 'p', 'a'])?.map(s => s.id), ['p', 'b', 'a']);
+    });
+});
+
+describe('hermesSessionIdFor', () => {
+    it('returns the Hermes id behind an adopted tab, not the local one', () => {
+        const sessions = [session('local-1', { hermesSessionId: 'h-9' }), session('h-2')];
+        assert.strictEqual(hermesSessionIdFor(sessions, 'local-1'), 'h-9');
+    });
+
+    it('falls back to the id when the tab is unknown or carries no Hermes id', () => {
+        const sessions = [session('local-1', { hermesSessionId: 'h-9' })];
+        assert.strictEqual(hermesSessionIdFor(sessions, 'h-2'), 'h-2');
     });
 });

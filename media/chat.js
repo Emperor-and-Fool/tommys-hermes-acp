@@ -5449,6 +5449,7 @@
             '</div>' +
             '<button type="button" class="tab-ctx-item" data-action="export">' + escapeHtml(locale.tabContextExport) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="copy">' + escapeHtml(locale.tabContextCopy) + '</button>' +
+            '<button type="button" class="tab-ctx-item" data-action="rename">' + escapeHtml(locale.tabContextRename) + '</button>' +
             '<div class="tab-ctx-divider"></div>' +
             '<button type="button" class="tab-ctx-item" data-action="close">' + escapeHtml(locale.tabContextClose) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="closeOthers"' + (canCloseOthers ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextCloseOthers) + '</button>' +
@@ -5473,6 +5474,8 @@
                     requestSessionExport('export', undefined, targetId);
                 } else if (action === 'copy') {
                     requestSessionExport('copy', undefined, targetId);
+                } else if (action === 'rename') {
+                    startTabRename(targetId);
                 } else if (action === 'togglePin') {
                     vscode.postMessage({ type: 'togglePinSession', sessionId: targetId });
                 } else if (action === 'close' || action === 'closeOthers' || action === 'closeLeft' || action === 'closeRight' || action === 'closeAll') {
@@ -5487,6 +5490,77 @@
         });
 
         positionTabContextMenu(clientX, clientY);
+    }
+
+    /* A tab being renamed keeps its input until the edit ends; a catalog post that arrives
+       meanwhile is kept and replayed, so the field is never wiped mid-edit. */
+    let pendingTabsRender = null;
+
+    /**
+     * Inline editor for one tab's name. Nothing is written locally: the committed value goes to
+     * Hermes, and the strip redraws from the catalog once the rename lands.
+     */
+    function startTabRename(sessionId) {
+        if (!sessionId) {
+            return;
+        }
+        const tabs = tabBar.querySelectorAll('.session-tab');
+        let tab = null;
+        for (let i = 0; i < tabs.length; i++) {
+            if (tabs[i].dataset.id === sessionId) {
+                tab = tabs[i];
+                break;
+            }
+        }
+        const titleEl = tab ? tab.querySelector('.tab-title') : null;
+        if (!tab || !titleEl || tab.classList.contains('editing')) {
+            return;
+        }
+        const record = lastSessions.find(function(s) { return s.id === sessionId; });
+        const current = (record && record.title) || titleEl.textContent || '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'tab-rename-input';
+        input.value = current;
+        input.maxLength = 100;
+        input.spellcheck = false;
+        input.setAttribute('aria-label', locale.tabContextRename);
+        let finished = false;
+        function finish(commit) {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            tab.classList.remove('editing');
+            if (input.parentNode) {
+                input.parentNode.replaceChild(titleEl, input);
+            }
+            const value = input.value.replace(/\s+/g, ' ').trim();
+            if (commit && value && value !== current) {
+                vscode.postMessage({ type: 'renameSession', sessionId: sessionId, title: value });
+            }
+            if (pendingTabsRender) {
+                const next = pendingTabsRender;
+                pendingTabsRender = null;
+                renderSessionTabs(next.sessions, next.activeId);
+            }
+        }
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                finish(true);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                finish(false);
+            }
+        });
+        input.addEventListener('blur', function() { finish(true); });
+        input.addEventListener('click', function(e) { e.stopPropagation(); });
+        input.addEventListener('dblclick', function(e) { e.stopPropagation(); });
+        tab.classList.add('editing');
+        titleEl.parentNode.replaceChild(input, titleEl);
+        input.focus();
+        input.select();
     }
 
     function wireTabDragDrop(tab) {
@@ -5532,6 +5606,10 @@
         lastActiveSessionId = activeSessionId;
         if (!sessions || sessions.length === 0) {
             tabBar.innerHTML = '';
+            return;
+        }
+        if (tabBar.querySelector('.session-tab.editing')) {
+            pendingTabsRender = { sessions: sessions, activeId: activeId };
             return;
         }
         const parts = [];

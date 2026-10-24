@@ -39,8 +39,8 @@ import {
 } from './transcript/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './session/store';
-import { applyCatalogRows } from './session/catalog';
-import { backfillAgentEngaged, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
+import { applyCatalogRows, renameSession } from './session/catalog';
+import { backfillAgentEngaged, hermesSessionIdFor, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
 import { buildReplayMessages } from './session/replay';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
 import { PromptRunner } from './session/promptRunner';
@@ -427,6 +427,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'closeSessions':
                     void this._handleCloseSessions(message.sessionId, message.mode);
+                    break;
+                case 'renameSession':
+                    void this._handleRenameSession(message.sessionId, message.title);
                     break;
                 case 'togglePinSession':
                     this._handleTogglePinSession(message.sessionId);
@@ -2816,6 +2819,37 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             await this._refreshSessionsFromHermes();
         }
         await this._handleSwitchSession(sessionId);
+    }
+
+    /**
+     * Retitle a tab through Hermes, then re-read the catalog.
+     *
+     * The rule lives in `session/catalog`; this supplies the wire call, the rescan and the log
+     * line, so the handler goes away with the provider and the rule stays.
+     */
+    private async _handleRenameSession(sessionId: unknown, rawTitle: unknown): Promise<void> {
+        if (typeof sessionId !== 'string' || !sessionId) {
+            return;
+        }
+        const acp = this._acp;
+        if (!acp) {
+            this._log(`Rename needs a live connection (${sessionId})`);
+            return;
+        }
+        // The strip's id is only the tab's: an adopted tab carries a local id, and Hermes would
+        // answer "unknown session" for it.
+        const hermesSessionId = hermesSessionIdFor(this._sessions, sessionId);
+        const outcome = await renameSession({
+            setTitle: (id, title) => acp.setSessionTitle(id, title),
+            refreshCatalog: () => this._refreshSessionsFromHermes(),
+            log: line => this._log(line),
+        }, hermesSessionId, rawTitle);
+        if (outcome.ok) {
+            this._log(`Renamed ${hermesSessionId} to "${outcome.title}"`);
+            return;
+        }
+        const detail = outcome.message ? ` — ${outcome.message}` : '';
+        this._log(`Rename refused for ${hermesSessionId}: ${outcome.reason}${detail}`);
     }
 
     private _handleTogglePinSession(sessionId: string): void {

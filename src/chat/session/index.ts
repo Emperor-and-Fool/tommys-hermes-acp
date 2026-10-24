@@ -57,6 +57,18 @@ export function backfillAgentEngaged(
     return session;
 }
 
+/**
+ * The Hermes session behind a tab.
+ *
+ * A tab opened from the pane carries a local id until the catalog lists it, so the id the strip
+ * shows is not always the id Hermes knows. Writes that address a session by id — a rename — must
+ * use this one.
+ */
+export function hermesSessionIdFor(sessions: SessionInfo[], tabId: string): string {
+    const record = sessions.find(session => session.id === tabId);
+    return record?.hermesSessionId || tabId;
+}
+
 /** Pinned first, then the most recently updated. The one order rule the strip has. */
 function sortPinnedFirst(sessions: SessionInfo[]): SessionInfo[] {
     return [...sessions].sort((a, b) => {

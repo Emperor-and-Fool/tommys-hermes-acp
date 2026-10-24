@@ -237,11 +237,11 @@ export interface LocaleStrings {
     multiSelectExit: string;
     multiSelectCount: string;
     fileLinkTitle: string;
-    tabRename: string;
     tabClose: string;
     tabContextSid: string;
     tabContextExport: string;
     tabContextCopy: string;
+    tabContextRename: string;
     tabContextClose: string;
     tabContextCloseOthers: string;
     tabContextCloseLeft: string;

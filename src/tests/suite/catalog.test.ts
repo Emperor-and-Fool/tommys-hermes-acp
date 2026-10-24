@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { applyCatalogRows, CatalogRow } from '../../chat/session/catalog';
+import { applyCatalogRows, CatalogRow, MAX_SESSION_TITLE_LENGTH, normalizeSessionTitle, renameSession, SessionTitlePort } from '../../chat/session/catalog';
 import type { SessionInfo } from '../../chat/HermesChatProvider';
 
 const local = (over: Partial<SessionInfo>): SessionInfo => ({
@@ -110,5 +110,63 @@ describe('applyCatalogRows', () => {
         const byId = new Map(result.sessions.map(s => [s.hermesSessionId, s]));
         assert.strictEqual(byId.get('h-empty')?.agentEngaged, false);
         assert.strictEqual(byId.get('h-used')?.agentEngaged, true);
+    });
+});
+
+describe('normalizeSessionTitle', () => {
+    it('collapses whitespace and trims', () => {
+        assert.deepStrictEqual(normalizeSessionTitle('  New \n  name  '), { ok: true, title: 'New name' });
+    });
+
+    it('refuses a title that is empty or only spaces', () => {
+        assert.deepStrictEqual(normalizeSessionTitle('   '), { ok: false, reason: 'empty' });
+        assert.deepStrictEqual(normalizeSessionTitle(''), { ok: false, reason: 'empty' });
+    });
+
+    it('refuses a title past the agent limit, and keeps one exactly at it', () => {
+        const atLimit = 'a'.repeat(MAX_SESSION_TITLE_LENGTH);
+        assert.deepStrictEqual(normalizeSessionTitle(atLimit), { ok: true, title: atLimit });
+        assert.deepStrictEqual(normalizeSessionTitle(atLimit + 'a'), { ok: false, reason: 'too-long' });
+    });
+});
+
+describe('renameSession', () => {
+    const recorder = (behaviour?: () => void): { calls: string[]; port: SessionTitlePort } => {
+        const calls: string[] = [];
+        const port: SessionTitlePort = {
+            setTitle: async (id: string, title: string) => {
+                calls.push('set:' + id + ':' + title);
+                if (behaviour) {
+                    behaviour();
+                }
+                return true;
+            },
+            refreshCatalog: async () => { calls.push('refresh'); },
+            log: () => {},
+        };
+        return { calls, port };
+    };
+
+    it('writes through Hermes, then re-reads the catalog', async () => {
+        const { calls, port } = recorder();
+        const outcome = await renameSession(port, 's-1', '  New   name ');
+        assert.deepStrictEqual(outcome, { ok: true, title: 'New name' });
+        assert.deepStrictEqual(calls, ['set:s-1:New name', 'refresh']);
+    });
+
+    it('never touches the wire for a title Hermes would refuse', async () => {
+        const { calls, port } = recorder();
+        const outcome = await renameSession(port, 's-1', '   ');
+        assert.deepStrictEqual(outcome, { ok: false, reason: 'empty' });
+        assert.deepStrictEqual(calls, []);
+    });
+
+    it('reports a refusal and skips the rescan when the write is rejected', async () => {
+        const { calls, port } = recorder(() => { throw new Error("Title 'Taken' is already in use by session abc"); });
+        const outcome = await renameSession(port, 's-1', 'Taken');
+        assert.strictEqual(outcome.ok, false);
+        assert.strictEqual(outcome.reason, 'refused');
+        assert.ok((outcome.message || '').includes('already in use'));
+        assert.deepStrictEqual(calls, ['set:s-1:Taken']);
     });
 });

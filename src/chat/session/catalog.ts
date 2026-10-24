@@ -1,4 +1,5 @@
 import type { SessionInfo } from '../HermesChatProvider';
+import type { SessionTitleOutcome } from '../../types/chat';
 
 /**
  * What Hermes reports for one session. Only the fields the index actually reads; anything
@@ -105,4 +106,60 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
         activeChanged,
         hiddenRows: input.rows.filter(row => row.hidden),
     };
+}
+
+/** Hermes' own ceiling (`SessionDB.MAX_TITLE_LENGTH`); checking here saves a round trip. */
+export const MAX_SESSION_TITLE_LENGTH = 100;
+
+/**
+ * The title a write would send, or the reason Hermes would refuse it.
+ *
+ * Whitespace collapses the way the agent collapses it, so a title made only of spaces is
+ * empty here as well rather than on the other side of the connection.
+ */
+export function normalizeSessionTitle(raw: unknown): SessionTitleOutcome {
+    if (typeof raw !== 'string') {
+        return { ok: false, reason: 'empty' };
+    }
+    const title = raw.replace(/\s+/g, ' ').trim();
+    if (!title) {
+        return { ok: false, reason: 'empty' };
+    }
+    if (title.length > MAX_SESSION_TITLE_LENGTH) {
+        return { ok: false, reason: 'too-long' };
+    }
+    return { ok: true, title };
+}
+
+/** What a title write needs: the ACP call, the catalog read that follows it, and a log line. */
+export interface SessionTitlePort {
+    setTitle(sessionId: string, title: string): Promise<boolean>;
+    refreshCatalog(): Promise<void>;
+    log(line: string): void;
+}
+
+/**
+ * Retitle a tab through Hermes, then re-read the catalog.
+ *
+ * The local index is never written here: the strip takes the name from the catalog like every
+ * other field Hermes owns. A refusal is reported, not swallowed — the caller logs it and the
+ * tab keeps the title Hermes still holds.
+ */
+export async function renameSession(
+    port: SessionTitlePort,
+    sessionId: string,
+    rawTitle: unknown
+): Promise<SessionTitleOutcome> {
+    const normalized = normalizeSessionTitle(rawTitle);
+    if (!normalized.ok) {
+        return normalized;
+    }
+    try {
+        await port.setTitle(sessionId, normalized.title);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, reason: 'refused', message };
+    }
+    await port.refreshCatalog();
+    return normalized;
 }
