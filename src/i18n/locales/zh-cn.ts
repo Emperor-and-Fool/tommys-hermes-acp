@@ -347,6 +347,9 @@ hermes --profile &lt;name&gt; acp</code></pre>
     switchSessionPromptTitle: 'Hermes 正在回复',
     switchSessionPromptBody: '切换会话将中断当前回复。请选择继续等待，或确认切换。',
     switchSessionConfirm: '切换',
+    switchSessionStopNow: '停止并切换',
+    switchSessionQueuedBody: '本次运行结束后切换。立即停止以马上切换。',
+    switchSessionQueuedTitle: '切换已排队',
     switchSessionStay: '停留',
 
     contextAttachHeaderLead: '会话被重置?',

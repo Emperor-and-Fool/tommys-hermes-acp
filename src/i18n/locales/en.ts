@@ -347,6 +347,9 @@ hermes --profile &lt;name&gt; acp</code></pre>
     switchSessionPromptTitle: 'Hermes is responding',
     switchSessionPromptBody: 'Switching sessions will interrupt the current reply. Wait for it to finish, or confirm to switch.',
     switchSessionConfirm: 'Switch',
+    switchSessionStopNow: 'Stop & switch',
+    switchSessionQueuedBody: 'Switching when this run ends. Stop it to switch now.',
+    switchSessionQueuedTitle: 'Switch queued',
     switchSessionStay: 'Stay',
 
     contextAttachHeaderLead: 'Session reset?',

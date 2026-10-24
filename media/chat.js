@@ -1865,6 +1865,45 @@
         hideModal(switchSessionModal);
     }
 
+    /**
+     * A switch pressed during a run is queued behind it, so the pane has to say so. The stop
+     * button is the way out: it ends the run, and the queued switch then happens at once.
+     */
+    let switchQueuedFor = null;
+    function markSwitchQueued(sessionId) {
+        switchQueuedFor = sessionId;
+        const titleEl = document.getElementById('switchSessionModalTitle');
+        const bodyEl = document.getElementById('switchSessionModalBody');
+        const stayBtn = document.getElementById('switchSessionStayBtn');
+        const confirmBtn = document.getElementById('switchSessionConfirmBtn');
+        if (titleEl) titleEl.textContent = locale.switchSessionQueuedTitle || '';
+        if (bodyEl) bodyEl.textContent = locale.switchSessionQueuedBody || '';
+        if (stayBtn) stayBtn.hidden = true;
+        if (confirmBtn) {
+            confirmBtn.textContent = locale.switchSessionStopNow || locale.stop;
+            confirmBtn.className = 'toolbar-btn switch-queued-btn';
+            confirmBtn.dataset.queued = 'true';
+        }
+        const tab = [...document.querySelectorAll('.session-tab')].find(t => t.dataset.id === sessionId);
+        if (tab) tab.classList.add('switch-pending');
+    }
+
+    function clearSwitchQueued() {
+        if (!switchQueuedFor) return;
+        switchQueuedFor = null;
+        const stayBtn = document.getElementById('switchSessionStayBtn');
+        const confirmBtn = document.getElementById('switchSessionConfirmBtn');
+        if (stayBtn) stayBtn.hidden = false;
+        if (confirmBtn) {
+            confirmBtn.textContent = locale.switchSessionConfirm || '';
+            confirmBtn.className = 'toolbar-btn primary';
+            delete confirmBtn.dataset.queued;
+        }
+        document.querySelectorAll('.session-tab.switch-pending').forEach(t => t.classList.remove('switch-pending'));
+        hideModal(switchSessionModal);
+        pendingSwitchSessionId = null;
+    }
+
     function requestSwitchSession(sessionId) {
         if (!sessionId || sessionId === activeSessionId) {
             return;
@@ -5094,18 +5133,26 @@
     }
     if (switchSessionConfirmBtn) {
         switchSessionConfirmBtn.addEventListener('click', function() {
+            const confirmBtn = document.getElementById('switchSessionConfirmBtn');
+            if (confirmBtn && confirmBtn.dataset.queued === 'true') {
+                // Stop the run; the switch is already queued and lands the moment it ends.
+                vscode.postMessage({ type: 'cancel' });
+                return;
+            }
             if (!pendingSwitchSessionId) {
                 closeSwitchSessionModal();
                 return;
             }
             const sessionId = pendingSwitchSessionId;
-            closeSwitchSessionModal();
-            vscode.postMessage({ type: 'switchSession', sessionId: sessionId, interrupt: true });
+            vscode.postMessage({ type: 'switchSession', sessionId, interrupt: true });
+            markSwitchQueued(sessionId);
         });
     }
     if (switchSessionModal) {
         switchSessionModal.addEventListener('click', function(e) {
-            if (e.target === switchSessionModal) {
+            // While a switch is queued the dialog is the only thing explaining the wait, so
+            // a click outside must not dismiss it.
+            if (e.target === switchSessionModal && !switchQueuedFor) {
                 closeSwitchSessionModal();
             }
         });
@@ -5776,6 +5823,9 @@
             case 'sessionList':
                 if ((msg.sessions || []).length) paneHintText = '';
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
+                if (switchQueuedFor && msg.activeSessionId === switchQueuedFor) {
+                    clearSwitchQueued();
+                }
                 break;
 
             case 'sessionExport':
