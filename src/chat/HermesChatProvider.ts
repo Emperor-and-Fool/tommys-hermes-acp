@@ -203,8 +203,25 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _permissionCounter = 0;
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
-    /** Turn-scoped state; behaviour joins it in the next steps of the extraction. */
-    private readonly _turn = new PromptRunner();
+    /**
+     * Turn-scoped state and session acquisition. The host literals are the whole coupling
+     * between a turn and the provider: every member here stays private, and this is the one
+     * place where the runner reaches the pane, the transcript and the tab list.
+     */
+    private readonly _turn = new PromptRunner({
+        acp: () => this._acp,
+        sessionId: () => this._sessionId,
+        messages: () => this._sessionMessages,
+        tabs: () => this._sessions,
+        resolveCwd: () => this._resolveCwd(),
+        log: (line) => this._log(line),
+        post: (msg) => this._postMessage(msg),
+        otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
+        detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
+        bindHermesSessionId: (id) => this._bindHermesSessionId(id),
+        applySessionModelPreference: () => this._applySessionModelPreference(),
+        setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
+    });
     /** Resolves when `_connect` finishes session/model setup after ACP `start`. */
     private _connectPromise: Promise<void> | undefined;
     /** When true, suppress forwarding ACP `ready` until post-connect setup completes. */
@@ -919,42 +936,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     /** True when the current tab has a usable Hermes session. */
     private async _ensureAcpReadyForCurrentSession(): Promise<boolean> {
-        if (!this._acp) {
-            return false;
-        }
-        if (this._otherSessionIsPrompting()) {
-            await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
-        }
-        // A tab switch used to force a new ACP session (context reset), which is
-        // what littered state.db with empty `acp` rows. Resume the tab's session
-        // instead; only a tab that never got one falls through to session/new.
-        const bound = this._sessions.find(rec => rec.id === this._sessionId)?.hermesSessionId;
-        if (bound && this._acp.activeSessionId !== bound) {
-            const record = this._sessions.find(rec => rec.id === this._sessionId);
-            try {
-                await this._acp.loadSession(record?.cwd || this._resolveCwd(), bound);
-                this._log(`Switched Hermes session to ${bound}`);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._log(`Resume failed for ${bound}: ${msg}`);
-                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', bound) });
-                return false;
-            }
-        } else if (!bound) {
-            if (this._sessionMessages.length > 0) {
-                // This tab shows a conversation whose Hermes session is gone; creating a new
-                // one here would silently replace it, so say so and leave the pane alone.
-                this._log(`No Hermes session bound to tab ${this._sessionId}`);
-                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', this._sessionId) });
-                return false;
-            }
-            // Blank tab: the first message is what creates its session.
-            await this._acp.newSession(this._resolveCwd());
-            this._bindHermesSessionId(this._acp.activeSessionId);
-        }
-        await this._applySessionModelPreference();
-        this._acpBoundSessionId = this._sessionId;
-        return true;
+        return this._turn.ensureSessionReady();
     }
 
     private _postPromptScopedMessage(msg: Record<string, unknown>): void {
