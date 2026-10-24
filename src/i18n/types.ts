@@ -263,6 +263,9 @@ export interface LocaleStrings {
     switchSessionPromptBody: string;
     switchSessionConfirm: string;
     switchSessionStopNow: string;
+    undeliveredNotice: string;
+    undeliveredRestore: string;
+    undeliveredDiscard: string;
     switchSessionQueuedBody: string;
     switchSessionQueuedTitle: string;
     switchSessionStay: string;

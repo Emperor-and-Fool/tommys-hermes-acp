@@ -39,6 +39,7 @@ import {
 } from './transcript/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './session/store';
+import { findUndelivered, lastUserMessageText } from './session/undelivered';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
@@ -926,6 +927,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (messages.length === 0) {
             return;
         }
+        // A send that died between the pane and the agent leaves a user message in the local
+        // mirror that Hermes never received. Read it before the replay overwrites the file.
+        const undelivered = findUndelivered(lastUserMessageText(this._store.readMessages(localId)), messages);
         // The replay is text-only, so refs are restored from the attachment sidecar: the agent's
         // sequence carries thought and tool records and rewrites this file, so neither position
         // nor the file itself can be trusted to still hold them.
@@ -962,6 +966,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         });
         this._offerContextAttach(this._sessionMessages);
         this._postSessionList();
+        if (undelivered) {
+            this._log(`Undelivered message offered back to the composer: ${localId}`);
+            this._postMessage({ type: 'undeliveredMessage', text: undelivered });
+        }
     }
 
     /** Remember which Hermes session backs the current tab and this workspace. */
