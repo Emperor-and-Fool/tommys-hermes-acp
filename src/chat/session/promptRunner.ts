@@ -28,6 +28,9 @@ export interface PromptHost {
     saveMessage(role: string, text: string): void;
     acpStatus(): string | undefined;
     isViewingPromptSession(): boolean;
+    cancelPendingPermissions(): void;
+    awaitSessionReady(): Promise<void>;
+    setContextAttachAwaitingReply(value: boolean): void;
 }
 
 /**
@@ -130,6 +133,53 @@ export class PromptRunner {
             return;
         }
         this.host.post({ ...msg, sessionId: this.host.sessionId() });
+    }
+
+    /**
+     * End the turn that belongs to `fromSessionId`, keeping whatever had streamed.
+     * A no-op when no turn is running or when the turn belongs to another tab.
+     */
+    async detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void> {
+        if (!this.promptSessionId || this.promptSessionId !== fromSessionId) {
+            return;
+        }
+        if (this.host.acpStatus() !== 'prompting') {
+            this.promptSessionId = undefined;
+            this.clearText();
+            return;
+        }
+        this.host.log(`Detaching in-flight prompt from session ${fromSessionId}`);
+        if (options?.savePartial !== false) {
+            this.flushThought();
+            this.saveAssistantText();
+        }
+        this.clearText();
+        this.sendEpoch++;
+        this.host.cancelPendingPermissions();
+        await this.host.acp()?.cancel();
+        this.promptSessionId = undefined;
+    }
+
+    /**
+     * User pressed Stop. The epoch bump comes first so any chunk still in flight is dropped,
+     * and the pending permission cards are resolved as cancelled before the agent answers.
+     */
+    async cancel(): Promise<void> {
+        this.sendEpoch++;
+        this.clearStallHint();
+        this.host.setContextAttachAwaitingReply(false);
+        await this.host.awaitSessionReady();
+        this.flushThought();
+        this.clearText();
+        this.promptSessionId = undefined;
+        this.host.cancelPendingPermissions();
+        const acp = this.host.acp();
+        const wasPrompting = acp?.status === 'prompting';
+        await acp?.cancel();
+        this.host.post({ type: 'finishAssistantBubble', sessionId: this.host.sessionId() });
+        if (!wasPrompting && acp?.status === 'ready') {
+            this.host.post({ type: 'status', status: 'ready', sessionId: this.host.sessionId() });
+        }
     }
 
     async ensureSessionReady(): Promise<boolean> {

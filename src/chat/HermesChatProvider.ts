@@ -219,6 +219,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
         acpStatus: () => this._acp?.status,
         isViewingPromptSession: () => this._isViewingPromptSession(),
+        cancelPendingPermissions: () => this._cancelPendingPermissions(),
+        awaitSessionReady: () => this._awaitSessionReady(),
+        setContextAttachAwaitingReply: (value) => { this._contextAttachAwaitingReply = value; },
         detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._bindHermesSessionId(id),
         applySessionModelPreference: () => this._applySessionModelPreference(),
@@ -955,25 +958,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void> {
-        if (!this._turn.promptSessionId || this._turn.promptSessionId !== fromSessionId) {
-            return;
-        }
-        if (this._acp?.status !== 'prompting') {
-            this._turn.promptSessionId = undefined;
-            this._turn.clearText();
-            return;
-        }
-
-        this._log(`Detaching in-flight prompt from session ${fromSessionId}`);
-        if (options?.savePartial !== false) {
-            this._flushThoughtToHistory();
-            this._turn.saveAssistantText();
-        }
-        this._turn.clearText();
-        this._turn.sendEpoch++;
-        this._cancelPendingPermissions();
-        await this._acp?.cancel();
-        this._turn.promptSessionId = undefined;
+        return this._turn.detachActivePrompt(fromSessionId, options);
     }
 
     private _restoreMessages(target?: ChatSurface): void {
@@ -2564,20 +2549,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleCancel(): Promise<void> {
-        this._turn.sendEpoch++;
-        this._clearPromptStallTimer();
-        this._contextAttachAwaitingReply = false;
-        await this._awaitSessionReady();
-        this._flushThoughtToHistory();
-        this._turn.clearText();
-        this._turn.promptSessionId = undefined;
-        this._cancelPendingPermissions();
-        const wasPrompting = this._acp?.status === 'prompting';
-        await this._acp?.cancel();
-        this._postMessage({ type: 'finishAssistantBubble', sessionId: this._sessionId });
-        if (!wasPrompting && this._acp?.status === 'ready') {
-            this._postMessage({ type: 'status', status: 'ready', sessionId: this._sessionId });
-        }
+        return this._turn.cancel();
     }
 
     private _resolveFileUri(filePath: string): vscode.Uri | undefined {
