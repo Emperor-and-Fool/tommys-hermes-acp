@@ -43,6 +43,7 @@ import { applyCatalogRows } from './session/catalog';
 import { backfillAgentEngaged, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
 import { buildReplayMessages } from './session/replay';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
+import { PromptRunner } from './session/promptRunner';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
@@ -182,8 +183,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _sessions: SessionInfo[] = [];
     /** Sessions Hermes has flagged hidden: closed tabs waiting to be opened again. */
     private _hiddenSessions: CatalogSession[] = [];
-    private _lastAssistantText: string = '';
-    private _lastThoughtText: string = '';
     private _modelState: ModelListState | null = null;
     private _modelFallbackShown: boolean = false;
     private _activeAgentName: string = '';
@@ -204,16 +203,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _permissionCounter = 0;
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
+    /** Turn-scoped state; behaviour joins it in the next steps of the extraction. */
+    private readonly _turn = new PromptRunner();
     /** Resolves when `_connect` finishes session/model setup after ACP `start`. */
     private _connectPromise: Promise<void> | undefined;
     /** When true, suppress forwarding ACP `ready` until post-connect setup completes. */
     private _deferReadyUntilSessionSetup = false;
-    /** Bumped on cancel to abort a pending send before it reaches Hermes. */
-    private _sendEpoch = 0;
-    /** Fires when a prompt produces no output for a while (Hermes plugin init). */
-    private _promptStallTimer: ReturnType<typeof setTimeout> | undefined;
-    /** Chat session that owns the in-flight ACP prompt (may differ from `_sessionId` after tab switch). */
-    private _promptSessionId: string | undefined;
     /**
      * True only while a load the user asked for (tab switch, adopt, resume) is in
      * flight; a load fired mid-send must not repaint over the pending turn.
@@ -624,13 +619,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _isViewingPromptSession(): boolean {
-        return !this._promptSessionId || this._promptSessionId === this._sessionId;
+        return !this._turn.promptSessionId || this._turn.promptSessionId === this._sessionId;
     }
 
     private _otherSessionIsPrompting(): boolean {
         return this._acp?.status === 'prompting'
-            && !!this._promptSessionId
-            && this._promptSessionId !== this._sessionId;
+            && !!this._turn.promptSessionId
+            && this._turn.promptSessionId !== this._sessionId;
     }
 
 
@@ -672,26 +667,26 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _syncPromptUiIfReturningToOwner(): void {
-        if (!this._promptSessionId || this._promptSessionId !== this._sessionId) {
+        if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._sessionId) {
             return;
         }
         if (this._acp?.status !== 'prompting') {
             return;
         }
         this._postMessage({ type: 'status', status: 'prompting', sessionId: this._sessionId });
-        if (this._lastThoughtText) {
+        if (this._turn.lastThoughtText) {
             this._postMessage({
                 type: 'addMessage',
                 role: 'thought',
-                text: this._lastThoughtText,
+                text: this._turn.lastThoughtText,
                 sessionId: this._sessionId,
             });
         }
-        if (this._lastAssistantText) {
+        if (this._turn.lastAssistantText) {
             this._postMessage({
                 type: 'addMessage',
                 role: 'assistant',
-                text: this._lastAssistantText,
+                text: this._turn.lastAssistantText,
                 sessionId: this._sessionId,
             });
         }
@@ -928,7 +923,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return false;
         }
         if (this._otherSessionIsPrompting()) {
-            await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
+            await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
         }
         // A tab switch used to force a new ACP session (context reset), which is
         // what littered state.db with empty `acp` rows. Resume the tab's session
@@ -970,20 +965,20 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _clearPromptStallTimer(): void {
-        if (this._promptStallTimer) {
-            clearTimeout(this._promptStallTimer);
-            this._promptStallTimer = undefined;
+        if (this._turn.stallTimer) {
+            clearTimeout(this._turn.stallTimer);
+            this._turn.stallTimer = undefined;
         }
     }
 
     private _schedulePromptStallHint(): void {
         this._clearPromptStallTimer();
-        this._promptStallTimer = setTimeout(() => {
-            this._promptStallTimer = undefined;
+        this._turn.stallTimer = setTimeout(() => {
+            this._turn.stallTimer = undefined;
             if (this._acp?.status !== 'prompting' || !this._isViewingPromptSession()) {
                 return;
             }
-            if (this._lastAssistantText || this._lastThoughtText) {
+            if (this._turn.lastAssistantText || this._turn.lastThoughtText) {
                 return;
             }
             this._log('Prompt stall hint: Hermes still initializing');
@@ -997,29 +992,29 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void> {
-        if (!this._promptSessionId || this._promptSessionId !== fromSessionId) {
+        if (!this._turn.promptSessionId || this._turn.promptSessionId !== fromSessionId) {
             return;
         }
         if (this._acp?.status !== 'prompting') {
-            this._promptSessionId = undefined;
-            this._lastAssistantText = '';
-            this._lastThoughtText = '';
+            this._turn.promptSessionId = undefined;
+            this._turn.lastAssistantText = '';
+            this._turn.lastThoughtText = '';
             return;
         }
 
         this._log(`Detaching in-flight prompt from session ${fromSessionId}`);
         if (options?.savePartial !== false) {
             this._flushThoughtToHistory();
-            if (this._lastAssistantText.trim()) {
-                this._saveMessage('assistant', this._lastAssistantText);
+            if (this._turn.lastAssistantText.trim()) {
+                this._saveMessage('assistant', this._turn.lastAssistantText);
             }
         }
-        this._lastAssistantText = '';
-        this._lastThoughtText = '';
-        this._sendEpoch++;
+        this._turn.lastAssistantText = '';
+        this._turn.lastThoughtText = '';
+        this._turn.sendEpoch++;
         this._cancelPendingPermissions();
         await this._acp?.cancel();
-        this._promptSessionId = undefined;
+        this._turn.promptSessionId = undefined;
     }
 
     private _restoreMessages(target?: ChatSurface): void {
@@ -1280,12 +1275,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _flushThoughtToHistory(): void {
-        const text = this._lastThoughtText.trim();
+        const text = this._turn.lastThoughtText.trim();
         if (!text) {
             return;
         }
         this._saveMessage('thought', text);
-        this._lastThoughtText = '';
+        this._turn.lastThoughtText = '';
     }
 
     private _persistMessages(): void {
@@ -1674,17 +1669,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 this._postPromptScopedMessage({ type: 'addMessage', role, text, toolCallId });
                 // Late events, after a cancel or a detach, arrive with no prompt session:
                 // drop them rather than writing them anywhere.
-                if (!this._promptSessionId) {
+                if (!this._turn.promptSessionId) {
                     return;
                 }
                 if (role === 'user') {
                     this._saveMessage('user', text);
                 }
                 if (role === 'assistant') {
-                    this._lastAssistantText = text;
+                    this._turn.lastAssistantText = text;
                 }
                 if (role === 'thought') {
-                    this._lastThoughtText = text;
+                    this._turn.lastThoughtText = text;
                 }
                 if (role === 'tool' && toolCallId) {
                     this._upsertToolMessage(toolCallId, text);
@@ -1708,22 +1703,22 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 if (status === 'ready') {
                     this._reconnectAttempts = 0;
                     this._clearPromptStallTimer();
-                    if (this._promptSessionId) {
+                    if (this._turn.promptSessionId) {
                         this._flushThoughtToHistory();
-                        if (this._lastAssistantText) {
-                            this._saveMessage('assistant', this._lastAssistantText);
+                        if (this._turn.lastAssistantText) {
+                            this._saveMessage('assistant', this._turn.lastAssistantText);
                         }
                     }
-                    this._lastAssistantText = '';
-                    this._lastThoughtText = '';
-                    this._promptSessionId = undefined;
+                    this._turn.lastAssistantText = '';
+                    this._turn.lastThoughtText = '';
+                    this._turn.promptSessionId = undefined;
                     if (this._isViewingPromptSession()) {
                         this._completeContextAttachAfterSuccessfulReply();
                     }
                 }
                 if (status === 'prompting') {
-                    this._lastAssistantText = '';
-                    this._lastThoughtText = '';
+                    this._turn.lastAssistantText = '';
+                    this._turn.lastThoughtText = '';
                     this._schedulePromptStallHint();
                 }
             },
@@ -2530,7 +2525,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._persistModelChoice(valueId, label);
             try {
                 if (this._otherSessionIsPrompting()) {
-                    await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
+                    await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
                 }
                 await this._resetAgentWithModel(valueId, effectiveConfigId);
                 this._acpBoundSessionId = this._sessionId;
@@ -2561,15 +2556,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleUserMessage(text: string, contextAttach?: ContextAttachOption, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
-        const epoch = this._sendEpoch;
+        const epoch = this._turn.sendEpoch;
         await this._awaitSessionReady();
-        if (epoch !== this._sendEpoch) {
+        if (epoch !== this._turn.sendEpoch) {
             return;
         }
         if (this._modelSwitchInFlight) {
             await this._modelSwitchInFlight;
         }
-        if (epoch !== this._sendEpoch) {
+        if (epoch !== this._turn.sendEpoch) {
             return;
         }
         if (this._sessions.length === 0) {
@@ -2577,7 +2572,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         const ready = await this._ensureAcpReadyForCurrentSession();
-        if (epoch !== this._sendEpoch) {
+        if (epoch !== this._turn.sendEpoch) {
             return;
         }
         if (!ready) {
@@ -2588,7 +2583,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
         this._snapshotSessionModelFromProfile();
-        this._promptSessionId = this._sessionId;
+        this._turn.promptSessionId = this._sessionId;
         const imageRefs = images && images.length ? this._storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
             this._indexAttachments(imageRefs, text);
@@ -2599,7 +2594,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._contextAttachAwaitingReply = true;
         }
         const promptText = this._buildPromptText(text, contextAttach);
-        if (epoch !== this._sendEpoch) {
+        if (epoch !== this._turn.sendEpoch) {
             return;
         }
         if (imageCount > 0) {
@@ -2619,14 +2614,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleCancel(): Promise<void> {
-        this._sendEpoch++;
+        this._turn.sendEpoch++;
         this._clearPromptStallTimer();
         this._contextAttachAwaitingReply = false;
         await this._awaitSessionReady();
         this._flushThoughtToHistory();
-        this._lastAssistantText = '';
-        this._lastThoughtText = '';
-        this._promptSessionId = undefined;
+        this._turn.lastAssistantText = '';
+        this._turn.lastThoughtText = '';
+        this._turn.promptSessionId = undefined;
         this._cancelPendingPermissions();
         const wasPrompting = this._acp?.status === 'prompting';
         await this._acp?.cancel();
@@ -2782,7 +2777,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             }
             await this._detachActivePrompt(this._sessionId, { savePartial: true });
         } else if (this._otherSessionIsPrompting()) {
-            await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
+            await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
         }
         return true;
     }
@@ -2823,8 +2818,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private _currentSessionIsPrompting(): boolean {
         return this._acp?.status === 'prompting'
-            && !!this._promptSessionId
-            && this._promptSessionId === this._sessionId;
+            && !!this._turn.promptSessionId
+            && this._turn.promptSessionId === this._sessionId;
     }
 
     private _handleReorderSessions(sessionIds: unknown): void {
@@ -2993,15 +2988,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._log(`Switch profile/agent: ${target.displayName}`);
-        if (this._promptSessionId) {
-            await this._detachActivePrompt(this._promptSessionId, { savePartial: true });
+        if (this._turn.promptSessionId) {
+            await this._detachActivePrompt(this._turn.promptSessionId, { savePartial: true });
         }
         this._saveCurrentSession();
         this._acp?.dispose();
         this._acp = undefined;
         this._modelState = null;
         this._tokenUsage = null;
-        this._promptSessionId = undefined;
+        this._turn.promptSessionId = undefined;
         this._acpBoundSessionId = '';
         this._postTokenUsage();
         this._bindProfileScope(target.scopeKey);
@@ -3102,7 +3097,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             vscode.window.showWarningMessage(t('hermesNotConnected'));
             return;
         }
-        this._promptSessionId = this._sessionId;
+        this._turn.promptSessionId = this._sessionId;
         this._snapshotSessionModelFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._sessionId });
         this._saveMessage('user', text);
@@ -3178,11 +3173,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');
-        this._sendEpoch++;
+        this._turn.sendEpoch++;
         this._flushThoughtToHistory();
-        if (this._lastAssistantText.trim()) {
-            this._saveMessage('assistant', this._lastAssistantText);
-            this._lastAssistantText = '';
+        if (this._turn.lastAssistantText.trim()) {
+            this._saveMessage('assistant', this._turn.lastAssistantText);
+            this._turn.lastAssistantText = '';
         }
         this._cancelPendingPermissions();
         this._saveCurrentSession();
@@ -3201,11 +3196,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
-        this._sendEpoch++;
+        this._turn.sendEpoch++;
         this._flushThoughtToHistory();
-        if (this._lastAssistantText.trim()) {
-            this._saveMessage('assistant', this._lastAssistantText);
-            this._lastAssistantText = '';
+        if (this._turn.lastAssistantText.trim()) {
+            this._saveMessage('assistant', this._turn.lastAssistantText);
+            this._turn.lastAssistantText = '';
         }
         this._cancelPendingPermissions();
         this._saveCurrentSession();
