@@ -637,21 +637,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             && this._promptSessionId !== this._sessionId;
     }
 
-    private _withPromptSessionContext<T>(fn: () => T): T {
-        if (!this._promptSessionId || this._promptSessionId === this._sessionId) {
-            return fn();
-        }
-        const savedSessionId = this._sessionId;
-        const savedMessages = this._sessionMessages;
-        this._sessionId = this._promptSessionId;
-        this._sessionMessages = this._loadSessionMessagesFromDisk(this._promptSessionId);
-        try {
-            return fn();
-        } finally {
-            this._sessionId = savedSessionId;
-            this._sessionMessages = savedMessages;
-        }
-    }
 
     private _snapshotSessionModelFromProfile(sessionId?: string): void {
         const sid = sessionId || this._sessionId;
@@ -1783,25 +1768,25 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._clearPromptStallTimer();
                 }
                 this._postPromptScopedMessage({ type: 'addMessage', role, text, toolCallId });
+                // Late events, after a cancel or a detach, arrive with no prompt session:
+                // drop them rather than writing them anywhere.
                 if (!this._promptSessionId) {
                     return;
                 }
-                this._withPromptSessionContext(() => {
-                    if (role === 'user') {
-                        this._saveMessage('user', text);
-                    }
-                    if (role === 'assistant') {
-                        this._lastAssistantText = text;
-                    }
-                    if (role === 'thought') {
-                        this._lastThoughtText = text;
-                    }
-                    if (role === 'tool' && toolCallId) {
-                        this._upsertToolMessage(toolCallId, text);
-                    } else if (role === 'tool') {
-                        this._saveMessage('tool', text);
-                    }
-                });
+                if (role === 'user') {
+                    this._saveMessage('user', text);
+                }
+                if (role === 'assistant') {
+                    this._lastAssistantText = text;
+                }
+                if (role === 'thought') {
+                    this._lastThoughtText = text;
+                }
+                if (role === 'tool' && toolCallId) {
+                    this._upsertToolMessage(toolCallId, text);
+                } else if (role === 'tool') {
+                    this._saveMessage('tool', text);
+                }
             },
             (status, msg) => {
                 this._log(`Status: ${status}${msg ? ' — ' + msg : ''}`);
@@ -1820,12 +1805,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._reconnectAttempts = 0;
                     this._clearPromptStallTimer();
                     if (this._promptSessionId) {
-                        this._withPromptSessionContext(() => {
-                            this._flushThoughtToHistory();
-                            if (this._lastAssistantText) {
-                                this._saveMessage('assistant', this._lastAssistantText);
-                            }
-                        });
+                        this._flushThoughtToHistory();
+                        if (this._lastAssistantText) {
+                            this._saveMessage('assistant', this._lastAssistantText);
+                        }
                     }
                     this._lastAssistantText = '';
                     this._lastThoughtText = '';
