@@ -39,6 +39,7 @@ import {
 } from './transcript/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './session/store';
+import { applyCatalogRows } from './session/catalog';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
 import {
     canAggregateToolTexts,
@@ -723,65 +724,25 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * dashboard appears without any adoption step.
      */
     private _applyCatalog(rows: CatalogSession[]): void {
-        const previous = new Map(this._sessions.map(rec => [rec.id, rec]));
-        // A tab opened via session/new still carries its local id until the catalog lists it,
-        // so match on the Hermes id as well or the same session opens a second tab.
-        const byHermes = new Map(
-            this._sessions
-                .filter(rec => !!rec.hermesSessionId)
-                .map(rec => [rec.hermesSessionId as string, rec])
-        );
-        const next: SessionInfo[] = [];
-        for (const row of rows) {
-            if (row.hidden) {
-                continue;
-            }
-            const prior = previous.get(row.sessionId) || byHermes.get(row.sessionId);
-            next.push({
-                id: prior?.id || row.sessionId,
-                title: prior?.titleManual
-                    ? prior.title
-                    : (row.title || prior?.title || row.sessionId.slice(0, 8)),
-                createdAt: prior?.createdAt ?? (row.updatedAt || Date.now()),
-                updatedAt: row.updatedAt || prior?.updatedAt || Date.now(),
-                messageCount: row.messageCount,
-                titleManual: prior?.titleManual,
-                pinned: prior?.pinned,
-                modelId: prior?.modelId,
-                modelLabel: prior?.modelLabel,
-                agentEngaged: prior?.agentEngaged ?? row.messageCount > 0,
-                hermesSessionId: row.sessionId,
-                cwd: row.cwd ?? prior?.cwd,
-            });
-        }
-        // A session created moments ago has no messages, so the catalog does not list it
-        // yet; keep the tab the user is sitting in until its first turn lands.
-        const current = previous.get(this._sessionId);
-        if (current && !next.some(rec => rec.id === this._sessionId) && this._sessionMessages.length === 0) {
-            next.unshift(current);
-        }
-        next.sort((a, b) => {
-            if (!!a.pinned !== !!b.pinned) {
-                return a.pinned ? -1 : 1;
-            }
-            return b.updatedAt - a.updatedAt;
+        const result = applyCatalogRows({
+            previous: this._sessions,
+            rows,
+            activeId: this._sessionId,
+            activeHasMessages: this._sessionMessages.length > 0,
         });
-        // The active id can disappear on us (closed elsewhere, or a stale id restored from
-        // disk before the connection existed): fall back to the newest tab instead of
-        // leaving the view pointed at a session that is no longer open.
-        if (next.length > 0 && !next.some(rec => rec.id === this._sessionId)) {
-            this._sessionId = next[0].id;
+        if (result.activeChanged) {
+            // The tab the pane showed is gone from the catalog, so it points at the newest.
+            this._sessionId = result.activeId;
             this._sessionMessages = [];
         }
-        this._sessions = next;
-        this._hiddenSessions = rows.filter(row => row.hidden);
+        this._sessions = result.sessions;
+        this._hiddenSessions = result.hiddenRows;
         try {
             this._saveCatalog();
         } catch { /* non-critical */ }
         this._postSessionList();
         this._postHiddenSessions();
     }
-
     /** Read the catalog; null when there is no connection to ask. */
     private async _readCatalog(): Promise<CatalogSession[] | null> {
         const acp = this._acp;
