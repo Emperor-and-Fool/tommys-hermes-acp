@@ -38,6 +38,7 @@ import {
     formatDetectSummaryForReport,
 } from './transcript/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
+import { SessionStore } from './session/store';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
@@ -172,8 +173,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Session State ----
     private _historyDir: string;
     private _scopeKey: string;
-    private _sessionsPath: string;
-    private _activeIdPath: string;
+    private _store: SessionStore;
     private _sessionMessages: ChatMessage[] = [];
     private _sessionId: string = '';
     private _sessions: SessionInfo[] = [];
@@ -265,8 +265,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._scopeKey = initialTarget.scopeKey;
         this._activeSelectionId = initialTarget.selectionId;
         this._activeAgentName = initialTarget.displayName;
-        this._sessionsPath = sessionsPathFor(this._historyDir, this._scopeKey);
-        this._activeIdPath = activeSessionPathFor(this._historyDir, this._scopeKey);
+        this._store = new SessionStore(this._historyDir, this._scopeKey);
         this._loadSessions();
         this._sessionId = this._restoreActiveSession();
         this._ensureSessionRegistered();
@@ -282,22 +281,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _restoreActiveSession(): string {
-        // Try restoring last active session
-        try {
-            if (fs.existsSync(this._activeIdPath)) {
-                const id = fs.readFileSync(this._activeIdPath, 'utf-8').trim();
-                if (this._sessions.some(s => s.id === id)) return id;
-            }
-        } catch { /* ignore */ }
+        const id = this._store.readActiveId();
+        if (id && this._sessions.some(s => s.id === id)) {
+            return id;
+        }
         return Date.now().toString(36);
     }
 
     private _saveActiveSession(): void {
-        try { fs.writeFileSync(this._activeIdPath, this._sessionId); } catch { /* ignore */ }
+        this._store.writeActiveId(this._sessionId);
     }
 
     private _msgPath(sid: string): string {
-        return path.join(this._historyDir, `msgs_${sid}.json`);
+        return this._store.msgPath(sid);
     }
 
     public resolveWebviewView(
@@ -943,9 +939,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 }
             }
         } catch { /* the transcript still restores, without the pictures */ }
-        try {
-            fs.writeFileSync(this._msgPath(localId), JSON.stringify(messages, null, 2));
-        } catch { /* non-critical */ }
+        this._store.writeReplayedMessages(localId, messages);
         if (record) {
             record.messageCount = messages.length;
             record.agentEngaged = true;
@@ -1353,12 +1347,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _persistMessages(): void {
-        try {
-            const keep = this._sessionMessages.slice(-100);
-            fs.writeFileSync(this._msgPath(this._sessionId), JSON.stringify(keep, null, 2));
+        if (this._store.writeMessages(this._sessionId, this._sessionMessages)) {
             this._saveCurrentSession();
-        } catch {
-            // non-critical
         }
     }
 
@@ -1414,17 +1404,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _loadHistory(): void {
-        try {
-            const p = this._msgPath(this._sessionId);
-            if (fs.existsSync(p)) {
-                const data = fs.readFileSync(p, 'utf-8');
-                const messages: ChatMessage[] = JSON.parse(data);
-                this._sessionMessages = messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-                this._log(`Loaded ${this._sessionMessages.length} messages from history`);
-            }
-        } catch {
-            this._sessionMessages = [];
+        const messages = this._store.readMessages(this._sessionId);
+        if (messages.length) {
+            this._sessionMessages = messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            this._log(`Loaded ${this._sessionMessages.length} messages from history`);
+            return;
         }
+        this._sessionMessages = [];
     }
 
     private _saveCurrentSession(): void {
@@ -1496,24 +1482,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * Returns whether the write happened, for the one caller that does more on success.
      */
     private _saveCatalog(): boolean {
-        try {
-            fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions.slice(0, 50), null, 2));
-            return true;
-        } catch {
-            return false;
-        }
+        return this._store.writeCatalog(this._sessions);
     }
 
     private _loadSessions(): void {
-        try {
-            if (fs.existsSync(this._sessionsPath)) {
-                this._sessions = JSON.parse(fs.readFileSync(this._sessionsPath, 'utf-8'));
-                for (const session of this._sessions) {
-                    this._backfillAgentEngaged(session);
-                }
-                this._normalizePinnedOrder();
-            }
-        } catch { this._sessions = []; }
+        this._sessions = this._store.readCatalog();
+        for (const session of this._sessions) {
+            this._backfillAgentEngaged(session);
+        }
+        this._normalizePinnedOrder();
     }
 
     private _normalizePinnedOrder(): void {
@@ -1599,8 +1576,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         this._saveCurrentSession();
         this._scopeKey = scopeKey;
-        this._sessionsPath = sessionsPathFor(this._historyDir, scopeKey);
-        this._activeIdPath = activeSessionPathFor(this._historyDir, scopeKey);
+        this._store.setScope(scopeKey);
         this._sessions = [];
         this._loadSessions();
         this._sessionId = this._restoreActiveSession();
