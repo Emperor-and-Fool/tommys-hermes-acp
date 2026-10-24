@@ -1,6 +1,6 @@
 import type { AcpClient } from '../../acp/AcpClient';
 import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
-import { t } from '../../i18n';
+import { localizeStatusMessage, t } from '../../i18n';
 
 /**
  * What a turn needs from the provider.
@@ -26,6 +26,8 @@ export interface PromptHost {
     applySessionModelPreference(): Promise<void>;
     setBoundSessionId(sessionId: string): void;
     saveMessage(role: string, text: string): void;
+    acpStatus(): string | undefined;
+    isViewingPromptSession(): boolean;
 }
 
 /**
@@ -88,6 +90,46 @@ export class PromptRunner {
         }
         this.host.saveMessage('assistant', this.lastAssistantText);
         this.lastAssistantText = '';
+    }
+
+    /** Cancel the no-output hint for this turn. */
+    clearStallHint(): void {
+        if (this.stallTimer) {
+            clearTimeout(this.stallTimer);
+            this.stallTimer = undefined;
+        }
+    }
+
+    /**
+     * Post "Hermes is initializing..." when the turn has produced nothing for 25 s — the
+     * agent is alive but silent while its plugins load, and the pane otherwise looks stuck.
+     */
+    scheduleStallHint(): void {
+        this.clearStallHint();
+        this.stallTimer = setTimeout(() => {
+            this.stallTimer = undefined;
+            if (this.host.acpStatus() !== 'prompting' || !this.host.isViewingPromptSession()) {
+                return;
+            }
+            if (this.lastAssistantText || this.lastThoughtText) {
+                return;
+            }
+            this.host.log('Prompt stall hint: Hermes still initializing');
+            this.host.post({
+                type: 'status',
+                status: 'prompting',
+                message: localizeStatusMessage('Hermes is initializing...'),
+                sessionId: this.host.sessionId(),
+            });
+        }, 25000);
+    }
+
+    /** Post to the pane only while it shows the tab this turn belongs to. */
+    postScoped(msg: Record<string, unknown>): void {
+        if (!this.host.isViewingPromptSession()) {
+            return;
+        }
+        this.host.post({ ...msg, sessionId: this.host.sessionId() });
     }
 
     async ensureSessionReady(): Promise<boolean> {

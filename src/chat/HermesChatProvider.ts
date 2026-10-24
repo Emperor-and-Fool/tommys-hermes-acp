@@ -217,6 +217,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
+        acpStatus: () => this._acp?.status,
+        isViewingPromptSession: () => this._isViewingPromptSession(),
         detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._bindHermesSessionId(id),
         applySessionModelPreference: () => this._applySessionModelPreference(),
@@ -941,37 +943,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postPromptScopedMessage(msg: Record<string, unknown>): void {
-        if (!this._isViewingPromptSession()) {
-            return;
-        }
-        this._postMessage({ ...msg, sessionId: this._sessionId });
+        this._turn.postScoped(msg);
     }
 
     private _clearPromptStallTimer(): void {
-        if (this._turn.stallTimer) {
-            clearTimeout(this._turn.stallTimer);
-            this._turn.stallTimer = undefined;
-        }
+        this._turn.clearStallHint();
     }
 
     private _schedulePromptStallHint(): void {
-        this._clearPromptStallTimer();
-        this._turn.stallTimer = setTimeout(() => {
-            this._turn.stallTimer = undefined;
-            if (this._acp?.status !== 'prompting' || !this._isViewingPromptSession()) {
-                return;
-            }
-            if (this._turn.lastAssistantText || this._turn.lastThoughtText) {
-                return;
-            }
-            this._log('Prompt stall hint: Hermes still initializing');
-            this._postMessage({
-                type: 'status',
-                status: 'prompting',
-                message: localizeStatusMessage('Hermes is initializing...'),
-                sessionId: this._sessionId,
-            });
-        }, 25000);
+        this._turn.scheduleStallHint();
     }
 
     private async _detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void> {
