@@ -1,4 +1,4 @@
-import type { AcpClient } from '../../acp/AcpClient';
+import type { AcpClient, PermissionRequest } from '../../acp/AcpClient';
 import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
 import { localizeStatusMessage, t } from '../../i18n';
 
@@ -26,6 +26,9 @@ export interface PromptHost {
     applySessionModelPreference(): Promise<void>;
     setBoundSessionId(sessionId: string): void;
     saveMessage(role: string, text: string): void;
+    savePermissionRequest(id: string, request: PermissionRequest): void;
+    resolvePermissionHistory(id: string, outcome: 'selected' | 'cancelled', optionId?: string, label?: string): void;
+    permissionOptionLabel(id: string, optionId: string): string | undefined;
     acpStatus(): string | undefined;
     isViewingPromptSession(): boolean;
     cancelPendingPermissions(): void;
@@ -47,6 +50,9 @@ export class PromptRunner {
     lastThoughtText = '';
     sendEpoch = 0;
     stallTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Cards waiting for the pane, keyed by id. Turn-scoped: a detach resolves them. */
+    private readonly pendingPermissions = new Map<string, (optionId: string | null) => void>();
+    private permissionCounter = 0;
 
     constructor(private readonly host: PromptHost) {}
 
@@ -155,7 +161,7 @@ export class PromptRunner {
         }
         this.clearText();
         this.sendEpoch++;
-        this.host.cancelPendingPermissions();
+        this.cancelPendingPermissions();
         await this.host.acp()?.cancel();
         this.promptSessionId = undefined;
     }
@@ -172,7 +178,7 @@ export class PromptRunner {
         this.flushThought();
         this.clearText();
         this.promptSessionId = undefined;
-        this.host.cancelPendingPermissions();
+        this.cancelPendingPermissions();
         const acp = this.host.acp();
         const wasPrompting = acp?.status === 'prompting';
         await acp?.cancel();
@@ -180,6 +186,55 @@ export class PromptRunner {
         if (!wasPrompting && acp?.status === 'ready') {
             this.host.post({ type: 'status', status: 'ready', sessionId: this.host.sessionId() });
         }
+    }
+
+    /** Ask the pane to approve a tool call; resolves with the chosen option id, or null. */
+    requestPermission(request: PermissionRequest): Promise<string | null> {
+        this.host.log(`Permission requested: ${request.title.slice(0, 80)}`);
+        return new Promise((resolve) => {
+            const id = `perm_${++this.permissionCounter}`;
+            this.pendingPermissions.set(id, resolve);
+            this.host.savePermissionRequest(id, request);
+            this.host.post({
+                type: 'permissionRequest',
+                id,
+                title: request.title,
+                detail: request.detail,
+                options: request.options,
+            });
+        });
+    }
+
+    /** The pane answered a card. Unknown ids are ignored — a stale click after a detach. */
+    handlePermissionResponse(id: string, optionId: string | null): void {
+        const pending = this.pendingPermissions.get(id);
+        if (!pending) {
+            return;
+        }
+        this.pendingPermissions.delete(id);
+        if (optionId) {
+            const label = this.host.permissionOptionLabel(id, optionId) ?? optionId;
+            this.host.log(`Permission approved: ${optionId}`);
+            this.host.resolvePermissionHistory(id, 'selected', optionId, label);
+            pending(optionId);
+            return;
+        }
+        this.host.log('Permission cancelled');
+        this.host.resolvePermissionHistory(id, 'cancelled');
+        pending(null);
+    }
+
+    /** Resolve every waiting card as cancelled and dismiss it in the pane. */
+    cancelPendingPermissions(): void {
+        if (this.pendingPermissions.size === 0) {
+            return;
+        }
+        for (const [id, resolve] of this.pendingPermissions) {
+            this.host.resolvePermissionHistory(id, 'cancelled');
+            resolve(null);
+            this.host.post({ type: 'permissionDismiss', id });
+        }
+        this.pendingPermissions.clear();
     }
 
     async ensureSessionReady(): Promise<boolean> {

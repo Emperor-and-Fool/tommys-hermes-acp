@@ -199,8 +199,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
     private readonly _extensionId: string;
-    private _pendingPermissions = new Map<string, (optionId: string | null) => void>();
-    private _permissionCounter = 0;
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
     /**
@@ -227,6 +225,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         applySessionModelPreference: () => this._applySessionModelPreference(),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._saveMessage(role, text),
+        savePermissionRequest: (id, request) => this._savePermissionRequest(id, request),
+        resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
+        permissionOptionLabel: (id, optionId) => {
+            const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
+            const opt = stored?.options?.find(o => o.optionId === optionId);
+            return opt ? resolvePermissionOptionLabel(getWebviewLocale(), opt) : undefined;
+        },
     });
     /** Resolves when `_connect` finishes session/model setup after ACP `start`. */
     private _connectPromise: Promise<void> | undefined;
@@ -1773,53 +1778,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _requestPermissionInChat(request: PermissionRequest): Promise<string | null> {
-        this._log(`Permission requested: ${request.title.slice(0, 80)}`);
-        return new Promise((resolve) => {
-            const id = `perm_${++this._permissionCounter}`;
-            this._pendingPermissions.set(id, resolve);
-            this._savePermissionRequest(id, request);
-            this._postMessage({
-                type: 'permissionRequest',
-                id,
-                title: request.title,
-                detail: request.detail,
-                options: request.options,
-            });
-        });
+        return this._turn.requestPermission(request);
     }
 
     private _handlePermissionResponse(id: string, optionId: string | null): void {
-        const pending = this._pendingPermissions.get(id);
-        if (!pending) {
-            return;
-        }
-        this._pendingPermissions.delete(id);
-        if (optionId) {
-            const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
-            const opt = stored?.options?.find(o => o.optionId === optionId);
-            const label = opt
-                ? resolvePermissionOptionLabel(getWebviewLocale(), opt)
-                : optionId;
-            this._log(`Permission approved: ${optionId}`);
-            this._resolvePermissionHistory(id, 'selected', optionId, label);
-            pending(optionId);
-            return;
-        }
-        this._log('Permission cancelled');
-        this._resolvePermissionHistory(id, 'cancelled');
-        pending(null);
+        this._turn.handlePermissionResponse(id, optionId);
     }
 
     private _cancelPendingPermissions(): void {
-        if (this._pendingPermissions.size === 0) {
-            return;
-        }
-        for (const [id, resolve] of this._pendingPermissions) {
-            this._resolvePermissionHistory(id, 'cancelled');
-            resolve(null);
-            this._postMessage({ type: 'permissionDismiss', id });
-        }
-        this._pendingPermissions.clear();
+        this._turn.cancelPendingPermissions();
     }
 
     /** One automatic reconnect after the process dies; the Retry button covers the rest. */
