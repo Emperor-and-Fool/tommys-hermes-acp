@@ -40,6 +40,7 @@ import {
 import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './session/store';
 import { applyCatalogRows } from './session/catalog';
+import { backfillAgentEngaged, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
 import {
     canAggregateToolTexts,
@@ -1413,17 +1414,16 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _ensureSessionRegistered(): void {
-        if (this._sessions.some(s => s.id === this._sessionId)) {
-            return;
-        }
         const firstUser = this._sessionMessages.find(m => m.role === 'user')?.text.slice(0, 40);
-        this._sessions.unshift({
+        const next = registerSession(this._sessions, {
             id: this._sessionId,
             title: firstUser || t('newChat'),
-            createdAt: parseInt(this._sessionId, 36) || Date.now(),
-            updatedAt: Date.now(),
             messageCount: this._sessionMessages.length,
         });
+        if (next === this._sessions) {
+            return;
+        }
+        this._sessions = next;
         try {
             this._saveCatalog();
         } catch { /* non-critical */ }
@@ -1463,10 +1463,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _normalizePinnedOrder(): void {
-        this._sessions = [
-            ...this._sessions.filter(s => s.pinned),
-            ...this._sessions.filter(s => !s.pinned),
-        ];
+        this._sessions = normalizePinnedOrder(this._sessions);
     }
 
     private _backfillAgentEngaged(session: SessionInfo): void {
@@ -1474,27 +1471,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         try {
-            const p = this._msgPath(session.id);
-            if (!fs.existsSync(p)) {
-                session.agentEngaged = false;
-                return;
-            }
-            const messages: ChatMessage[] = JSON.parse(fs.readFileSync(p, 'utf-8'));
-            session.agentEngaged = messages.some(m =>
-                m.role === 'assistant' || m.role === 'thought' || m.role === 'tool'
-            );
+            // The transcript is the only evidence of whether the agent ever answered here.
+            backfillAgentEngaged(session, this._store.readMessages(session.id));
         } catch {
             session.agentEngaged = false;
         }
     }
 
     private _markSessionAgentEngaged(): void {
-        const session = this._sessions.find(s => s.id === this._sessionId);
-        if (!session || session.agentEngaged) {
+        if (!markAgentEngaged(this._sessions, this._sessionId)) {
             return;
         }
-        session.agentEngaged = true;
-        session.updatedAt = Date.now();
         try {
             this._saveCatalog();
         } catch { /* non-critical */ }
@@ -2872,27 +2859,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
             return;
         }
-        const byId = new Map(this._sessions.map(s => [s.id, s]));
-        const reordered: SessionInfo[] = [];
-        for (const id of sessionIds) {
-            if (typeof id !== 'string') {
-                continue;
-            }
-            const session = byId.get(id);
-            if (session) {
-                reordered.push(session);
-                byId.delete(id);
-            }
-        }
-        for (const session of byId.values()) {
-            reordered.push(session);
-        }
-        if (reordered.length !== this._sessions.length) {
+        const next = reorderSessions(this._sessions, sessionIds);
+        if (!next) {
             return;
         }
-        const pinned = reordered.filter(s => s.pinned);
-        const unpinned = reordered.filter(s => !s.pinned);
-        this._sessions = [...pinned, ...unpinned];
+        this._sessions = next;
         this._log(`Reorder sessions: ${this._sessions.map(s => s.id).join(', ')}`);
         try {
             this._saveCatalog();
@@ -2993,28 +2964,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _handleTogglePinSession(sessionId: string): void {
-        const idx = this._sessions.findIndex(s => s.id === sessionId);
-        if (idx === -1) {
+        const next = pinSession(this._sessions, sessionId);
+        if (next === this._sessions) {
             return;
         }
-        const session = this._sessions[idx];
-        session.pinned = !session.pinned;
-        this._sessions.splice(idx, 1);
-        if (session.pinned) {
-            let lastPinnedIdx = -1;
-            for (let i = 0; i < this._sessions.length; i++) {
-                if (this._sessions[i].pinned) {
-                    lastPinnedIdx = i;
-                }
-            }
-            this._sessions.splice(lastPinnedIdx + 1, 0, session);
-        } else {
-            const firstUnpinnedIdx = this._sessions.findIndex(s => !s.pinned);
-            const insertAt = firstUnpinnedIdx === -1 ? this._sessions.length : firstUnpinnedIdx;
-            this._sessions.splice(insertAt, 0, session);
-        }
-        session.updatedAt = Date.now();
-        this._log(`${session.pinned ? 'Pin' : 'Unpin'} session ${sessionId}`);
+        this._sessions = next;
+        const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
+        this._log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
         try {
             this._saveCatalog();
         } catch { /* non-critical */ }
