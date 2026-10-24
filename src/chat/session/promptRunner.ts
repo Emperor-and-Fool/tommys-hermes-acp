@@ -25,6 +25,7 @@ export interface PromptHost {
     bindHermesSessionId(hermesSessionId: string): void;
     applySessionModelPreference(): Promise<void>;
     setBoundSessionId(sessionId: string): void;
+    saveMessage(role: string, text: string): void;
 }
 
 /**
@@ -52,6 +53,43 @@ export class PromptRunner {
      * tab is detached first — under one-session-per-tab that can only mean the active tab was
      * replaced underneath it.
      */
+    /**
+     * Hermes sends one whole message per chunk, not deltas, so these replace rather than
+     * append. Kept here so the turn's text has exactly one owner.
+     */
+    recordAssistantText(text: string): void {
+        this.lastAssistantText = text;
+    }
+
+    recordThoughtText(text: string): void {
+        this.lastThoughtText = text;
+    }
+
+    /** Drop the accumulated turn text without writing it anywhere. */
+    clearText(): void {
+        this.lastAssistantText = '';
+        this.lastThoughtText = '';
+    }
+
+    /** Write a completed thought to the transcript, once. */
+    flushThought(): void {
+        const text = this.lastThoughtText.trim();
+        if (!text) {
+            return;
+        }
+        this.host.saveMessage('thought', text);
+        this.lastThoughtText = '';
+    }
+
+    /** Write the assistant text if there is any, then drop it. */
+    saveAssistantText(): void {
+        if (!this.lastAssistantText.trim()) {
+            return;
+        }
+        this.host.saveMessage('assistant', this.lastAssistantText);
+        this.lastAssistantText = '';
+    }
+
     async ensureSessionReady(): Promise<boolean> {
         const acp = this.host.acp();
         if (!acp) {
