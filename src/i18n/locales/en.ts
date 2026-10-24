@@ -327,7 +327,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     tabContextSid: 'SID',
     tabContextExport: 'Export',
     tabContextCopy: 'Copy',
-    tabContextRename: 'Rename',
     tabContextClose: 'Close',
     tabContextCloseOthers: 'Close Others',
     tabContextCloseLeft: 'Close to the Left',

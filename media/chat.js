@@ -5372,66 +5372,6 @@
         return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    let editingSessionId = null;
-
-    function startTabRename(tab, sessionId) {
-        if (!tab || tab.classList.contains('editing')) {
-            return;
-        }
-        tab.classList.add('editing');
-        tab.draggable = false;
-        editingSessionId = sessionId;
-        const titleEl = tab.querySelector('.tab-title');
-        if (!titleEl) {
-            return;
-        }
-        const previousTitle = titleEl.textContent || locale.newChat;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'tab-title-input';
-        input.value = previousTitle;
-        input.maxLength = 80;
-        titleEl.replaceWith(input);
-        input.focus();
-        input.select();
-
-        let finished = false;
-        function finish(commit) {
-            if (finished) {
-                return;
-            }
-            finished = true;
-            editingSessionId = null;
-            tab.classList.remove('editing');
-            const newTitle = input.value.trim() || locale.newChat;
-            const span = document.createElement('span');
-            span.className = 'tab-title';
-            span.textContent = commit ? newTitle : previousTitle;
-            input.replaceWith(span);
-            tab.draggable = true;
-            if (commit) {
-                vscode.postMessage({ type: 'renameSession', sessionId: sessionId, title: newTitle });
-            }
-        }
-
-        input.addEventListener('keydown', function(e) {
-            e.stopPropagation();
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                finish(true);
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                finish(false);
-            }
-        });
-        input.addEventListener('blur', function() {
-            finish(true);
-        });
-        input.addEventListener('click', function(e) {
-            e.stopPropagation();
-        });
-    }
-
     function reorderSessionTabs(fromId, toId) {
         if (!fromId || !toId || fromId === toId || !lastSessions.length) {
             return;
@@ -5510,7 +5450,6 @@
             '<button type="button" class="tab-ctx-item" data-action="export">' + escapeHtml(locale.tabContextExport) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="copy">' + escapeHtml(locale.tabContextCopy) + '</button>' +
             '<div class="tab-ctx-divider"></div>' +
-            '<button type="button" class="tab-ctx-item" data-action="rename">' + escapeHtml(locale.tabContextRename) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="close">' + escapeHtml(locale.tabContextClose) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="closeOthers"' + (canCloseOthers ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextCloseOthers) + '</button>' +
             '<button type="button" class="tab-ctx-item" data-action="closeLeft"' + (canCloseLeft ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextCloseLeft) + '</button>' +
@@ -5534,9 +5473,6 @@
                     requestSessionExport('export', undefined, targetId);
                 } else if (action === 'copy') {
                     requestSessionExport('copy', undefined, targetId);
-                } else if (action === 'rename') {
-                    const tab = tabBar.querySelector('.session-tab[data-id="' + targetId + '"]');
-                    if (tab) startTabRename(tab, targetId);
                 } else if (action === 'togglePin') {
                     vscode.postMessage({ type: 'togglePinSession', sessionId: targetId });
                 } else if (action === 'close' || action === 'closeOthers' || action === 'closeLeft' || action === 'closeRight' || action === 'closeAll') {
@@ -5594,9 +5530,6 @@
         activeSessionId = activeId || activeSessionId;
         lastSessions = sessions || [];
         lastActiveSessionId = activeSessionId;
-        if (editingSessionId) {
-            return;
-        }
         if (!sessions || sessions.length === 0) {
             tabBar.innerHTML = '';
             return;
@@ -5631,14 +5564,6 @@
                 if (tab.dataset.id !== activeSessionId) {
                     requestSwitchSession(tab.dataset.id);
                 }
-            });
-            tab.addEventListener('dblclick', function(e) {
-                if (e.target && e.target.closest && e.target.closest('.tab-close')) {
-                    return;
-                }
-                e.preventDefault();
-                e.stopPropagation();
-                startTabRename(tab, tab.dataset.id);
             });
             tab.addEventListener('contextmenu', function(e) {
                 e.preventDefault();

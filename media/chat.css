@@ -1325,23 +1325,6 @@ body.surface-notabs #tab-bar {
     text-overflow: ellipsis;
     min-width: 0;
 }
-.session-tab .tab-title-input {
-    font-size: 11px;
-    font-family: inherit;
-    background: var(--input-bg);
-    color: var(--fg);
-    border: 1px solid var(--primary);
-    border-radius: 2px;
-    padding: 0 4px;
-    min-width: 48px;
-    max-width: 120px;
-    width: 100%;
-    outline: none;
-    line-height: 1.4;
-}
-.session-tab.editing {
-    max-width: 200px;
-}
 .session-tab .tab-close {
     opacity: 0.5;
     font-size: 12px;

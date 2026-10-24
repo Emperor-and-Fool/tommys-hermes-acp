@@ -41,6 +41,7 @@ import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './session/store';
 import { applyCatalogRows } from './session/catalog';
 import { backfillAgentEngaged, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
+import { buildReplayMessages } from './session/replay';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
 import {
     canAggregateToolTexts,
@@ -118,7 +119,6 @@ export interface SessionInfo {
     createdAt: number;
     updatedAt: number;
     messageCount: number;
-    titleManual?: boolean;
     modelId?: string;
     modelLabel?: string;
     /** User has sent at least one message to Hermes in this session. */
@@ -398,9 +398,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'openTab':
                     this._enqueueChatOp(() => this._handleOpenTab(message.sessionId));
-                    break;
-                case 'renameSession':
-                    this._handleRenameSession(message.sessionId, message.title);
                     break;
                 case 'reorderSessions':
                     this._handleReorderSessions(message.sessionIds);
@@ -860,32 +857,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             rec => rec.hermesSessionId === hermesSessionId || rec.id === hermesSessionId
         );
         const localId = record?.id || hermesSessionId;
-        const messages: ChatMessage[] = [];
-        const toolIndex = new Map<string, number>();
-        const base = Date.now();
-        for (const item of replay) {
-            const text = (item.text || '').trim();
-            if (!text) {
-                continue;
-            }
-            if (item.role === 'tool' && item.toolCallId) {
-                // tool_call + tool_call_update arrive as a start/complete pair per call.
-                const at = toolIndex.get(item.toolCallId);
-                if (at !== undefined) {
-                    messages[at].text = item.text;
-                    continue;
-                }
-                toolIndex.set(item.toolCallId, messages.length);
-                messages.push({
-                    role: 'tool',
-                    text: item.text,
-                    timestamp: base + messages.length,
-                    toolCallId: item.toolCallId,
-                });
-                continue;
-            }
-            messages.push({ role: item.role, text: item.text, timestamp: base + messages.length });
-        }
+        const messages = buildReplayMessages(replay);
         if (messages.length === 0) {
             return;
         }
@@ -1393,7 +1365,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             // and this cache must not overwrite it with the first user message (which here is
             // usually the injected memory preamble). Only a purely local chat, which Hermes
             // has never seen, derives a title from its own text.
-            if (firstUser && !existing.titleManual && !existing.hermesSessionId) {
+            if (firstUser && !existing.hermesSessionId) {
                 existing.title = firstUser;
             }
         } else {
@@ -2799,21 +2771,24 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._postSessionList();
     }
 
-    private async _handleSwitchSession(
-        sessionId: string,
-        options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
-    ): Promise<void> {
-        if (sessionId === this._sessionId) {
-            return;
-        }
+    /**
+     * A prompt belongs to the tab it was started in, so switching away from a running one
+     * has to end it first. Returns false when the switch must not happen at all.
+     */
+    private async _endPromptBeforeSwitch(options?: { interrupt?: boolean }): Promise<boolean> {
         if (this._currentSessionIsPrompting()) {
             if (!options?.interrupt) {
-                return;
+                return false;
             }
             await this._detachActivePrompt(this._sessionId, { savePartial: true });
         } else if (this._otherSessionIsPrompting()) {
             await this._detachActivePrompt(this._promptSessionId!, { savePartial: true });
         }
+        return true;
+    }
+
+    /** Point the pane at another tab: save the old one, load the new one's transcript. */
+    private _activateSession(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
         this._log(`Switch to session: ${sessionId}`);
         if (!options?.skipSaveCurrent) {
             this._saveCurrentSession();
@@ -2823,6 +2798,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._loadHistory();
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
+    }
+
+    private async _handleSwitchSession(
+        sessionId: string,
+        options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
+    ): Promise<void> {
+        if (sessionId === this._sessionId) {
+            return;
+        }
+        if (!(await this._endPromptBeforeSwitch(options))) {
+            return;
+        }
+        this._activateSession(sessionId, options);
         // Resumed history arrives as session/update; only fall back to the local
         // render cache when this tab has no Hermes session to replay.
         const resumed = await this._resumeTabHermesSession(sessionId);
@@ -2837,22 +2825,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return this._acp?.status === 'prompting'
             && !!this._promptSessionId
             && this._promptSessionId === this._sessionId;
-    }
-
-    private _handleRenameSession(sessionId: string, title: string): void {
-        const session = this._sessions.find(s => s.id === sessionId);
-        if (!session) {
-            return;
-        }
-        const trimmed = (title || '').trim().slice(0, 80) || t('newChat');
-        session.title = trimmed;
-        session.titleManual = true;
-        session.updatedAt = Date.now();
-        this._log(`Rename session ${sessionId}: ${trimmed}`);
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-        this._postSessionList();
     }
 
     private _handleReorderSessions(sessionIds: unknown): void {

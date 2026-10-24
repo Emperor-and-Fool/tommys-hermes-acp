@@ -242,7 +242,6 @@ export interface LocaleStrings {
     tabContextSid: string;
     tabContextExport: string;
     tabContextCopy: string;
-    tabContextRename: string;
     tabContextClose: string;
     tabContextCloseOthers: string;
     tabContextCloseLeft: string;

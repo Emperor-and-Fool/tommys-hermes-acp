@@ -61,13 +61,11 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
         const prior = previousById.get(row.sessionId) || previousByHermes.get(row.sessionId);
         sessions.push({
             id: prior?.id || row.sessionId,
-            title: prior?.titleManual
-                ? prior.title
-                : (row.title || prior?.title || row.sessionId.slice(0, 8)),
+            // Hermes owns the title; the local record only remembers the last one it saw.
+            title: row.title || prior?.title || row.sessionId.slice(0, 8),
             createdAt: prior?.createdAt ?? (row.updatedAt || now),
             updatedAt: row.updatedAt || prior?.updatedAt || now,
             messageCount: row.messageCount ?? prior?.messageCount ?? 0,
-            titleManual: prior?.titleManual,
             pinned: prior?.pinned,
             modelId: prior?.modelId,
             modelLabel: prior?.modelLabel,

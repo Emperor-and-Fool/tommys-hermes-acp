@@ -327,7 +327,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     tabContextSid: 'SID',
     tabContextExport: '导出',
     tabContextCopy: '复制',
-    tabContextRename: '重命名',
     tabContextClose: '关闭',
     tabContextCloseOthers: '关闭其他',
     tabContextCloseLeft: '关闭左侧',

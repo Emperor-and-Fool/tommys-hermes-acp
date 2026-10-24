@@ -26,8 +26,7 @@ describe('applyCatalogRows', () => {
             modelId: 'm-1',
             modelLabel: 'Model One',
             cwd: '/work/a',
-            titleManual: true,
-            title: 'my name',
+            title: 'name from before',
         })];
         const result = applyCatalogRows({
             previous,
@@ -38,7 +37,7 @@ describe('applyCatalogRows', () => {
         });
         const merged = result.sessions[0];
         assert.strictEqual(merged.id, 'tab-a', 'the local tab id survives');
-        assert.strictEqual(merged.title, 'my name', 'a manual title wins over the agent title');
+        assert.strictEqual(merged.title, 'agent name', 'Hermes owns the title');
         assert.strictEqual(merged.pinned, true);
         assert.strictEqual(merged.modelId, 'm-1');
         assert.strictEqual(merged.modelLabel, 'Model One');
