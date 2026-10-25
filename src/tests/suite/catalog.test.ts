@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { applyCatalogRows, CatalogRow, MAX_SESSION_TITLE_LENGTH, normalizeSessionTitle, renameSession, SessionTitlePort } from '../../chat/session/catalog';
-import type { SessionInfo } from '../../chat/HermesChatProvider';
+import { applyCatalogRows, MAX_SESSION_TITLE_LENGTH, normalizeSessionTitle, renameSession } from '../../chat/catalog';
+import type { CatalogRow, SessionInfo, SessionTitlePort } from '../../types/chat';
 
 const local = (over: Partial<SessionInfo>): SessionInfo => ({
     id: 'local-1',

@@ -1,39 +1,11 @@
-import type { SessionInfo } from '../HermesChatProvider';
-import type { SessionTitleOutcome } from '../../types/chat';
-
-/**
- * What Hermes reports for one session. Only the fields the index actually reads; anything
- * else in the catalog is ignored rather than carried along.
- */
-export interface CatalogRow {
-    sessionId: string;
-    title?: string;
-    updatedAt?: number;
-    messageCount?: number;
-    cwd?: string;
-    hidden?: boolean;
-}
-
-export interface ApplyCatalogInput<T extends CatalogRow = CatalogRow> {
-    /** The local index as it stands. */
-    previous: SessionInfo[];
-    /** What Hermes just reported, as the caller received it. */
-    rows: T[];
-    /** The tab the pane is showing: it may not be in the catalog yet. */
-    activeId: string;
-    /** A tab with no messages yet is new; it is kept even when Hermes does not list it. */
-    activeHasMessages: boolean;
-    now?: number;
-}
-
-export interface ApplyCatalogResult<T extends CatalogRow = CatalogRow> {
-    sessions: SessionInfo[];
-    /** The tab to show: unchanged, or the newest when the old one is gone. */
-    activeId: string;
-    activeChanged: boolean;
-    /** Rows Hermes flagged hidden: closed tabs, retrievable through the picker. */
-    hiddenRows: T[];
-}
+import type {
+    ApplyCatalogInput,
+    ApplyCatalogResult,
+    CatalogRow,
+    SessionInfo,
+    SessionTitleOutcome,
+    SessionTitlePort,
+} from '../types/chat';
 
 /**
  * Merge Hermes' catalog into the local index.
@@ -129,13 +101,6 @@ export function normalizeSessionTitle(raw: unknown): SessionTitleOutcome {
         return { ok: false, reason: 'too-long' };
     }
     return { ok: true, title };
-}
-
-/** What a title write needs: the ACP call, the catalog read that follows it, and a log line. */
-export interface SessionTitlePort {
-    setTitle(sessionId: string, title: string): Promise<boolean>;
-    refreshCatalog(): Promise<void>;
-    log(line: string): void;
 }
 
 /**

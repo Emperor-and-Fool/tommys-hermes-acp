@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../HermesChatProvider';
+import type { ChatMessage } from '../../types/chat';
 
 /**
  * The local mirror is the only place a message Hermes never received still exists. The replay

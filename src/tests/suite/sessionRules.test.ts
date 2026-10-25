@@ -8,7 +8,7 @@ import {
     registerSession,
     reorderSessions,
 } from '../../chat/session/index';
-import type { ChatMessage, SessionInfo } from '../../chat/HermesChatProvider';
+import type { ChatMessage, SessionInfo } from '../../types/chat';
 
 const session = (id: string, over: Partial<SessionInfo> = {}): SessionInfo => ({
     id,

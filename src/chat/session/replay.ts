@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../HermesChatProvider';
+import type { ChatMessage } from '../../types/chat';
 
 /** One record from the agent's replay, as ACP delivers it. */
 export interface ReplayItem {

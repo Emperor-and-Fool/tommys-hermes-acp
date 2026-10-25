@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { createHash } from 'node:crypto';
+import type { ChatMessage, SessionInfo, StoredImageRef } from '../types/chat';
 import * as path from 'path';
 import { AcpClient, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../acp/modelConfig';
@@ -38,8 +39,8 @@ import {
     formatDetectSummaryForReport,
 } from './transcript/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
-import { SessionStore } from './session/store';
-import { applyCatalogRows, renameSession } from './session/catalog';
+import { SessionStore } from './extensionCache';
+import { applyCatalogRows, renameSession } from './catalog';
 import { backfillAgentEngaged, hermesSessionIdFor, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
 import { buildReplayMessages } from './session/replay';
 import { findUndelivered, lastUserMessageText } from './session/undelivered';
@@ -72,35 +73,6 @@ interface ChatSurface {
     panel?: vscode.WebviewPanel;
 }
 
-interface StoredPermissionOption {
-    optionId: string;
-    name: string;
-    kind?: string;
-}
-
-export interface ChatMessage {
-    role: string;
-    text: string;
-    timestamp: number;
-    toolCallId?: string;
-    aggregatedTools?: Array<{ toolCallId: string; text: string }>;
-    permissionId?: string;
-    title?: string;
-    detail?: string;
-    options?: StoredPermissionOption[];
-    resolved?: boolean;
-    outcome?: 'selected' | 'cancelled';
-    selectedOptionId?: string;
-    selectedLabel?: string;
-    /** Content-addressed attachments for this message: Hermes never stores the bytes. */
-    imageRefs?: StoredImageRef[];
-}
-
-export interface StoredImageRef {
-    hash: string;
-    mimeType: string;
-}
-
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
 export function attachmentKey(text: string): string {
     return String(text || '')
@@ -112,27 +84,6 @@ export function attachmentKey(text: string): string {
 
 export function markerCount(text: string): number {
     return (String(text || '').match(/\[(?:screenshot|image)\]/gi) || []).length;
-}
-
-export interface SessionInfo {
-    id: string;
-    title: string;
-    createdAt: number;
-    updatedAt: number;
-    messageCount: number;
-    modelId?: string;
-    modelLabel?: string;
-    /** User has sent at least one message to Hermes in this session. */
-    agentEngaged?: boolean;
-    /** Pinned tabs stay at the front and reorder only within pinned group. */
-    pinned?: boolean;
-    /**
-     * Hermes-side session id backing this tab. Local ids stay for tab/UI history;
-     * this is the id ACP `session/load` addresses, so a tab survives reconnects.
-     */
-    hermesSessionId?: string;
-    /** Working directory the Hermes session was created in (used when resuming). */
-    cwd?: string;
 }
 
 interface HermesAgentConfig {

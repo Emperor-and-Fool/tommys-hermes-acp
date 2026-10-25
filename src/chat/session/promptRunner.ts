@@ -1,5 +1,5 @@
 import type { AcpClient, PermissionRequest } from '../../acp/AcpClient';
-import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
+import type { ChatMessage, SessionInfo } from '../../types/chat';
 import { localizeStatusMessage, t } from '../../i18n';
 
 /**

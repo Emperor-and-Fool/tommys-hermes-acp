@@ -1,4 +1,4 @@
-import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
+import type { ChatMessage, SessionInfo } from '../../types/chat';
 
 /**
  * The bookkeeping rules of the tab index: registering a tab, marking that the agent has

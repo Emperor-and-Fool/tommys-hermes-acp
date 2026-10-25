@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { activeSessionPathFor, sessionsPathFor } from '../profileStorage';
-import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
+import { activeSessionPathFor, sessionsPathFor } from './profileStorage';
+import type { ChatMessage, SessionInfo } from '../types/chat';
 
 /** The catalog keeps the most recent 50 sessions; a transcript keeps the last 100 messages. */
 export const CATALOG_LIMIT = 50;

@@ -2,8 +2,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CATALOG_LIMIT, SessionStore, TRANSCRIPT_LIMIT } from '../../chat/session/store';
-import type { ChatMessage, SessionInfo } from '../../chat/HermesChatProvider';
+import { CATALOG_LIMIT, SessionStore, TRANSCRIPT_LIMIT } from '../../chat/extensionCache';
+import type { ChatMessage, SessionInfo } from '../../types/chat';
 
 function tempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'session-store-'));

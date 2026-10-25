@@ -2,7 +2,7 @@
 import { getWebviewLocale, t } from '../../i18n';
 import { formatLocaleString } from '../../i18n/format';
 import type { LocaleStrings } from '../../i18n/types';
-import type { ChatMessage, SessionInfo } from '../HermesChatProvider';
+import type { ChatMessage, SessionInfo } from '../../types/chat';
 
 export function buildSessionExportPayload(session: SessionInfo, messages: ChatMessage[], modelFallback?: string): {
     sessionId: string;
