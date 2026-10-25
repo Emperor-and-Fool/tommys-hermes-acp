@@ -11,7 +11,7 @@
  *   npm run deploy
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -24,9 +24,14 @@ const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
 const folder = `${pkg.publisher.toLowerCase()}.${pkg.name}-${pkg.version}`;
 const target = path.join(homedir(), '.vscode-oss', 'extensions', folder);
 
+// Clean build first. tsc never deletes the output of a file that moved or went away, so a
+// stale .js left in out/ would be copied and kept — the exact failure the prune below exists
+// to catch, caught one layer too late. Wiping makes the repo's out/ the truth: whatever is in
+// it after the compile is exactly what src/ produces.
+rmSync(path.join(repo, 'out'), { recursive: true, force: true });
 const build = spawnSync('npx', ['tsc', '-p', './'], { cwd: repo, stdio: 'inherit' });
 if (build.status !== 0) {
-    console.error('deploy: compile failed, nothing copied');
+    console.error('deploy: compile failed, nothing copied (out/ was wiped; run npm run compile)');
     process.exit(1);
 }
 
