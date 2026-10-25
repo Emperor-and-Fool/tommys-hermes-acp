@@ -5962,6 +5962,13 @@
                 break;
 
             case 'activeAgent':
+                if (msg.name) {
+                    document.getElementById('profileLabel').textContent = msg.name;
+                    refreshRoleLabels();
+                    applyInputPlaceholder();
+                }
+                break;
+
             case 'pluginInfo':
                 pluginInfo = msg;
                 renderAboutContent();
