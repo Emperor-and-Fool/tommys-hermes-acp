@@ -18,7 +18,7 @@ import {
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
-import { buildWebviewHtml } from './webviewHtml';
+import { buildWebviewHtml } from '../webview/html';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { buildSessionExportPayload } from './sessionExport';
 import { SessionStore } from '../cache/sessionStore';

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { buildWebviewHtml, highlightSheetFor } from '../../chat/webviewHtml';
+import { buildWebviewHtml, highlightSheetFor } from '../../webview/html';
 import { en } from '../../i18n/locales/en';
 
 // vscode.ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4.
