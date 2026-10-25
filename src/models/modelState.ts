@@ -7,7 +7,7 @@
  * as `ModelHost`: the agent, the tabs, the profile scope, and the prompt it may have to end.
  *
  * `ModelHost` is a bag of functions rather than a reference to the provider, the same shape as
- * `PromptHost` in chat/session/promptRunner and `DetectionHost` in environment/detection.
+ * `PromptHost` in chat/promptRunner and `DetectionHost` in environment/detection.
  */
 import * as vscode from 'vscode';
 import { t } from '../i18n';

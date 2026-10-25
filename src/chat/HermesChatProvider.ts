@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { createHash } from 'node:crypto';
+import { AttachmentStore } from '../cache/attachments';
 import type { ChatMessage, SessionInfo, StoredImageRef } from '../types/chat';
 import * as path from 'path';
 import { AcpClient, CatalogSession, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
@@ -61,17 +61,7 @@ interface ChatSurface {
 }
 
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
-export function attachmentKey(text: string): string {
-    return String(text || '')
-        .replace(/\[(?:screenshot|image)\]/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
 
-export function markerCount(text: string): number {
-    return (String(text || '').match(/\[(?:screenshot|image)\]/gi) || []).length;
-}
 
 interface HermesAgentConfig {
     name: string;
@@ -108,6 +98,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     // ---- Session State ----
     private _historyDir: string;
+    /** Bytes Hermes never stores: content-addressed images and the index that finds them. */
+    private _attachments: AttachmentStore;
     private _scopeKey: string;
     private _store: SessionStore;
     private _sessionMessages: ChatMessage[] = [];
@@ -214,6 +206,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
+        this._attachments = new AttachmentStore(this._historyDir);
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
         // Seed the in-memory selection first: _resolveConnectionTarget() prefers it over
@@ -804,7 +797,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             const used = new Set<string>();
             for (const msg of messages) {
                 if (msg.role !== 'user' || (msg.imageRefs && msg.imageRefs.length)) continue;
-                const refs = this._refsFromIndex(msg.text, used, true);
+                const refs = this._attachments.refsFromIndex(msg.text, used, true);
                 if (refs.length) {
                     msg.imageRefs = refs;
                 }
@@ -828,7 +821,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._postMessage({ type: 'newChat' });
         this._postMessage({
             type: 'restoreHistory',
-            messages: this._hydrateImages(this._sessionMessages),
+            messages: this._attachments.hydrateImages(this._sessionMessages),
             localHistoryOnly: false,
         });
         this._offerContextAttach(this._sessionMessages);
@@ -881,7 +874,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log(`Restoring ${this._sessionMessages.length} messages`);
         const msg = {
             type: 'restoreHistory',
-            messages: this._hydrateImages(this._sessionMessages),
+            messages: this._attachments.hydrateImages(this._sessionMessages),
             localHistoryOnly: true,
         };
         if (target) {
@@ -981,109 +974,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * files beside the transcript, hashes recorded on the message. The same screenshot twice
      * costs one file.
      */
-    private _storeImages(images: Array<{ mimeType?: string; data?: string }>): StoredImageRef[] {
-        const dir = path.join(this._historyDir, 'attachments');
-        const refs: StoredImageRef[] = [];
-        try {
-            fs.mkdirSync(dir, { recursive: true });
-        } catch {
-            return refs;
-        }
-        for (const img of images) {
-            if (!img || !img.data) continue;
-            const hash = createHash('sha256').update(img.data).digest('hex').slice(0, 32);
-            const mimeType = img.mimeType || 'image/png';
-            const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png';
-            try {
-                const file = path.join(dir, `${hash}.${ext}`);
-                if (!fs.existsSync(file)) {
-                    fs.writeFileSync(file, Buffer.from(img.data, 'base64'));
-                }
-                refs.push({ hash, mimeType });
-            } catch { /* the message still sends without the local copy */ }
-        }
-        return refs;
-    }
 
     /** Attachment hashes back to what the webview renders, for the transcript being posted. */
-    private _hydrateImages(messages: ChatMessage[]): ChatMessage[] {
-        const dir = path.join(this._historyDir, 'attachments');
-        const used = new Set<string>();
-        return messages.map(msg => {
-            let refs = msg.imageRefs;
-            if ((!refs || !refs.length) && msg.role === 'user') {
-                refs = this._refsFromIndex(msg.text, used);
-            }
-            if (!refs || !refs.length) return msg;
-            const images = refs.map(ref => {
-                const ext = ref.mimeType === 'image/jpeg' ? 'jpg' : ref.mimeType === 'image/webp' ? 'webp' : 'png';
-                try {
-                    const buf = fs.readFileSync(path.join(dir, `${ref.hash}.${ext}`));
-                    return { mimeType: ref.mimeType, data: buf.toString('base64') };
-                } catch {
-                    return null;
-                }
-            }).filter(Boolean) as Array<{ mimeType: string; data: string }>;
-            return { ...msg, images } as ChatMessage;
-        });
-    }
 
     /**
      * The replay is text-only and rewrites the transcript file, so refs stored on a record can
      * be lost. This sidecar is written on send and never rewritten by a replay.
      */
-    private _attachmentIndexPath(): string {
-        return path.join(this._historyDir, 'attachments', 'index.json');
-    }
 
-    private _loadAttachmentIndex(): Array<{ hash: string; mimeType: string; key: string; markers: number; added: number }> {
-        try {
-            const parsed = JSON.parse(fs.readFileSync(this._attachmentIndexPath(), 'utf-8'));
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    }
 
-    private _indexAttachments(refs: StoredImageRef[], text: string): void {
-        if (!refs.length) return;
-        try {
-            fs.mkdirSync(path.dirname(this._attachmentIndexPath()), { recursive: true });
-            const entries = this._loadAttachmentIndex();
-            const key = attachmentKey(text);
-            const markers = markerCount(text) || refs.length;
-            for (const ref of refs) {
-                if (entries.some(e => e.hash === ref.hash && e.key === key)) continue;
-                entries.push({ hash: ref.hash, mimeType: ref.mimeType, key, markers, added: Date.now() });
-            }
-            fs.writeFileSync(this._attachmentIndexPath(), JSON.stringify(entries.slice(-400), null, 2));
-        } catch { /* the message still sends */ }
-    }
 
     /** Attachments for a message that carries no refs: exact key first, then by order. */
-    private _refsFromIndex(text: string, used: Set<string>, allowLoose = false): StoredImageRef[] {
-        const entries = this._loadAttachmentIndex();
-        if (!entries.length) return [];
-        const key = attachmentKey(text);
-        const wanted = Math.max(1, markerCount(text));
-        const taken: StoredImageRef[] = [];
-        for (const entry of entries) {
-            if (taken.length >= wanted) break;
-            if (used.has(entry.hash) || entry.key !== key) continue;
-            used.add(entry.hash);
-            taken.push({ hash: entry.hash, mimeType: entry.mimeType });
-        }
-        if (taken.length) return taken;
-        // Text drifted between send and replay: fall back to the oldest unused attachment. Only a
-        // replay may do that — a restore shows history and must not guess.
-        if (!allowLoose || !markerCount(text)) return [];
-        const loose = entries.find(entry => !used.has(entry.hash));
-        if (loose) {
-            used.add(loose.hash);
-            return [{ hash: loose.hash, mimeType: loose.mimeType }];
-        }
-        return [];
-    }
 
     private _upsertToolMessage(toolCallId: string, text: string): void {
         const stored = this._findToolMessage(toolCallId);
@@ -1750,9 +1651,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
         this._models.snapshotFromProfile();
         this._turn.promptSessionId = this._sessionId;
-        const imageRefs = images && images.length ? this._storeImages(images) : undefined;
+        const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
-            this._indexAttachments(imageRefs, text);
+            this._attachments.indexAttachments(imageRefs, text);
         }
         this._saveMessage('user', text, undefined, imageRefs);
         this._markSessionAgentEngaged();

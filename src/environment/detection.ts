@@ -7,7 +7,7 @@
  * after Save, and the view title.
  *
  * `DetectionHost` is a bag of functions rather than a reference to the provider, the same shape
- * as `PromptHost` in chat/session/promptRunner.
+ * as `PromptHost` in chat/promptRunner.
  */
 import * as fs from 'fs';
 import * as path from 'path';
