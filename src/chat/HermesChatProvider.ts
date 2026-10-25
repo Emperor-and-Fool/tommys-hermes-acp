@@ -19,6 +19,8 @@ import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from 
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
+import { Surfaces } from '../webview/surfaces';
+import type { ChatSurface } from '../webview/surfaces';
 import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
@@ -52,15 +54,6 @@ type ContextAttachVisibility = 'onNewSession' | 'always' | 'never';
 /** Webview panel id; the serializer re-creates it after a window reload. */
 export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
 
-type SurfaceRole = 'chat' | 'rail';
-
-/** One renderer of the chat: the side bar view or the single editor panel. */
-interface ChatSurface {
-    webview: vscode.Webview;
-    role: SurfaceRole;
-    view?: vscode.WebviewView;
-    panel?: vscode.WebviewPanel;
-}
 
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
 
@@ -89,13 +82,24 @@ interface ConnectionTarget {
 
 export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
-    private _view?: vscode.WebviewView;
     /** Every live renderer: the sidebar view and/or the single chat panel. */
-    private readonly _surfaces: ChatSurface[] = [];
     /** Where the conversation is rendered: the side bar or an editor tab. */
-    private _surfaceMode: 'sidebar' | 'editor' = 'sidebar';
-    private _chatPanel?: vscode.WebviewPanel;
     private _acp?: AcpClient;
+    /** The renderers of the chat: side bar view, editor panel, or both at once. */
+    private readonly _surfaces: Surfaces = new Surfaces({
+        html: (webview) => this._getHtml(webview),
+        wire: (webview, surface) => this._wireMessages(webview, surface),
+        activeTabTitle: () => this._activeTabTitle(),
+        onViewResolved: () => { this._webviewLocale = getLocale(); },
+        onViewVisible: () => {
+            this._syncWebviewLocale();
+            if (!this._acp) {
+                this._connect();
+            }
+        },
+        localResourceRoots: () => [this._extensionUri],
+        log: (line) => this._log(line),
+    });
     private _output: vscode.OutputChannel;
 
     // ---- Session State ----
@@ -203,7 +207,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         // The profile/agent last picked in the UI outlives the window: without this the
         // extension always reopened on the `tommys.profile` setting, not on the user's pick.
         this._persistedSelectionId = context.globalState.get<string>('activeSelectionId') || '';
-        this._surfaceMode = this._readSurfaceMode();
         this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
@@ -253,34 +256,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
-    ) {
-        this._view = webviewView;
-        const surface = this._addSurface(webviewView.webview, 'view', webviewView);
-        webviewView.onDidDispose(() => {
-            this._removeSurface(surface);
-            if (this._view === webviewView) {
-                this._view = undefined;
-            }
-        });
+    ): void {
+        this._surfaces.resolveView(webviewView);
+    }
 
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        };
+    public toggleChatSurface(): void {
+        this._surfaces.toggle();
+    }
 
-        webviewView.webview.html = this._getHtml(webviewView.webview);
-        this._webviewLocale = getLocale();
-
-        webviewView.onDidChangeVisibility(() => {
-            if (webviewView.visible) {
-                this._syncWebviewLocale();
-                if (!this._acp) {
-                    this._connect();
-                }
-            }
-        });
-
-        this._wireMessages(webviewView.webview, surface);
+    /** Called by the panel serializer so the tab comes back after a reload. */
+    public restoreChatPanel(panel: vscode.WebviewPanel): void {
+        this._surfaces.restorePanel(panel);
     }
 
     /** Same message contract for the side bar view and the editor panel. */
@@ -292,7 +278,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
     private _onWebviewReady(surface: ChatSurface): void {
         this._log('WebView ready');
-        this._postSurfaceRole(surface);
+        this._surfaces.postRole(surface);
         this._syncWebviewLocale();
         this._postPluginInfo();
         this._postSessionList();
@@ -308,9 +294,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (surface.role === 'chat') {
             this._restoreMessages(surface);
         }
-        if (this._surfaceMode === 'editor' && !this._chatPanel
-            && this._surfaces.some(item => !!item.view)) {
-            this._openChatPanel();
+        if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel
+            && this._surfaces.hasViewSurface) {
+            this._surfaces.openPanel();
         }
         // Moving the view container disposes and re-creates the webview but keeps
         // the ACP client. The new pane knows nothing and its composer starts
@@ -318,7 +304,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         // only a window reload recovers.
         if (this._acp) {
             const liveStatus = this._acp.status;
-            this._postTo(surface, { type: 'status', status: liveStatus, sessionId: this._sessionId });
+            this._surfaces.postTo(surface, { type: 'status', status: liveStatus, sessionId: this._sessionId });
             if (liveStatus === 'idle' || liveStatus === 'error') {
                 this._acp.dispose();
                 this._acp = undefined;
@@ -357,8 +343,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             handleSessionExport: (sessionId, action, indices) => this._handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => this._handleSwitchAgent(name),
             handleSwitchSession: (sessionId, interrupt) => {
-                if (this._surfaceMode === 'editor' && !this._chatPanel) {
-                    this._openChatPanel();
+                if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
+                    this._surfaces.openPanel();
                 }
                 this._enqueueChatOp(() => this._handleSwitchSession(sessionId, { interrupt }));
             },
@@ -374,130 +360,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         };
     }
 
-    private _addSurface(
-        webview: vscode.Webview,
-        kind: 'view' | 'panel',
-        host: vscode.WebviewView | vscode.WebviewPanel
-    ): ChatSurface {
-        const isView = kind === 'view';
-        const role: SurfaceRole = isView && this._surfaceMode === 'editor' ? 'rail' : 'chat';
-        const surface: ChatSurface = isView
-            ? { webview, role, view: host as vscode.WebviewView }
-            : { webview, role, panel: host as vscode.WebviewPanel };
-        this._surfaces.push(surface);
-        this._log(`Surface added (${kind}/${role}, ${this._surfaces.length} live)`);
-        return surface;
-    }
-
-    private _removeSurface(surface: ChatSurface): void {
-        const index = this._surfaces.indexOf(surface);
-        if (index >= 0) {
-            this._surfaces.splice(index, 1);
-        }
-        this._log(`Surface removed (${this._surfaces.length} live)`);
-    }
-
-    private _postSurfaceRole(surface: ChatSurface): void {
-        // The panel is the conversation only: the rail already lists the chats.
-        void surface.webview.postMessage({ type: 'surfaceRole', role: surface.role, hideTabs: !!surface.panel });
-    }
-
-    private _postTo(surface: ChatSurface, msg: unknown): void {
-        void surface.webview.postMessage(msg);
-    }
-
-    /** "Move Chat to Editor" / "Move Chat to Sidebar". */
-    public toggleChatSurface(): void {
-        this._setSurfaceMode(this._surfaceMode === 'editor' ? 'sidebar' : 'editor');
-    }
-
-    private _setSurfaceMode(mode: 'sidebar' | 'editor'): void {
-        this._surfaceMode = mode;
-        this._log(`Chat surface: ${mode}`);
-        void vscode.workspace.getConfiguration('tommys').update('chatSurface', mode, vscode.ConfigurationTarget.Global);
-        for (const surface of this._surfaces) {
-            if (surface.view) {
-                surface.role = mode === 'editor' ? 'rail' : 'chat';
-                this._postSurfaceRole(surface);
-            }
-        }
-        if (mode === 'editor') {
-            this._openChatPanel();
-        } else {
-            this._chatPanel?.dispose();
-        }
-    }
-
-    /** Reveal the chat panel, creating it when there is none. */
-    private _openChatPanel(): void {
-        const existing = this._chatPanel ?? this._surfaces.find(surface => !!surface.panel)?.panel;
-        if (existing) {
-            this._chatPanel = existing;
-            existing.reveal(vscode.ViewColumn.One);
-            return;
-        }
-        const panel = vscode.window.createWebviewPanel(
-            CHAT_PANEL_VIEW_TYPE,
-            this._activeTabTitle(),
-            vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                enableFindWidget: true,
-                localResourceRoots: [this._extensionUri],
-            }
-        );
-        this._chatPanel = panel;
-        this._wirePanel(panel);
-    }
-
-    private _wirePanel(panel: vscode.WebviewPanel): void {
-        const livePanel = this._surfaces.find(surface => !!surface.panel);
-        if (livePanel) {
-            this._log('Panel already wired; ignoring the duplicate');
-            this._chatPanel = livePanel.panel;
-            return;
-        }
-        const surface = this._addSurface(panel.webview, 'panel', panel);
-        panel.webview.options = { enableScripts: true, localResourceRoots: [this._extensionUri] };
-        panel.webview.html = this._getHtml(panel.webview);
-        this._wireMessages(panel.webview, surface);
-        panel.onDidDispose(() => {
-            this._removeSurface(surface);
-            if (this._chatPanel === panel) {
-                this._chatPanel = undefined;
-            }
-        });
-        this._postSurfaceRole(surface);
-    }
-
-    /** Called by the panel serializer so the tab comes back after a reload. */
-    public restoreChatPanel(panel: vscode.WebviewPanel): void {
-        this._log('Serializer restored the chat panel');
-        this._surfaceMode = 'editor';
-        this._chatPanel = panel;
-        this._wirePanel(panel);
-    }
-
-    private _readSurfaceMode(): 'sidebar' | 'editor' {
-        return vscode.workspace.getConfiguration('tommys').get<string>('chatSurface') === 'editor'
-            ? 'editor'
-            : 'sidebar';
-    }
-
     private _activeTabTitle(): string {
         const rec = this._sessions.find(item => item.id === this._sessionId);
         return rec?.title || t('newChat');
     }
 
-    private _updateChatPanelTitle(): void {
-        if (!this._chatPanel) {
-            return;
-        }
-        try {
-            this._chatPanel.title = this._activeTabTitle();
-        } catch { /* panel already disposed */ }
-    }
 
     private _log(msg: string, level?: LogLevel): void {
         const time = new Date().toISOString().slice(11, 19);
@@ -817,7 +684,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             localHistoryOnly: true,
         };
         if (target) {
-            this._postTo(target, msg);
+            this._surfaces.postTo(target, msg);
         } else {
             this._postMessage(msg);
         }
@@ -1091,7 +958,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postSessionList(): void {
-        this._updateChatPanelTitle();
+        this._surfaces.updatePanelTitle();
         this._postMessage({
             type: 'sessionList',
             sessions: this._sessions,
@@ -1531,11 +1398,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _resetViewTitleToDefault(): void {
-        if (!this._view) {
+        const view = this._surfaces.view;
+        if (!view) {
             return;
         }
-        this._view.title = undefined;
-        this._view.description = undefined;
+        view.title = undefined;
+        view.description = undefined;
     }
 
     /** Commands from extension.ts. The work lives in environment/detection.ts. */
@@ -2135,19 +2003,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._detection.clear();
         this._acp?.dispose();
         this._acp = undefined;
-        this._view = undefined;
+        this._surfaces.detachView();
         this._output.dispose();
     }
 
+    /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: any): void {
-        // Fan out to every renderer: the side bar view and/or the chat panel.
-        if (this._surfaces.length === 0) {
-            this._view?.webview.postMessage(msg);
-            return;
-        }
-        for (const surface of this._surfaces) {
-            void surface.webview.postMessage(msg);
-        }
+        this._surfaces.post(msg);
     }
 
     private _postConfig(): void {
@@ -2175,7 +2037,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const ext = vscode.extensions.getExtension(this._extensionId);
         const pkg = ext?.packageJSON;
         let iconUri = '';
-        const iconWebview = this._surfaces[0]?.webview ?? this._view?.webview;
+        const iconWebview = this._surfaces.iconWebview;
         if (iconWebview) {
             iconUri = iconWebview.asWebviewUri(
                 vscode.Uri.joinPath(this._extensionUri, 'media', 'icon.png')
@@ -2280,7 +2142,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _reconnectForConfig(): Promise<void> {
-        if (!this._view) {
+        if (!this._surfaces.view) {
             return;
         }
         this._log('Settings changed — reconnecting Hermes...');
@@ -2291,7 +2153,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtml(target?: vscode.Webview): string {
-        const webview = target ?? this._view?.webview;
+        const webview = target ?? this._surfaces.view?.webview;
         return buildWebviewHtml({
             htmlPath: path.join(this._extensionUri.fsPath, 'media', 'chat.html'),
             resourceUri: webview
