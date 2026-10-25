@@ -75,6 +75,16 @@ export interface SessionInfo {
     cwd?: string;
 }
 
+/** What the composer may re-attach from the tab's own transcript. */
+export type ContextAttachMode = 'none' | 'last2' | 'last10' | 'all' | 'custom';
+
+/** The picker's answer, sent with a composer send. */
+export interface ContextAttachOption {
+    mode: ContextAttachMode;
+    /** Custom mode: indices into the current tab's transcript, not into another session. */
+    indices?: number[];
+}
+
 /** What Hermes reports for one session. Only the fields the index actually reads. */
 export interface CatalogRow {
     sessionId: string;

@@ -9,6 +9,7 @@
  * Typing the contract is its own piece of work — this file is where that type will land.
  */
 import type { EnvironmentDetection } from '../environment/detection';
+import type { PaneToHost } from '../types/webview';
 
 /** What the router may call. One function per capability the pane can ask for. */
 export interface RouterHost {
@@ -51,7 +52,7 @@ export interface RouterHost {
 }
 
 /** Dispatch one message from the pane. Unknown types are ignored, as they always were. */
-export function handleWebviewMessage(message: any, host: RouterHost): void {
+export function handleWebviewMessage(message: PaneToHost, host: RouterHost): void {
     switch (message?.type) {
         case 'sendMessage':
             host.enqueueChatOp(() => host.handleUserMessage(message.text, message.contextAttach, message.images));

@@ -21,6 +21,7 @@ import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
 import { Surfaces } from '../webview/surfaces';
 import type { ChatSurface } from '../webview/surfaces';
+import type { PaneToHost } from '../types/webview';
 import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
@@ -272,7 +273,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
         const host = this._routerHost(surface);
-        webview.onDidReceiveMessage((message) => handleWebviewMessage(message, host));
+        webview.onDidReceiveMessage((message) => handleWebviewMessage(message as PaneToHost, host));
     }
 
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */

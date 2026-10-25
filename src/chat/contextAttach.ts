@@ -1,4 +1,7 @@
 import { LocaleStrings } from '../i18n/types';
+import type { ContextAttachMode, ContextAttachOption } from '../types/chat';
+
+export type { ContextAttachMode, ContextAttachOption };
 
 /**
  * Context attach: a picker over the current tab's own local transcript. The picked messages
@@ -8,14 +11,6 @@ import { LocaleStrings } from '../i18n/types';
  * asks Hermes for anything. Inherited from Rina, where a tab could silently get a fresh
  * Hermes session and this re-injected the history it had lost.
  */
-export type ContextAttachMode = 'none' | 'last2' | 'last10' | 'all' | 'custom';
-
-export interface ContextAttachOption {
-    mode: ContextAttachMode;
-    /** Custom mode: indices into the current tab's transcript, not into another session. */
-    indices?: number[];
-}
-
 export interface AttachableMessage {
     role: string;
     text: string;
