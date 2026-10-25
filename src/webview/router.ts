@@ -26,7 +26,6 @@ export interface RouterHost {
     handleListFiles(query: string, requestId: string): Promise<void>;
     handlePreviewFile(path: string, requestId: string): Promise<void>;
 
-    refreshSessions(): Promise<void>;
     postHiddenSessions(): void;
     handleOpenTab(sessionId?: string): Promise<void>;
     handleReorderSessions(ids: unknown): void;
@@ -40,7 +39,6 @@ export interface RouterHost {
     switchModel(configId: string, valueId: string): Promise<void>;
     syncModels(): Promise<void>;
     postProfileList(): void;
-    openSettings(): Promise<void>;
 
     retry(): Promise<void>;
     handlePermissionResponse(id: string, optionId: string | null): void;
@@ -73,9 +71,6 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'ready':
             host.ready();
-            break;
-        case 'getSessions':
-            void host.refreshSessions();
             break;
         case 'getHiddenSessions':
             host.postHiddenSessions();
@@ -112,9 +107,6 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'getProfiles':
             host.postProfileList();
-            break;
-        case 'openSettings':
-            void host.openSettings();
             break;
         case 'webviewLog':
             // Pane-side diagnostics, so paste/render behaviour is observable

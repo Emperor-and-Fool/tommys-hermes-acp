@@ -103,8 +103,6 @@ export type PaneToHost =
     | { type: 'ready' }
 
     // Tabs. `openTab` with no id opens a blank tab.
-    /** Accepted by the host; nothing in media/chat.js sends it today. */
-    | { type: 'getSessions' }
     | { type: 'getHiddenSessions' }
     | { type: 'openTab'; sessionId?: string }
     | { type: 'reorderSessions'; sessionIds: string[] }
@@ -120,7 +118,6 @@ export type PaneToHost =
     | { type: 'switchModel'; configId: string; valueId: string }
     | { type: 'getModels' }
     | { type: 'getProfiles' }
-    | { type: 'openSettings' }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironment' }

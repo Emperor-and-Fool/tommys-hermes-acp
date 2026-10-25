@@ -3303,9 +3303,7 @@
         });
     }
 
-    let activeProfileName = '';
     function profileDisplayName() {
-        if (activeProfileName) return activeProfileName;
         const el = document.getElementById('profileLabel');
         const text = el && el.textContent ? el.textContent.trim() : '';
         return text || 'hermes';
@@ -5905,9 +5903,8 @@
                 }
                 break;
 
-            case 'agentList':
             case 'profileList':
-                renderProfileList(msg.agents || msg.profiles);
+                renderProfileList(msg.profiles);
                 break;
 
             case 'hiddenSessions':
@@ -5965,15 +5962,6 @@
                 break;
 
             case 'activeAgent':
-            case 'activeProfile':
-                if (msg.name) {
-                    activeProfileName = msg.name;
-                    document.getElementById('profileLabel').textContent = msg.name;
-                    refreshRoleLabels();
-                    applyInputPlaceholder();
-                }
-                break;
-
             case 'pluginInfo':
                 pluginInfo = msg;
                 renderAboutContent();
@@ -6006,16 +5994,6 @@
 
             case 'permissionRequest':
                 showPermissionRequest(msg);
-                break;
-
-            case 'permissionUpdate':
-                if (msg.id && pendingPermissions.has(msg.id)) {
-                    updatePermissionContent(
-                        pendingPermissions.get(msg.id),
-                        msg.title,
-                        msg.detail
-                    );
-                }
                 break;
 
             case 'permissionDismiss':
