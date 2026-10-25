@@ -19,6 +19,7 @@ import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from 
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
+import { ContextAttachOffer } from './contextAttach';
 import { Surfaces } from '../webview/surfaces';
 import { WorkspaceFiles } from '../workspace/files';
 import type { ChatSurface } from '../webview/surfaces';
@@ -39,11 +40,7 @@ import {
 } from './toolAggregate';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import {
-    composePromptWithContext,
     ContextAttachOption,
-    filterAttachableMessages,
-    resolveAttachMessages,
-    resolveCustomAttachMessages,
 } from './contextAttach';
 
 /**
@@ -51,7 +48,6 @@ import {
  * session behind its back; the picker shows when a tab's transcript is restored, until the
  * first reply.
  */
-type ContextAttachVisibility = 'onNewSession' | 'always' | 'never';
 
 /** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
 export { CHAT_PANEL_VIEW_TYPE } from '../webview/surfaces';
@@ -87,6 +83,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** Every live renderer: the sidebar view and/or the single chat panel. */
     /** Where the conversation is rendered: the side bar or an editor tab. */
     private _acp?: AcpClient;
+    /** Context attach: the picker over this tab's own transcript, and the prompt it prepends. */
+    private readonly _contextAttach: ContextAttachOffer = new ContextAttachOffer({
+        post: (msg) => this._postMessage(msg),
+        messages: () => this._sessionMessages,
+    });
     /** The workspace as the pane and the agent may touch it: paths, picker, previews, fs. */
     private readonly _files: WorkspaceFiles = new WorkspaceFiles({
         post: (msg) => this._postMessage(msg),
@@ -153,7 +154,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         isViewingPromptSession: () => this._isViewingPromptSession(),
         cancelPendingPermissions: () => this._cancelPendingPermissions(),
         awaitSessionReady: () => this._awaitSessionReady(),
-        setContextAttachAwaitingReply: (value) => { this._contextAttachAwaitingReply = value; },
+        setContextAttachAwaitingReply: (value) => { this._contextAttach.setAwaitingReply(value); },
         detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._bindHermesSessionId(id),
         applySessionModelPreference: () => this._models.applySessionPreference(),
@@ -181,9 +182,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** Hermes session id this workspace last had open (workspaceState-backed). */
     private _persistedHermesSessionId: string = '';
     /** This tab's own messages offered to the picker; not an earlier session. */
-    private _contextAttachMessages: ChatMessage[] = [];
-    private _contextAttachActive = false;
-    private _contextAttachAwaitingReply = false;
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
     private readonly _detection = new EnvironmentDetection({
         post: (msg) => this._postMessage(msg),
@@ -635,7 +633,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             messages: this._attachments.hydrateImages(this._sessionMessages),
             localHistoryOnly: false,
         });
-        this._offerContextAttach(this._sessionMessages);
+        this._contextAttach.offer(this._sessionMessages);
         this._postSessionList();
         if (undelivered) {
             this._log(`Undelivered message offered back to the composer: ${localId}`);
@@ -693,83 +691,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } else {
             this._postMessage(msg);
         }
-        this._offerContextAttach(this._sessionMessages);
+        this._contextAttach.offer(this._sessionMessages);
     }
 
-    private _offerContextAttach(messages: ChatMessage[]): void {
-        if (this._getContextAttachVisibility() === 'never') {
-            this._clearContextAttachOffer();
-            return;
-        }
-        const hasHistory = messages.some(m => (m.text || '').trim());
-        if (!hasHistory) {
-            this._clearContextAttachOffer();
-            return;
-        }
-        this._contextAttachMessages = filterAttachableMessages(messages);
-        this._contextAttachActive = true;
-        this._postMessage({ type: 'showContextAttach', count: this._contextAttachMessages.length });
-    }
 
-    private _getContextAttachVisibility(): ContextAttachVisibility {
-        const value = vscode.workspace.getConfiguration('tommys').get<string>('contextAttachVisibility', 'onNewSession');
-        if (value === 'always' || value === 'never') {
-            return value;
-        }
-        return 'onNewSession';
-    }
 
-    private _applyContextAttachVisibility(): void {
-        const mode = this._getContextAttachVisibility();
-        if (mode === 'never') {
-            this._clearContextAttachOffer();
-            return;
-        }
-        if (mode === 'always') {
-            this._offerContextAttach(this._sessionMessages);
-            return;
-        }
-        if (this._contextAttachActive && !this._contextAttachAwaitingReply) {
-            this._clearContextAttachOffer();
-        }
-    }
 
-    private _clearContextAttachOffer(): void {
-        if (!this._contextAttachActive && !this._contextAttachAwaitingReply) {
-            return;
-        }
-        this._contextAttachActive = false;
-        this._contextAttachAwaitingReply = false;
-        this._contextAttachMessages = [];
-        this._postMessage({ type: 'hideContextAttach' });
-    }
 
-    private _buildPromptText(userText: string, option: ContextAttachOption | undefined): string {
-        if (!this._contextAttachActive) {
-            return userText;
-        }
-        const attachOption: ContextAttachOption = option?.mode
-            ? option
-            : { mode: 'none' };
-        const picked = attachOption.mode === 'custom'
-            ? resolveCustomAttachMessages(this._sessionMessages, attachOption.indices)
-            : resolveAttachMessages(this._contextAttachMessages, attachOption);
-        if (picked.length === 0) {
-            return userText;
-        }
-        return composePromptWithContext(userText, picked, getWebviewLocale());
-    }
 
-    private _completeContextAttachAfterSuccessfulReply(): void {
-        if (!this._contextAttachAwaitingReply) {
-            return;
-        }
-        this._contextAttachAwaitingReply = false;
-        if (this._getContextAttachVisibility() === 'always') {
-            return;
-        }
-        this._clearContextAttachOffer();
-    }
 
     private _saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[]): void {
         const record: ChatMessage = { role, text, timestamp: Date.now(), toolCallId };
@@ -1242,7 +1171,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._turn.clearText();
                     this._turn.promptSessionId = undefined;
                     if (this._isViewingPromptSession()) {
-                        this._completeContextAttachAfterSuccessfulReply();
+                        this._contextAttach.completeAfterReply();
                     }
                 }
                 if (status === 'prompting') {
@@ -1454,10 +1383,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         this._saveMessage('user', text, undefined, imageRefs);
         this._markSessionAgentEngaged();
-        if (this._contextAttachActive) {
-            this._contextAttachAwaitingReply = true;
+        if (this._contextAttach.isActive()) {
+            this._contextAttach.setAwaitingReply(true);
         }
-        const promptText = this._buildPromptText(text, contextAttach);
+        const promptText = this._contextAttach.buildPromptText(text, contextAttach);
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -2006,7 +1935,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._postConfig();
         }
         if (e.affectsConfiguration('tommys.contextAttachVisibility')) {
-            this._applyContextAttachVisibility();
+            this._contextAttach.applyVisibility();
         }
         if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
             if (!this._models.isRuntimeSource()) {

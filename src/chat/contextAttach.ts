@@ -1,5 +1,17 @@
+import * as vscode from 'vscode';
 import { LocaleStrings } from '../i18n/types';
-import type { ContextAttachMode, ContextAttachOption } from '../types/chat';
+import { getWebviewLocale } from '../i18n';
+import type { HostToPane } from '../types/webview';
+import type { ChatMessage, ContextAttachMode, ContextAttachOption } from '../types/chat';
+
+/** How eager the picker is: on a new tab, always, or never. */
+export type ContextAttachVisibility = 'onNewSession' | 'always' | 'never';
+
+/** What the offer needs from the host: the pane, and the transcript it may quote. */
+export interface ContextAttachHost {
+    post(msg: HostToPane): void;
+    messages(): ChatMessage[];
+}
 
 export type { ContextAttachMode, ContextAttachOption };
 
@@ -146,4 +158,98 @@ export function composePromptWithContext(
         return userText;
     }
     return `${prefix}\n\n${userText}`;
+}
+
+/** The picker's live state: what it offers, whether it is up, and whether a reply is owed. */
+export class ContextAttachOffer {
+    private _messages: ChatMessage[] = [];
+    private _active = false;
+    private _awaitingReply = false;
+
+    constructor(private _host: ContextAttachHost) {}
+
+    /** Whether the picker is up, which is what decides if a send owes a reply. */
+    isActive(): boolean {
+        return this._active;
+    }
+
+    offer(messages: ChatMessage[]): void {
+        if (this.visibility() === 'never') {
+            this.clear();
+            return;
+        }
+        const hasHistory = messages.some(m => (m.text || '').trim());
+        if (!hasHistory) {
+            this.clear();
+            return;
+        }
+        this._messages = filterAttachableMessages(messages);
+        this._active = true;
+        this._host.post({ type: 'showContextAttach', count: this._messages.length });
+    }
+
+    visibility(): ContextAttachVisibility {
+        const value = vscode.workspace.getConfiguration('tommys').get<string>('contextAttachVisibility', 'onNewSession');
+        if (value === 'always' || value === 'never') {
+            return value;
+        }
+        return 'onNewSession';
+    }
+
+    applyVisibility(): void {
+        const mode = this.visibility();
+        if (mode === 'never') {
+            this.clear();
+            return;
+        }
+        if (mode === 'always') {
+            this.offer(this._host.messages());
+            return;
+        }
+        if (this._active && !this._awaitingReply) {
+            this.clear();
+        }
+    }
+
+    clear(): void {
+        if (!this._active && !this._awaitingReply) {
+            return;
+        }
+        this._active = false;
+        this._awaitingReply = false;
+        this._messages = [];
+        this._host.post({ type: 'hideContextAttach' });
+    }
+
+    buildPromptText(userText: string, option: ContextAttachOption | undefined): string {
+        if (!this._active) {
+            return userText;
+        }
+        const attachOption: ContextAttachOption = option?.mode
+            ? option
+            : { mode: 'none' };
+        const picked = attachOption.mode === 'custom'
+            ? resolveCustomAttachMessages(this._host.messages(), attachOption.indices)
+            : resolveAttachMessages(this._messages, attachOption);
+        if (picked.length === 0) {
+            return userText;
+        }
+        return composePromptWithContext(userText, picked, getWebviewLocale());
+    }
+
+    completeAfterReply(): void {
+        if (!this._awaitingReply) {
+            return;
+        }
+        this._awaitingReply = false;
+        if (this.visibility() === 'always') {
+            return;
+        }
+        this.clear();
+    }
+
+    /** A turn started while the picker was up: the offer survives until its reply lands. */
+    setAwaitingReply(value: boolean): void {
+        this._awaitingReply = value;
+    }
 }

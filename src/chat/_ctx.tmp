@@ -1,0 +1,74 @@
+    offer(messages: ChatMessage[]): void {
+        if (this.visibility() === 'never') {
+            this.clear();
+            return;
+        }
+        const hasHistory = messages.some(m => (m.text || '').trim());
+        if (!hasHistory) {
+            this.clear();
+            return;
+        }
+        this._messages = filterAttachableMessages(messages);
+        this._active = true;
+        this._host.post({ type: 'showContextAttach', count: this._messages.length });
+    }
+
+    visibility(): ContextAttachVisibility {
+        const value = vscode.workspace.getConfiguration('tommys').get<string>('contextAttachVisibility', 'onNewSession');
+        if (value === 'always' || value === 'never') {
+            return value;
+        }
+        return 'onNewSession';
+    }
+
+    applyVisibility(): void {
+        const mode = this.visibility();
+        if (mode === 'never') {
+            this.clear();
+            return;
+        }
+        if (mode === 'always') {
+            this.offer(this._host.messages());
+            return;
+        }
+        if (this._active && !this._awaitingReply) {
+            this.clear();
+        }
+    }
+
+    clear(): void {
+        if (!this._active && !this._awaitingReply) {
+            return;
+        }
+        this._active = false;
+        this._awaitingReply = false;
+        this._messages = [];
+        this._host.post({ type: 'hideContextAttach' });
+    }
+
+    buildPromptText(userText: string, option: ContextAttachOption | undefined): string {
+        if (!this._active) {
+            return userText;
+        }
+        const attachOption: ContextAttachOption = option?.mode
+            ? option
+            : { mode: 'none' };
+        const picked = attachOption.mode === 'custom'
+            ? resolveCustomAttachMessages(this._host.messages(), attachOption.indices)
+            : resolveAttachMessages(this._messages, attachOption);
+        if (picked.length === 0) {
+            return userText;
+        }
+        return composePromptWithContext(userText, picked, getWebviewLocale());
+    }
+
+    completeAfterReply(): void {
+        if (!this._awaitingReply) {
+            return;
+        }
+        this._awaitingReply = false;
+        if (this.visibility() === 'always') {
+            return;
+        }
+        this.clear();
+    }
