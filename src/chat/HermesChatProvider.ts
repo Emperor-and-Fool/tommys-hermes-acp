@@ -3,18 +3,15 @@ import * as fs from 'fs';
 import { createHash } from 'node:crypto';
 import type { ChatMessage, SessionInfo, StoredImageRef } from '../types/chat';
 import * as path from 'path';
-import { AcpClient, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
-import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../models/modelConfig';
-import { resolveModelCatalog } from '../models/acpModelCatalog';
+import { AcpClient, CatalogSession, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
+import { ModelState } from '../models/modelState';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../environment/hermesProfile';
 import { discoverHermesProfiles, tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { EnvironmentDetection } from '../environment/detection';
 import {
     activeSessionPathFor,
-    loadProfileState,
     migrateLegacySessionStorage,
-    saveProfileState,
     sanitizeProfileScopeKey,
     sessionsPathFor,
 } from './profileStorage';
@@ -118,8 +115,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _sessions: SessionInfo[] = [];
     /** Sessions Hermes has flagged hidden: closed tabs waiting to be opened again. */
     private _hiddenSessions: CatalogSession[] = [];
-    private _modelState: ModelListState | null = null;
-    private _modelFallbackShown: boolean = false;
     private _activeAgentName: string = '';
     /** Agent name or CLI profile id used for reconnect / switch. */
     private _activeSelectionId: string = '';
@@ -130,7 +125,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _persistedSelectionId: string = '';
     private _discoveredProfiles: string[] | null = null;
     private _profileDiscoveryPromise: Promise<void> | undefined;
-    private _modelSwitchInFlight: Promise<void> | undefined;
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
     private readonly _extensionId: string;
@@ -141,7 +135,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * between a turn and the provider: every member here stays private, and this is the one
      * place where the runner reaches the pane, the transcript and the tab list.
      */
-    private readonly _turn = new PromptRunner({
+    private readonly _turn: PromptRunner = new PromptRunner({
         acp: () => this._acp,
         sessionId: () => this._sessionId,
         messages: () => this._sessionMessages,
@@ -157,7 +151,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         setContextAttachAwaitingReply: (value) => { this._contextAttachAwaitingReply = value; },
         detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._bindHermesSessionId(id),
-        applySessionModelPreference: () => this._applySessionModelPreference(),
+        applySessionModelPreference: () => this._models.applySessionPreference(),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._saveMessage(role, text),
         savePermissionRequest: (id, request) => this._savePermissionRequest(id, request),
@@ -191,6 +185,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
         reconnect: () => this._connect(this._activeSelectionId || undefined),
         resetViewTitle: () => this._resetViewTitleToDefault(),
+    });
+    /** Which model, from where: the chip, the switch, and the persisted choice. */
+    private readonly _models: ModelState = new ModelState({
+        acp: () => this._acp,
+        tabs: () => this._sessions,
+        sessionId: () => this._sessionId,
+        saveCatalog: () => this._saveCatalog(),
+        profileScope: () => ({ historyDir: this._historyDir, scopeKey: this._scopeKey }),
+        post: (msg) => this._postMessage(msg),
+        log: (line) => this._log(line),
+        otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
+        detachOtherPrompt: () => this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true }),
+        setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
     });
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -316,7 +323,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     // a freshly connected pane would have or it renders placeholders — an empty
                     // "Profile" pill, a model chip with nothing in it.
                     this._postMessage({ type: 'activeAgent', name: this._activeAgentName });
-                    this._postModelList();
+                    this._models.postList();
                     if (surface.role === 'chat') {
                         this._restoreMessages(surface);
                     }
@@ -374,10 +381,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     }));
                     break;
                 case 'switchModel':
-                    this._handleSwitchModel(message.configId, message.valueId);
+                    void this._models.switchModel(message.configId, message.valueId);
                     break;
                 case 'getModels':
-                    void this._syncModelState();
+                    void this._models.sync();
                     break;
                 case 'getProfiles':
                     this._postProfileList();
@@ -585,42 +592,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
 
-    private _snapshotSessionModelFromProfile(sessionId?: string): void {
-        const sid = sessionId || this._sessionId;
-        const session = this._sessions.find(s => s.id === sid);
-        if (!session || session.modelId) {
-            return;
-        }
-        const profileState = loadProfileState(this._historyDir, this._scopeKey);
-        if (!profileState.modelId) {
-            return;
-        }
-        session.modelId = profileState.modelId;
-        session.modelLabel = profileState.modelLabel;
-        try {
-            this._saveCatalog();
-        } catch { /* ignore */ }
-    }
 
     private async _syncModelStateForCurrentSession(): Promise<void> {
-        await this._syncModelState();
+        await this._models.sync();
         if (this._otherSessionIsPrompting()) {
             return;
         }
         if (this._acpBoundSessionId === this._sessionId) {
-            await this._applySessionModelPreference();
+            await this._models.applySessionPreference();
         }
     }
 
-    private _resolveSessionModelId(sessionId?: string): { modelId?: string; modelLabel?: string } {
-        const sid = sessionId || this._sessionId;
-        const session = this._sessions.find(s => s.id === sid);
-        if (session?.modelId) {
-            return { modelId: session.modelId, modelLabel: session.modelLabel };
-        }
-        const profileState = loadProfileState(this._historyDir, this._scopeKey);
-        return { modelId: profileState.modelId, modelLabel: profileState.modelLabel };
-    }
 
     private _syncPromptUiIfReturningToOwner(): void {
         if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._sessionId) {
@@ -1423,40 +1405,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }));
     }
 
-    private async _syncModelState(options?: { skipModelOptions?: boolean }): Promise<void> {
-        if (!this._acp) {
-            this._modelState = this._buildFallbackModelList();
-            this._postModelList();
-            return;
-        }
-
-        const agentState = this._acp.getModelListState();
-        const hermesModelsRaw = this._acp.getHermesModelsRaw();
-        let modelOptions = options?.skipModelOptions
-            ? null
-            : await this._acp.fetchModelOptions();
-        if (!modelOptions?.providers?.length) {
-            modelOptions = this._acp.getCachedModelOptions();
-        }
-        const catalog = resolveModelCatalog(modelOptions, hermesModelsRaw);
-        const profileState = loadProfileState(this._historyDir, this._scopeKey);
-        const session = this._sessions.find(s => s.id === this._sessionId);
-        const config = vscode.workspace.getConfiguration('tommys');
-        const settingsModels = config.get<Array<{ id: string; name: string }>>('models') || [];
-
-        if (catalog?.groups.length) {
-            this._modelState = buildModelListStateFromCatalog(catalog, agentState, {
-                modelId: session?.modelId || profileState.modelId,
-                modelLabel: session?.modelLabel || profileState.modelLabel,
-                settingsModels,
-            });
-        } else if (agentState) {
-            this._modelState = agentState;
-        } else {
-            this._modelState = this._buildFallbackModelList();
-        }
-        this._postModelList();
-    }
 
     private async _connect(selectionId?: string): Promise<void> {
         if (this._acp) {
@@ -1641,7 +1589,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 this._postTokenUsage();
             },
             () => {
-                void this._syncModelState({ skipModelOptions: true });
+                void this._models.sync({ skipModelOptions: true });
             },
             () => {
                 if (!this._isViewingPromptSession()) {
@@ -1671,9 +1619,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         try {
             await this._acp.start(cwd, resolvedPath, target.cliProfile);
             await this._resumeOrAdoptSession(cwd);
-            await this._syncModelState({ skipModelOptions: true });
-            await this._applySessionModelPreference();
-            await this._syncModelState();
+            await this._models.sync({ skipModelOptions: true });
+            await this._models.applySessionPreference();
+            await this._models.sync();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             this._log(`Connect failed: ${msg}`);
@@ -1736,7 +1684,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log('Retry connection requested');
         this._acp?.dispose();
         this._acp = undefined;
-        this._modelState = null;
+        this._models.reset();
         this._tokenUsage = null;
         this._postTokenUsage();
         await this._connect(this._activeSelectionId || undefined);
@@ -1759,15 +1707,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._detection.configureEnvironment();
     }
 
-    private _buildFallbackModelList(): ModelListState | null {
-        const config = vscode.workspace.getConfiguration('tommys');
-        const models = config.get<Array<{ id: string; name: string }>>('models') || [];
-        const defaultModel = config.get<string>('defaultModel') || '';
-        const session = this._sessions.find(s => s.id === this._sessionId);
-        const profileState = loadProfileState(this._historyDir, this._scopeKey);
-        const currentId = session?.modelId || profileState.modelId || defaultModel;
-        return buildFallbackModelListState(models, currentId);
-    }
 
     private _postProfileList(): void {
         void this._ensureDiscoveredProfiles().then(() => {
@@ -1775,163 +1714,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private _postModelList(): void {
-        const state = this._modelState ?? this._buildFallbackModelList();
-        if (state) {
-            this._postMessage({
-                type: 'modelList',
-                configId: state.configId,
-                currentValueId: state.currentValueId,
-                currentLabel: state.currentLabel,
-                models: state.models,
-                groups: state.groups,
-                fromAgent: state.fromAgent,
-            });
-        } else {
-            const session = this._sessions.find(s => s.id === this._sessionId);
-            const profileState = loadProfileState(this._historyDir, this._scopeKey);
-            this._postMessage({
-                type: 'modelList',
-                configId: '',
-                currentValueId: session?.modelId || profileState.modelId || '',
-                currentLabel: session?.modelLabel || profileState.modelLabel || '—',
-                models: [],
-                groups: [],
-                fromAgent: false,
-            });
-        }
-    }
 
-    private _persistModelChoice(valueId: string, label: string): void {
-        const session = this._sessions.find(s => s.id === this._sessionId);
-        if (session) {
-            session.modelId = valueId;
-            session.modelLabel = label;
-            try {
-                this._saveCatalog();
-            } catch { /* ignore */ }
-        }
-        saveProfileState(this._historyDir, this._scopeKey, { modelId: valueId, modelLabel: label });
-    }
 
     /** Point the *live* session at another model. No session/new: Hermes' set_session_model
      *  swaps the agent in place, and a fresh session here would silently drop the tab's
      *  conversation (and leave an empty row in the catalog). */
-    private async _resetAgentWithModel(valueId: string, configId?: string): Promise<void> {
-        if (!this._acp || !valueId) {
-            return;
-        }
-        if (!this._acp.activeSessionId) {
-            // Blank tab: nothing to switch yet. The choice is persisted already and
-            // _applySessionModelPreference() applies it when the first message creates one.
-            this._log('Model choice saved; no live session to switch yet');
-            return;
-        }
-        const state = this._modelState ?? this._acp.getModelListState();
-        const effectiveConfigId = configId || state?.configId || '';
-        if (!state || !isRuntimeModelSource(effectiveConfigId)) {
-            await this._syncModelState();
-            return;
-        }
-        await this._acp.setModel(effectiveConfigId, valueId);
-        const runtimeId = this._acp.getRuntimeModelId();
-        if (runtimeId !== valueId) {
-            this._log(`Model apply incomplete: runtime=${runtimeId || '(none)'} expected=${valueId}`);
-            this._postMessage({
-                type: 'addMessage',
-                role: 'assistant',
-                text: t('modelSwitchIncomplete', valueId),
-            });
-        }
-        await this._syncModelState();
-    }
 
-    private async _applySessionModelPreference(options?: { forceReset?: boolean }): Promise<void> {
-        const forceReset = options?.forceReset ?? false;
-        const { modelId: preferredId, modelLabel: preferredLabel } = this._resolveSessionModelId();
-        if (!preferredId || !this._acp) {
-            return;
-        }
-        const state = this._modelState ?? this._acp.getModelListState();
-        if (!state || !isRuntimeModelSource(state.configId)) {
-            return;
-        }
-        const runtimeId = this._acp.getRuntimeModelId();
-        if (!forceReset && preferredId === runtimeId) {
-            return;
-        }
-        const known = state.models.some(m => m.valueId === preferredId);
-        if (!known) {
-            const label = preferredLabel || preferredId;
-            this._log(`Saved model not available: ${label}`);
-            vscode.window.showWarningMessage(t('savedModelUnavailable', label));
-            return;
-        }
-        try {
-            this._log(`Apply session model: ${preferredLabel || preferredId}${forceReset ? ' (reset agent)' : ''}`);
-            await this._resetAgentWithModel(preferredId, state.configId);
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._log(`Restore model failed: ${msg}`);
-        }
-    }
 
-    private async _handleSwitchModel(configId: string, valueId: string): Promise<void> {
-        const op = this._switchModel(configId, valueId);
-        this._modelSwitchInFlight = op;
-        try {
-            await op;
-        } finally {
-            if (this._modelSwitchInFlight === op) {
-                this._modelSwitchInFlight = undefined;
-            }
-        }
-    }
 
-    private async _switchModel(configId: string, valueId: string): Promise<void> {
-        const state = this._modelState ?? this._buildFallbackModelList();
-        const effectiveConfigId = configId || state?.configId || '';
-        const picked = state?.models.find(m => m.valueId === valueId);
-        const label = picked?.name ?? valueId;
-        this._log(`Switch model: ${label} (config=${effectiveConfigId})`);
-
-        if (this._acp && valueId) {
-            if (this._acp.status === 'prompting') {
-                vscode.window.showWarningMessage(t('waitForResponse'));
-                return;
-            }
-            this._persistModelChoice(valueId, label);
-            try {
-                if (this._otherSessionIsPrompting()) {
-                    await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
-                }
-                await this._resetAgentWithModel(valueId, effectiveConfigId);
-                this._acpBoundSessionId = this._sessionId;
-                this._log(`Model active: ${label}`);
-                return;
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._log(`setModel failed: ${msg}`);
-                vscode.window.showErrorMessage(t('failedSwitchModel', msg));
-                return;
-            }
-        }
-
-        if (!state || !isRuntimeModelSource(effectiveConfigId)) {
-            this._persistModelChoice(valueId, label);
-            if (state) {
-                this._modelState = { ...state, currentValueId: valueId, currentLabel: label };
-            }
-            this._postModelList();
-            if (!this._modelFallbackShown) {
-                this._modelFallbackShown = true;
-                vscode.window.showInformationMessage(t('modelPreferenceSaved'));
-            }
-            return;
-        }
-
-        vscode.window.showWarningMessage(t('hermesNotConnected'));
-    }
 
     private async _handleUserMessage(text: string, contextAttach?: ContextAttachOption, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         const epoch = this._turn.sendEpoch;
@@ -1939,9 +1729,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (this._modelSwitchInFlight) {
-            await this._modelSwitchInFlight;
-        }
+        await this._models.awaitSwitch();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -1960,7 +1748,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         }
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
-        this._snapshotSessionModelFromProfile();
+        this._models.snapshotFromProfile();
         this._turn.promptSessionId = this._sessionId;
         const imageRefs = images && images.length ? this._storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
@@ -2125,7 +1913,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._sessionId = Date.now().toString(36);
         try { fs.unlinkSync(this._msgPath(this._sessionId)); } catch { /* ignore */ }
         this._ensureSessionRegistered();
-        this._snapshotSessionModelFromProfile();
+        this._models.snapshotFromProfile();
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
     }
@@ -2356,7 +2144,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             );
             messages = messages.filter((_, index) => pick.has(index));
         }
-        const payload = buildSessionExportPayload(session, messages, this._modelState?.currentLabel);
+        const payload = buildSessionExportPayload(session, messages, this._models.currentLabel);
         this._postMessage({
             type: 'sessionExport',
             action,
@@ -2389,7 +2177,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._saveCurrentSession();
         this._acp?.dispose();
         this._acp = undefined;
-        this._modelState = null;
+        this._models.reset();
         this._tokenUsage = null;
         this._turn.promptSessionId = undefined;
         this._acpBoundSessionId = '';
@@ -2481,9 +2269,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     public async sendText(text: string): Promise<void> {
         await this._awaitSessionReady();
-        if (this._modelSwitchInFlight) {
-            await this._modelSwitchInFlight;
-        }
+        await this._models.awaitSwitch();
         if (!this._acp) {
             vscode.window.showWarningMessage(t('hermesNotConnectedConnecting'));
             await this._connect();
@@ -2493,7 +2279,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._turn.promptSessionId = this._sessionId;
-        this._snapshotSessionModelFromProfile();
+        this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._sessionId });
         this._saveMessage('user', text);
         this._markSessionAgentEngaged();
@@ -2577,7 +2363,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
         this._acp?.dispose();
         this._acp = undefined;
-        this._modelState = null;
+        this._models.reset();
         this._tokenUsage = null;
         this._postTokenUsage();
 
@@ -2634,10 +2420,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._applyContextAttachVisibility();
         }
         if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
-            if (!this._modelState || !isRuntimeModelSource(this._modelState.configId)) {
-                this._modelState = null;
+            if (!this._models.isRuntimeSource()) {
+                this._models.reset();
             }
-            void this._syncModelState();
+            void this._models.sync();
         }
         if (e.affectsConfiguration('tommys.agents')) {
             this._discoveredProfiles = null;
@@ -2660,7 +2446,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log('Settings changed — reconnecting Hermes...');
         this._acp?.dispose();
         this._acp = undefined;
-        this._modelState = null;
+        this._models.reset();
         await this._connect(this._activeSelectionId || undefined);
     }
 
