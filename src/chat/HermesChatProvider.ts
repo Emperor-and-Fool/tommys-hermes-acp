@@ -19,6 +19,8 @@ import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from 
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
+import { handleWebviewMessage } from '../webview/router';
+import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { buildSessionExportPayload } from './sessionExport';
 import { SessionStore } from '../cache/sessionStore';
@@ -283,156 +285,93 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
-        webview.onDidReceiveMessage((message) => {
-            switch (message.type) {
-                case 'sendMessage':
-                    this._enqueueChatOp(() => this._handleUserMessage(message.text, message.contextAttach, (message as any).images));
-                    break;
-                case 'cancel':
-                    // Cancel must not wait behind an in-flight sendMessage; AcpClient
-                    // handles send/cancel races via _activePromptId.
-                    void this._handleCancel();
-                    break;
-                case 'openFile':
-                    void this._handleOpenFile(message.path);
-                    break;
-                case 'listFiles':
-                    void this._handleListFiles(message.query || '', message.requestId);
-                    break;
-                case 'previewFile':
-                    void this._handlePreviewFile(message.path, message.requestId);
-                    break;
-                case 'ready':
-                    this._log('WebView ready');
-                    this._postSurfaceRole(surface);
-                    this._syncWebviewLocale();
-                    this._postPluginInfo();
-                    this._postSessionList();
-                    this._postProfileList();
-                    this._postHiddenSessions();
-                    this._postConfig();
-                    this._postTokenUsage();
-                    // A pane can be brand new (container move, view re-show): replay the state
-                    // a freshly connected pane would have or it renders placeholders — an empty
-                    // "Profile" pill, a model chip with nothing in it.
-                    this._postMessage({ type: 'activeAgent', name: this._activeAgentName });
-                    this._models.postList();
-                    if (surface.role === 'chat') {
-                        this._restoreMessages(surface);
-                    }
-                    if (this._surfaceMode === 'editor' && !this._chatPanel
-                        && this._surfaces.some(item => !!item.view)) {
-                        this._openChatPanel();
-                    }
-                    // Moving the view container disposes and re-creates the webview but keeps
-                    // the ACP client. The new pane knows nothing and its composer starts
-                    // disabled, so replay the live status — otherwise the UI looks frozen and
-                    // only a window reload recovers.
-                    if (this._acp) {
-                        const liveStatus = this._acp.status;
-                        this._postTo(surface, { type: 'status', status: liveStatus, sessionId: this._sessionId });
-                        if (liveStatus === 'idle' || liveStatus === 'error') {
-                            this._acp.dispose();
-                            this._acp = undefined;
-                        }
-                    }
-                    this._connect();
-                    break;
-                case 'getSessions':
-                    void this._refreshSessionsFromHermes();
-                    break;
-                case 'getHiddenSessions':
-                    this._postHiddenSessions();
-                    break;
-                case 'openTab':
-                    this._enqueueChatOp(() => this._handleOpenTab(message.sessionId));
-                    break;
-                case 'reorderSessions':
-                    this._handleReorderSessions(message.sessionIds);
-                    break;
-                case 'closeSessions':
-                    void this._handleCloseSessions(message.sessionId, message.mode);
-                    break;
-                case 'renameSession':
-                    void this._handleRenameSession(message.sessionId, message.title);
-                    break;
-                case 'togglePinSession':
-                    this._handleTogglePinSession(message.sessionId);
-                    break;
-                case 'sessionExport':
-                    this._handleSessionExport(message.sessionId, message.action, message.indices);
-                    break;
-                case 'switchAgent':
-                    this._handleSwitchAgent(message.agentName);
-                    break;
-                case 'switchSession':
-                    if (this._surfaceMode === 'editor' && !this._chatPanel) {
-                        this._openChatPanel();
-                    }
-                    this._enqueueChatOp(() => this._handleSwitchSession(message.sessionId, {
-                        interrupt: message.interrupt === true,
-                    }));
-                    break;
-                case 'switchModel':
-                    void this._models.switchModel(message.configId, message.valueId);
-                    break;
-                case 'getModels':
-                    void this._models.sync();
-                    break;
-                case 'getProfiles':
-                    this._postProfileList();
-                    break;
-                case 'openSettings':
-                    void this._openSettings();
-                    break;
-                case 'webviewLog':
-                    // Pane-side diagnostics, so paste/render behaviour is observable
-                    // from the extension output channel instead of the webview devtools.
-                    this._log(`[webview] ${String(message.line ?? '')}`.slice(0, 400));
-                    break;
-                case 'openExternal':
-                    if (message.url) {
-                        void vscode.env.openExternal(vscode.Uri.parse(message.url));
-                    }
-                    break;
-                case 'retry':
-                    void this._handleRetry();
-                    break;
-                case 'detectEnvironment':
-                    void this.detectEnvironment();
-                    break;
-                case 'detectEnvironmentDismiss':
-                    this._detection.dismiss();
-                    break;
-                case 'configureEnvironmentBrowse':
-                    void this._detection.browse();
-                    break;
-                case 'configureEnvironmentDetect':
-                    void this._detection.detectInConfigure(message.currentPath);
-                    break;
-                case 'configureEnvironmentSave':
-                    void this._detection.save(message.path);
-                    break;
-                case 'configureEnvironmentSystem':
-                    void this._detection.configureSystem(message.path);
-                    break;
-                case 'configureEnvironmentOpenDirectory':
-                    void this._detection.openDirectory(message.path);
-                    break;
-                case 'configureEnvironmentDetectClose':
-                    this._detection.closeConfigure();
-                    break;
-                case 'permissionResponse':
-                    this._handlePermissionResponse(message.id, message.optionId ?? null);
-                    break;
-                case 'insertEditor':
-                    void this._handleInsertEditor(message.text || '');
-                    break;
-                case 'deleteMessages':
-                    this._handleDeleteMessages(message.indices);
-                    break;
+        const host = this._routerHost(surface);
+        webview.onDidReceiveMessage((message) => handleWebviewMessage(message, host));
+    }
+
+    /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
+    private _onWebviewReady(surface: ChatSurface): void {
+        this._log('WebView ready');
+        this._postSurfaceRole(surface);
+        this._syncWebviewLocale();
+        this._postPluginInfo();
+        this._postSessionList();
+        this._postProfileList();
+        this._postHiddenSessions();
+        this._postConfig();
+        this._postTokenUsage();
+        // A pane can be brand new (container move, view re-show): replay the state
+        // a freshly connected pane would have or it renders placeholders — an empty
+        // "Profile" pill, a model chip with nothing in it.
+        this._postMessage({ type: 'activeAgent', name: this._activeAgentName });
+        this._models.postList();
+        if (surface.role === 'chat') {
+            this._restoreMessages(surface);
+        }
+        if (this._surfaceMode === 'editor' && !this._chatPanel
+            && this._surfaces.some(item => !!item.view)) {
+            this._openChatPanel();
+        }
+        // Moving the view container disposes and re-creates the webview but keeps
+        // the ACP client. The new pane knows nothing and its composer starts
+        // disabled, so replay the live status — otherwise the UI looks frozen and
+        // only a window reload recovers.
+        if (this._acp) {
+            const liveStatus = this._acp.status;
+            this._postTo(surface, { type: 'status', status: liveStatus, sessionId: this._sessionId });
+            if (liveStatus === 'idle' || liveStatus === 'error') {
+                this._acp.dispose();
+                this._acp = undefined;
             }
-        });
+        }
+        this._connect();
+    }
+
+    /** Everything the router may call, bound to this pane and this surface. */
+    private _routerHost(surface: ChatSurface): RouterHost {
+        return {
+            log: (line) => this._log(line),
+            openExternal: (url) => {
+                if (url) {
+                    void vscode.env.openExternal(vscode.Uri.parse(url));
+                }
+            },
+            ready: () => this._onWebviewReady(surface),
+            enqueueChatOp: (op) => this._enqueueChatOp(op),
+            handleUserMessage: (text, contextAttach, images) => this._handleUserMessage(
+                text,
+                contextAttach as ContextAttachOption | undefined,
+                images as Array<{ mimeType: string; data: string }> | undefined,
+            ),
+            handleCancel: () => this._handleCancel(),
+            handleOpenFile: (path) => this._handleOpenFile(path),
+            handleListFiles: (query, requestId) => this._handleListFiles(query, requestId),
+            handlePreviewFile: (path, requestId) => this._handlePreviewFile(path, requestId),
+            refreshSessions: () => this._refreshSessionsFromHermes(),
+            postHiddenSessions: () => this._postHiddenSessions(),
+            handleOpenTab: (sessionId) => this._handleOpenTab(sessionId),
+            handleReorderSessions: (ids) => this._handleReorderSessions(ids),
+            handleCloseSessions: (sessionId, mode) => this._handleCloseSessions(sessionId, mode),
+            handleRenameSession: (sessionId, title) => this._handleRenameSession(sessionId, title),
+            handleTogglePinSession: (sessionId) => this._handleTogglePinSession(sessionId),
+            handleSessionExport: (sessionId, action, indices) => this._handleSessionExport(sessionId, action, indices),
+            handleSwitchAgent: (name) => this._handleSwitchAgent(name),
+            handleSwitchSession: (sessionId, interrupt) => {
+                if (this._surfaceMode === 'editor' && !this._chatPanel) {
+                    this._openChatPanel();
+                }
+                this._enqueueChatOp(() => this._handleSwitchSession(sessionId, { interrupt }));
+            },
+            switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
+            syncModels: () => this._models.sync(),
+            postProfileList: () => this._postProfileList(),
+            openSettings: () => this._openSettings(),
+            retry: () => this._handleRetry(),
+            handlePermissionResponse: (id, optionId) => this._handlePermissionResponse(id, optionId),
+            handleInsertEditor: (text) => this._handleInsertEditor(text),
+            handleDeleteMessages: (indices) => this._handleDeleteMessages(indices),
+            detection: () => this._detection,
+        };
     }
 
     private _addSurface(
