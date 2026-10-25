@@ -58,6 +58,11 @@ import {
     resolveCustomAttachMessages,
 } from './contextAttach';
 
+/**
+ * `onNewSession` is a Rina-era name kept for settings compatibility. A tab no longer gets a new
+ * session behind its back; the picker shows when a tab's transcript is restored, until the
+ * first reply.
+ */
 type ContextAttachVisibility = 'onNewSession' | 'always' | 'never';
 
 /** Webview panel id; the serializer re-creates it after a window reload. */
@@ -197,7 +202,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _acpBoundSessionId: string = '';
     /** Hermes session id this workspace last had open (workspaceState-backed). */
     private _persistedHermesSessionId: string = '';
-    /** Messages available for one-time context attach after agent reset. */
+    /** This tab's own messages offered to the picker; not an earlier session. */
     private _contextAttachMessages: ChatMessage[] = [];
     private _contextAttachActive = false;
     private _contextAttachAwaitingReply = false;

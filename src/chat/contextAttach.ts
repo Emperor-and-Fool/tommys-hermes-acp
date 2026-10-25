@@ -1,10 +1,18 @@
 import { LocaleStrings } from '../i18n/types';
 
+/**
+ * Context attach: a picker over the current tab's own local transcript. The picked messages
+ * are pasted as text in front of the next prompt.
+ *
+ * It is NOT a way to load or link earlier sessions: nothing here reads another session or
+ * asks Hermes for anything. Inherited from Rina, where a tab could silently get a fresh
+ * Hermes session and this re-injected the history it had lost.
+ */
 export type ContextAttachMode = 'none' | 'last2' | 'last10' | 'all' | 'custom';
 
 export interface ContextAttachOption {
     mode: ContextAttachMode;
-    /** Session message indices for custom mode. */
+    /** Custom mode: indices into the current tab's transcript, not into another session. */
     indices?: number[];
 }
 
@@ -15,7 +23,7 @@ export interface AttachableMessage {
 
 const MEMORY_ROLES = new Set(['user', 'assistant', 'permission']);
 
-/** Rough char budget for injected prior-session memory (~8k tokens). */
+/** Rough char budget for the pasted block (~8k tokens). It holds local messages, not a prior session. */
 export const MAX_CONTEXT_ATTACH_CHARS = 32_000;
 
 export function isAttachableRole(role: string): boolean {
