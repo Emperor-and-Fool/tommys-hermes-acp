@@ -9,7 +9,7 @@ import {
     saveProfileState,
     loadProfileState,
     sessionsPathFor,
-} from '../../chat/profileStorage';
+} from '../../cache/profileStorage';
 
 describe('profileStorage', () => {
     it('sanitizeProfileScopeKey removes unsafe characters', () => {

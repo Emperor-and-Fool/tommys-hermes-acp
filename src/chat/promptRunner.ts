@@ -1,6 +1,6 @@
-import type { AcpClient, PermissionRequest } from '../../acp/AcpClient';
-import type { ChatMessage, SessionInfo } from '../../types/chat';
-import { localizeStatusMessage, t } from '../../i18n';
+import type { AcpClient, PermissionRequest } from '../acp/AcpClient';
+import type { ChatMessage, SessionInfo } from '../types/chat';
+import { localizeStatusMessage, t } from '../i18n';
 
 /**
  * What a turn needs from the provider.

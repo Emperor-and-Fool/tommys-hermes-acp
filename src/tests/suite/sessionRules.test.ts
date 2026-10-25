@@ -7,7 +7,7 @@ import {
     pinSession,
     registerSession,
     reorderSessions,
-} from '../../chat/session/index';
+} from '../../tabs/tabs';
 import type { ChatMessage, SessionInfo } from '../../types/chat';
 
 const session = (id: string, over: Partial<SessionInfo> = {}): SessionInfo => ({

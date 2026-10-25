@@ -6,7 +6,7 @@ import {
     isShortToolText,
     mergeToolTexts,
     rebuildAggregatedToolText,
-} from '../../chat/transcript/toolAggregate';
+} from '../../chat/toolAggregate';
 
 describe('toolAggregate', () => {
     it('counts non-empty lines', () => {

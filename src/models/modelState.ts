@@ -11,7 +11,7 @@
  */
 import * as vscode from 'vscode';
 import { t } from '../i18n';
-import { loadProfileState, saveProfileState } from '../chat/profileStorage';
+import { loadProfileState, saveProfileState } from '../cache/profileStorage';
 import { resolveModelCatalog } from './acpModelCatalog';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from './modelConfig';
 import type { ModelListState } from './modelConfig';

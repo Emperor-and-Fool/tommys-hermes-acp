@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildReplayMessages } from '../../chat/session/replay';
+import { buildReplayMessages } from '../../cache/replay';
 
 describe('buildReplayMessages', () => {
     it('drops empty records and keeps the order', () => {

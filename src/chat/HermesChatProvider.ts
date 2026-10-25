@@ -14,23 +14,23 @@ import {
     migrateLegacySessionStorage,
     sanitizeProfileScopeKey,
     sessionsPathFor,
-} from './profileStorage';
+} from '../cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
 import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from './webviewHtml';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
-import { buildSessionExportPayload } from './session/sessionExport';
-import { SessionStore } from './extensionCache';
-import { applyCatalogRows, renameSession } from './catalog';
-import { backfillAgentEngaged, hermesSessionIdFor, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from './session/index';
-import { buildReplayMessages } from './session/replay';
-import { findUndelivered, lastUserMessageText } from './session/undelivered';
-import { PromptRunner } from './session/promptRunner';
+import { buildSessionExportPayload } from './sessionExport';
+import { SessionStore } from '../cache/sessionStore';
+import { applyCatalogRows, renameSession } from '../cache/catalog';
+import { backfillAgentEngaged, hermesSessionIdFor, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from '../tabs/tabs';
+import { buildReplayMessages } from '../cache/replay';
+import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
+import { PromptRunner } from './promptRunner';
 import {
     canAggregateToolTexts,
     rebuildAggregatedToolText,
-} from './transcript/toolAggregate';
+} from './toolAggregate';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import {
     composePromptWithContext,
