@@ -21,7 +21,7 @@ import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
 import { Surfaces } from '../webview/surfaces';
 import type { ChatSurface } from '../webview/surfaces';
-import type { PaneToHost } from '../types/webview';
+import type { HostToPane, PaneToHost } from '../types/webview';
 import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
@@ -660,7 +660,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return this._turn.ensureSessionReady();
     }
 
-    private _postPromptScopedMessage(msg: Record<string, unknown>): void {
+    private _postPromptScopedMessage(msg: HostToPane): void {
         this._turn.postScoped(msg);
     }
 
@@ -679,7 +679,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _restoreMessages(target?: ChatSurface): void {
         if (this._sessionMessages.length === 0) return;
         this._log(`Restoring ${this._sessionMessages.length} messages`);
-        const msg = {
+        const msg: HostToPane = {
             type: 'restoreHistory',
             messages: this._attachments.hydrateImages(this._sessionMessages),
             localHistoryOnly: true,
@@ -2009,7 +2009,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** One way to reach the pane: every call site stays as it was. */
-    private _postMessage(msg: any): void {
+    private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
     }
 

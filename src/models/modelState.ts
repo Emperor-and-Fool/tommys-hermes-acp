@@ -11,6 +11,7 @@
  */
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import type { HostToPane } from '../types/webview';
 import { loadProfileState, saveProfileState } from '../cache/profileStorage';
 import { resolveModelCatalog } from './acpModelCatalog';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from './modelConfig';
@@ -27,7 +28,7 @@ export interface ModelHost {
     saveCatalog(): boolean;
     /** Read fresh on every call: the scope changes when the profile does. */
     profileScope(): { historyDir: string; scopeKey: string };
-    post(msg: unknown): void;
+    post(msg: HostToPane): void;
     log(line: string): void;
     otherSessionIsPrompting(): boolean;
     /** End the prompt running in another tab, keeping what it had written. */

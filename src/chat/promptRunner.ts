@@ -1,5 +1,6 @@
 import type { AcpClient, PermissionRequest } from '../acp/AcpClient';
 import type { ChatMessage, SessionInfo } from '../types/chat';
+import type { HostToPane } from '../types/webview';
 import { localizeStatusMessage, t } from '../i18n';
 
 /**
@@ -19,7 +20,7 @@ export interface PromptHost {
     tabs(): SessionInfo[];
     resolveCwd(): string;
     log(line: string): void;
-    post(msg: unknown): void;
+    post(msg: HostToPane): void;
     otherSessionIsPrompting(): boolean;
     detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void>;
     bindHermesSessionId(hermesSessionId: string): void;
@@ -134,11 +135,13 @@ export class PromptRunner {
     }
 
     /** Post to the pane only while it shows the tab this turn belongs to. */
-    postScoped(msg: Record<string, unknown>): void {
+    postScoped(msg: HostToPane): void {
         if (!this.host.isViewingPromptSession()) {
             return;
         }
-        this.host.post({ ...msg, sessionId: this.host.sessionId() });
+        // The one place a turn stamps its own tab id onto a message; the union cannot express
+        // "whatever this is, plus sessionId", so the cast sits here rather than at every caller.
+        this.host.post({ ...msg, sessionId: this.host.sessionId() } as HostToPane);
     }
 
     /**

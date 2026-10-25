@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import type { HostToPane } from '../types/webview';
 import {
     detectStepLabel,
     formatDetectBrokenMessage,
@@ -35,7 +36,7 @@ import type {
 /** What the host supplies: the four provider concerns this module cannot own. */
 export interface DetectionHost {
     /** Post to the webview, already bound to the right surface. */
-    post(msg: unknown): void;
+    post(msg: HostToPane): void;
     log(line: string): void;
     /** Reconnect after a Save, with whatever selection the provider holds. */
     reconnect(): Promise<void>;

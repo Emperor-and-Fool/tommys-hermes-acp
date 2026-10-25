@@ -10,6 +10,7 @@
  * as `PromptHost`, `DetectionHost` and `ModelHost`.
  */
 import * as vscode from 'vscode';
+import type { HostToPane } from '../types/webview';
 
 /** Webview panel id; the serializer re-creates it after a window reload. */
 export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
@@ -149,12 +150,12 @@ export class Surfaces {
         void surface.webview.postMessage({ type: 'surfaceRole', role: surface.role, hideTabs: !!surface.panel });
     }
 
-    postTo(surface: ChatSurface, msg: unknown): void {
+    postTo(surface: ChatSurface, msg: HostToPane): void {
         void surface.webview.postMessage(msg);
     }
 
     /** Fan out to every renderer: the side bar view and/or the chat panel. */
-    post(msg: any): void {
+    post(msg: HostToPane): void {
         if (this._list.length === 0) {
             this._view?.webview.postMessage(msg);
             return;

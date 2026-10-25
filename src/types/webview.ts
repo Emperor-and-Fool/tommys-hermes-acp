@@ -6,13 +6,72 @@
  * `media/chat.js` for what the pane actually sends, `webview/router.ts` for what the host
  * accepts. A capture only shows what happened while it ran.
  *
- * `HostToPane` (the replies, and every post()) is the next commit; both directions are meant to
- * be read together, which is why they share this file.
+ * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
+ * here on purpose: read together, they are the API this pane and this host share.
  *
  * LATER: `media/chat.js` can point at these shapes through JSDoc + `// @ts-check`, so the pane
  * side is checked as well without rewriting it in TypeScript.
  */
-import type { ContextAttachOption } from './chat';
+import type { ChatMessage, ContextAttachOption, SessionInfo } from './chat';
+import type { CatalogSession, PermissionOption } from '../acp/AcpClient';
+import type { ModelListItem, ModelProviderGroup } from '../models/modelConfig';
+import type { LocaleStrings } from '../i18n/types';
+
+/** Host → pane: every message the extension posts, in the same one place. */
+export type HostToPane =
+    // Chrome: which renderer, locale, settings, identity.
+    | { type: 'surfaceRole'; role: 'chat' | 'rail'; hideTabs: boolean }
+    | { type: 'setLocale'; locale: LocaleStrings }
+    | { type: 'config'; showThoughts: boolean; showToolCalls: boolean }
+    | { type: 'pluginInfo'; displayName: string; version: string; publisher: string; description?: string; repository?: string; iconUri?: string }
+    | { type: 'activeAgent'; name: string }
+    | { type: 'profileList'; profiles: Array<{ id: string; label: string }> }
+    | { type: 'log'; line: string; level: string }
+    | { type: 'openAbout' }
+    | { type: 'openHelp' }
+    | { type: 'openFaq' }
+    | { type: 'openLogs' }
+
+    // The conversation.
+    | { type: 'status'; status: string; message?: string; sessionId?: string }
+    | { type: 'newChat' }
+    | { type: 'noActiveTab' }
+    | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string }
+    | { type: 'finishAssistantBubble'; sessionId?: string }
+    | { type: 'undeliveredMessage'; text: string }
+    | { type: 'insertInput'; text: string }
+    | { type: 'tokenUsage'; used: number; size: number }
+
+    // Tabs and models.
+    | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string }
+    | { type: 'hiddenSessions'; sessions: CatalogSession[] }
+    | { type: 'sessionExport'; action: SessionExportAction; sessionId: string; title: string; markdown: string; filename: string }
+    | { type: 'modelList'; configId: string; currentValueId: string; currentLabel: string; models: ModelListItem[]; groups?: ModelProviderGroup[]; fromAgent: boolean }
+
+    // Files.
+    | { type: 'fileList'; requestId: string; files: string[] }
+    | { type: 'filePreview'; requestId: string; path: string; content?: string; language?: string; error?: string }
+
+    // Permissions.
+    | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
+    | { type: 'permissionDismiss'; id: string }
+
+    // Context attach picker.
+    | { type: 'showContextAttach'; count: number }
+    | { type: 'hideContextAttach' }
+
+    // Environment detection and the configure panel.
+    | { type: 'detectEnvironmentStart'; mode: 'connect' | 'manual' | 'configure' }
+    | { type: 'detectEnvironmentProgress'; step: string; status: string; brief: string; detail?: string; paths?: string[]; count?: number; verifiedCount?: number; totalCount?: number; reportStatus?: string }
+    | { type: 'detectEnvironmentEnd'; status: string; mode: string; brief: string; summaryStatus: string }
+    | { type: 'configureEnvironmentOpen'; currentPath: string; systemEnvVar: string; systemEnvTarget: string }
+    | { type: 'configureEnvironmentDetectStart' }
+    | { type: 'configureEnvironmentDetectProgress'; step: string; status: string; brief: string; detail?: string; paths?: string[]; count?: number; verifiedCount?: number; totalCount?: number; reportStatus?: string }
+    | { type: 'configureEnvironmentDetectEnd'; status: string; summary?: string; executables?: Array<{ path: string; source: string; verified: boolean; version?: string }> }
+    | { type: 'configureEnvironmentDetectClosed' }
+    | { type: 'configureEnvironmentBrowseResult'; path?: string; error?: string }
+    | { type: 'configureEnvironmentSaveResult'; ok: boolean; path?: string; error?: string };
 
 /** One pasted image, as the pane hands it over: base64, no bytes stored by Hermes. */
 export interface PaneImage {
