@@ -20,6 +20,7 @@ import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { buildWebviewHtml } from '../webview/html';
 import { Surfaces } from '../webview/surfaces';
+import { WorkspaceFiles } from '../workspace/files';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane, PaneToHost } from '../types/webview';
 import { handleWebviewMessage } from '../webview/router';
@@ -86,6 +87,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** Every live renderer: the sidebar view and/or the single chat panel. */
     /** Where the conversation is rendered: the side bar or an editor tab. */
     private _acp?: AcpClient;
+    /** The workspace as the pane and the agent may touch it: paths, picker, previews, fs. */
+    private readonly _files: WorkspaceFiles = new WorkspaceFiles({
+        post: (msg) => this._postMessage(msg),
+        log: (line) => this._log(line),
+    });
     /** The renderers of the chat: side bar view, editor panel, or both at once. */
     private readonly _surfaces: Surfaces = new Surfaces({
         html: (webview) => this._getHtml(webview),
@@ -139,7 +145,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         sessionId: () => this._sessionId,
         messages: () => this._sessionMessages,
         tabs: () => this._sessions,
-        resolveCwd: () => this._resolveCwd(),
+        resolveCwd: () => this._files.resolveCwd(),
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -331,9 +337,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 images as Array<{ mimeType: string; data: string }> | undefined,
             ),
             handleCancel: () => this._handleCancel(),
-            handleOpenFile: (path) => this._handleOpenFile(path),
-            handleListFiles: (query, requestId) => this._handleListFiles(query, requestId),
-            handlePreviewFile: (path, requestId) => this._handlePreviewFile(path, requestId),
+            handleOpenFile: (path) => this._files.openFile(path),
+            handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
+            handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),
             postHiddenSessions: () => this._postHiddenSessions(),
             handleOpenTab: (sessionId) => this._handleOpenTab(sessionId),
             handleReorderSessions: (ids) => this._handleReorderSessions(ids),
@@ -353,7 +359,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             postProfileList: () => this._postProfileList(),
             retry: () => this._handleRetry(),
             handlePermissionResponse: (id, optionId) => this._handlePermissionResponse(id, optionId),
-            handleInsertEditor: (text) => this._handleInsertEditor(text),
+            handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._handleDeleteMessages(indices),
             detection: () => this._detection,
         };
@@ -497,7 +503,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     /** Refresh the tab list from Hermes, then repaint it. */
     private async _refreshSessionsFromHermes(): Promise<void> {
-        await this._syncSessionsFromHermes(this._resolveCwd());
+        await this._syncSessionsFromHermes(this._files.resolveCwd());
         this._postSessionList();
     }
 
@@ -562,7 +568,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             const record = this._sessions.find(rec => rec.id === sessionId);
             this._renderReplayOnLoad = true;
             try {
-                await acp.loadSession(record?.cwd || this._resolveCwd(), bound);
+                await acp.loadSession(record?.cwd || this._files.resolveCwd(), bound);
             } finally {
                 this._renderReplayOnLoad = false;
             }
@@ -1146,7 +1152,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._postMessage({ type: 'activeAgent', name: target.displayName });
 
-        const cwd = this._resolveCwd(target.configCwd);
+        const cwd = this._files.resolveCwd(target.configCwd);
 
         this._postMessage({
             type: 'status',
@@ -1259,23 +1265,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 void this._reconnectAfterLoss();
             },
             {
-                readTextFile: async (p: string) => {
-                    this._log(`fs.readTextFile: ${p}`);
-                    if (!this._isPathAllowed(p)) {
-                        throw new Error(`Access denied: '${p}' is outside workspace folders`);
-                    }
-                    const uri = vscode.Uri.file(p);
-                    const bytes = await vscode.workspace.fs.readFile(uri);
-                    return new TextDecoder().decode(bytes);
-                },
-                writeTextFile: async (p: string, content: string) => {
-                    this._log(`fs.writeTextFile: ${p} (${content.length} chars)`);
-                    if (!this._isPathAllowed(p)) {
-                        throw new Error(`Access denied: '${p}' is outside workspace folders`);
-                    }
-                    const uri = vscode.Uri.file(p);
-                    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
-                },
+                readTextFile: (p: string) => this._files.readTextFile(p),
+                writeTextFile: (p: string, content: string) => this._files.writeTextFile(p, content),
             },
             (cmd: string, args: string[], cwd: string) => {
                 this._log(`Terminal: ${cmd.slice(0, 80)}`);
@@ -1490,114 +1481,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return this._turn.cancel();
     }
 
-    private _resolveFileUri(filePath: string): vscode.Uri | undefined {
-        const normalized = filePath.replace(/^@/, '').trim();
-        if (!normalized) {
-            return undefined;
-        }
-        if (path.isAbsolute(normalized)) {
-            return vscode.Uri.file(normalized);
-        }
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) {
-            for (const folder of folders) {
-                const candidate = vscode.Uri.joinPath(folder.uri, normalized);
-                if (this._isPathAllowed(candidate.fsPath)) {
-                    return candidate;
-                }
-            }
-            return vscode.Uri.joinPath(folders[0].uri, normalized);
-        }
-        return vscode.Uri.file(normalized);
-    }
 
-    private _toDisplayPath(uri: vscode.Uri): string {
-        const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (folder) {
-            return path.relative(folder.uri.fsPath, uri.fsPath).replace(/\\/g, '/');
-        }
-        return uri.fsPath.replace(/\\/g, '/');
-    }
 
-    private async _handleListFiles(query: string, requestId: string): Promise<void> {
-        const exclude = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.hermes/**}';
-        const q = query.trim().toLowerCase();
-        try {
-            const uris = await vscode.workspace.findFiles('**/*', exclude, 500);
-            const files = uris
-                .map(uri => this._toDisplayPath(uri))
-                .filter(p => !q || p.toLowerCase().includes(q))
-                .slice(0, 30);
-            this._postMessage({ type: 'fileList', requestId, files });
-        } catch {
-            this._postMessage({ type: 'fileList', requestId, files: [] });
-        }
-    }
 
-    private async _handlePreviewFile(filePath: string, requestId: string): Promise<void> {
-        const normalized = filePath.replace(/^@/, '').trim();
-        try {
-            const uri = this._resolveFileUri(normalized);
-            if (!uri || !this._isPathAllowed(uri.fsPath)) {
-                this._postMessage({
-                    type: 'filePreview',
-                    requestId,
-                    path: normalized,
-                    error: t('fileAccessDenied'),
-                });
-                return;
-            }
-            const doc = await vscode.workspace.openTextDocument(uri);
-            const maxLines = 24;
-            let content: string;
-            if (doc.lineCount <= maxLines) {
-                content = doc.getText();
-            } else {
-                const endLine = doc.lineAt(maxLines - 1);
-                content = doc.getText(new vscode.Range(0, 0, maxLines - 1, endLine.text.length)) + '\n…';
-            }
-            this._postMessage({
-                type: 'filePreview',
-                requestId,
-                path: this._toDisplayPath(uri),
-                content,
-                language: doc.languageId,
-            });
-        } catch {
-            this._postMessage({
-                type: 'filePreview',
-                requestId,
-                path: normalized,
-                error: t('fileReadError'),
-            });
-        }
-    }
 
-    private async _handleOpenFile(filePath: string): Promise<void> {
-        this._log(`Open file: ${filePath}`);
-        try {
-            const uri = this._resolveFileUri(filePath);
-            if (!uri) {
-                vscode.window.showWarningMessage(t('couldNotOpenFile', filePath));
-                return;
-            }
-            const doc = await vscode.workspace.openTextDocument(uri);
-            await vscode.window.showTextDocument(doc);
-        } catch {
-            vscode.window.showWarningMessage(t('couldNotOpenFile', filePath));
-        }
-    }
 
-    private async _handleInsertEditor(text: string): Promise<void> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showInformationMessage(t('noActiveEditor'));
-            return;
-        }
-        await editor.edit((editBuilder) => {
-            editBuilder.insert(editor.selection.active, text);
-        });
-    }
 
     private _handleDeleteMessages(indices: unknown): void {
         if (!Array.isArray(indices) || indices.length === 0) {
@@ -2165,29 +2053,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private _resolveCwd(configCwd?: string): string {
-        if (configCwd) return configCwd;
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-            if (folder) return folder.uri.fsPath;
-        }
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) return folders[0].uri.fsPath;
-        return process.cwd();
-    }
 
     /** Check if path is within workspace folders. Allows absolute paths only if inside workspace. */
-    private _isPathAllowed(p: string): boolean {
-        if (!path.isAbsolute(p)) return true; // relative paths are fine
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) {
-            return folders.some(f => p.startsWith(f.uri.fsPath));
-        }
-        // No workspace: restrict to cwd
-        const config = vscode.workspace.getConfiguration('tommys');
-        const configCwd = config.get<string>('cwd');
-        const cwd = configCwd || process.cwd();
-        return p.startsWith(cwd);
-    }
 }
