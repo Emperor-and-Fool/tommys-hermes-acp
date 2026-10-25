@@ -1,12 +1,12 @@
 /** Locale text for the environment-detection progress list. Pure: every input is a parameter. */
-import { t } from '../../i18n';
-import { formatLocaleString } from '../../i18n/format';
-import type { LocaleStrings } from '../../i18n/types';
+import { t } from '../i18n';
+import { formatLocaleString } from '../i18n/format';
+import type { LocaleStrings } from '../i18n/types';
 import type {
     HermesDetectProgressEvent,
     HermesDetectStepId,
     HermesEnvironmentReport,
-} from '../../environment/profileDiscovery';
+} from './profileDiscovery';
 
 export function detectStepLabel(step: HermesDetectStepId): string {
     const keyMap: Record<HermesDetectStepId, keyof LocaleStrings> = {

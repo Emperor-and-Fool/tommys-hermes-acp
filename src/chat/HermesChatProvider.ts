@@ -37,7 +37,7 @@ import {
     formatDetectProgressPercent,
     formatDetectStepDetail,
     formatDetectSummaryForReport,
-} from './transcript/detectFormat';
+} from '../environment/detectFormat';
 import { buildSessionExportPayload } from './session/sessionExport';
 import { SessionStore } from './extensionCache';
 import { applyCatalogRows, renameSession } from './catalog';
