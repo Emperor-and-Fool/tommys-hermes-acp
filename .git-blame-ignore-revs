@@ -1,0 +1,5 @@
+# Commits git blame should skip (git config blame.ignoreRevsFile .git-blame-ignore-revs).
+
+# HermesChatProvider.ts line endings went CRLF -> LF here, and back in the next commit.
+e1bb7ef11d78b36c0e7a04bbfc45749c2e9c0272
+2ee498bf9c5169ed88a3bfb247d3c32c78f05888
