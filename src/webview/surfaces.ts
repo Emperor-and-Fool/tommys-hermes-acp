@@ -10,7 +10,9 @@
  * as `PromptHost`, `DetectionHost` and `ModelHost`.
  */
 import * as vscode from 'vscode';
-import { CHAT_PANEL_VIEW_TYPE } from '../chat/HermesChatProvider';
+
+/** Webview panel id; the serializer re-creates it after a window reload. */
+export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
 
 export type SurfaceRole = 'chat' | 'rail';
 

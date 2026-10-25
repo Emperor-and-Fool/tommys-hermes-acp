@@ -51,8 +51,8 @@ import {
  */
 type ContextAttachVisibility = 'onNewSession' | 'always' | 'never';
 
-/** Webview panel id; the serializer re-creates it after a window reload. */
-export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
+/** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
+export { CHAT_PANEL_VIEW_TYPE } from '../webview/surfaces';
 
 
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
