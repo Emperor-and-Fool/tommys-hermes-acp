@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { HERMES_DEFAULT_PROFILE, normalizeHermesCliProfile, scopeKeyForCliProfile } from '../../acp/hermesProfile';
+import { HERMES_DEFAULT_PROFILE, normalizeHermesCliProfile, scopeKeyForCliProfile } from '../../environment/hermesProfile';
 
 describe('hermesProfile', () => {
     it('normalizeHermesCliProfile maps empty values to default', () => {

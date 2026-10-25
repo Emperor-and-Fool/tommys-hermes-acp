@@ -6,7 +6,7 @@ import type {
     HermesDetectProgressEvent,
     HermesDetectStepId,
     HermesEnvironmentReport,
-} from '../../acp/profileDiscovery';
+} from '../../environment/profileDiscovery';
 
 export function detectStepLabel(step: HermesDetectStepId): string {
     const keyMap: Record<HermesDetectStepId, keyof LocaleStrings> = {

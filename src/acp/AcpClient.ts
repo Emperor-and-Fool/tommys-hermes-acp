@@ -16,11 +16,11 @@ import {
     HERMES_MODEL_CONFIG_ID,
     shouldUseHermesSetModel,
     type ModelListState
-} from './modelConfig';
+} from '../models/modelConfig';
 import type { SessionMcpServer } from './mcpConfig';
-import { normalizeHermesCliProfile } from './hermesProfile';
-import { findHermesExecutableOrThrow } from './profileDiscovery';
-import type { AcpModelOptionsResponse } from './acpModelCatalog';
+import { normalizeHermesCliProfile } from '../environment/hermesProfile';
+import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
+import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import {
     ToolCallTracker,
@@ -29,7 +29,7 @@ import {
 } from './toolCallUpdate';
 
 export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
-export type { ModelListState } from './modelConfig';
+export type { ModelListState } from '../models/modelConfig';
 export type ModelsChangedHandler = (models: ModelListState | null) => void;
 
 export type MessageHandler = (role: 'user' | 'assistant' | 'tool' | 'thought', text: string, toolCallId?: string) => void;

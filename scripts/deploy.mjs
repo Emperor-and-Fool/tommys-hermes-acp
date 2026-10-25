@@ -11,7 +11,7 @@
  *   npm run deploy
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -74,10 +74,49 @@ const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('he
 let copied = 0;
 const mismatched = [];
 
+// The copy is additive, so a moved or deleted source leaves its old compiled twin behind — a
+// stale module in out/ is the same silent failure this script exists to prevent. Anything the
+// repo no longer compiles comes out of the installed copy, and empty directories with it.
+//
+// Only out/ is swept. media/ is not: the installed package legitimately carries files this
+// script does not copy (the activity-bar icon among them, referenced from package.json), so
+// pruning it against this file list would delete the pane's own icon.
+const wanted = new Set(files);
+const pruned = [];
+function prune(relDir) {
+    const abs = path.join(target, relDir);
+    if (!existsSync(abs)) return;
+    for (const entry of readdirSync(abs)) {
+        const rel = path.join(relDir, entry);
+        const absEntry = path.join(target, rel);
+        if (statSync(absEntry).isDirectory()) {
+            prune(rel);
+            if (readdirSync(absEntry).length === 0) rmdirSync(absEntry);
+        } else if (!wanted.has(rel)) {
+            unlinkSync(absEntry);
+            pruned.push(rel);
+        }
+    }
+}
+
 if (dryRun) {
     const present = files.filter((rel) => existsSync(path.join(repo, rel)));
+    const stale = [];
+    for (const root of ['out']) {
+        const sweep = (relDir) => {
+            const abs = path.join(target, relDir);
+            if (!existsSync(abs)) return;
+            for (const entry of readdirSync(abs)) {
+                const rel = path.join(relDir, entry);
+                const absEntry = path.join(target, rel);
+                if (statSync(absEntry).isDirectory()) sweep(rel);
+                else if (!wanted.has(rel)) stale.push(rel);
+            }
+        };
+        sweep(root);
+    }
     console.log(`deploy: (dry run) ${present.length} files would be copied to ${target}`);
-    console.log('deploy: ' + present.slice(0, 6).join(', ') + `, … ${present.length - 6} more`);
+    console.log(`deploy: (dry run) ${stale.length} stale files would be pruned${stale.length ? ': ' + stale.slice(0, 5).join(', ') + (stale.length > 5 ? ', …' : '') : ''}`);
     process.exit(0);
 }
 
@@ -91,6 +130,8 @@ for (const rel of files) {
     if (sha(from) !== sha(to)) mismatched.push(rel);
 }
 
+for (const root of ['out']) prune(root);
+
 // The installed manifest must declare the views the JS registers.
 const installedPkg = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
 const views = Object.values(installedPkg.contributes?.views ?? {}).flat();
@@ -101,6 +142,7 @@ const entry = readFileSync(path.join(target, 'out', 'extension.js'), 'utf8');
 const registersChat = entry.includes(`registerWebviewViewProvider('${chatView}'`);
 
 console.log(`deploy: ${copied} files -> ${target}`);
+console.log(`deploy: pruned ${pruned.length} stale file(s)${pruned.length ? ': ' + pruned.slice(0, 5).join(', ') + (pruned.length > 5 ? `, … ${pruned.length - 5} more` : '') : ''}`);
 if (mismatched.length) {
     console.error('deploy: these did not land byte-identical:\n  ' + mismatched.join('\n  '));
     process.exit(1);

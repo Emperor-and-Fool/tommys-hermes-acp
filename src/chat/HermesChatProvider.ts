@@ -4,11 +4,11 @@ import { createHash } from 'node:crypto';
 import type { ChatMessage, SessionInfo, StoredImageRef } from '../types/chat';
 import * as path from 'path';
 import { AcpClient, CatalogSession, ModelListState, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
-import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../acp/modelConfig';
-import { resolveModelCatalog } from '../acp/acpModelCatalog';
+import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from '../models/modelConfig';
+import { resolveModelCatalog } from '../models/acpModelCatalog';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
-import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../acp/hermesProfile';
-import { discoverHermesProfiles, detectHermesEnvironment, tryResolveHermesQuick } from '../acp/profileDiscovery';
+import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../environment/hermesProfile';
+import { discoverHermesProfiles, detectHermesEnvironment, tryResolveHermesQuick } from '../environment/profileDiscovery';
 import type {
     HermesDetectProgressEvent,
     HermesDetectSource,
@@ -16,9 +16,9 @@ import type {
     HermesDetectStepStatus,
     HermesEnvironmentReport,
     HermesExecutableCandidate,
-} from '../acp/profileDiscovery';
-import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from '../acp/hermesPathSetup';
-import { accessExecutable, venvHermesCandidates } from '../acp/hermesPaths';
+} from '../environment/profileDiscovery';
+import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from '../environment/hermesPathSetup';
+import { accessExecutable, venvHermesCandidates } from '../environment/hermesPaths';
 import {
     activeSessionPathFor,
     loadProfileState,

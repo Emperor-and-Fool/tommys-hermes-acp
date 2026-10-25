@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import { findHermesExecutable, runHermesCommand } from './profileDiscovery';
-import { normalizeHermesCliProfile } from './hermesProfile';
+import { findHermesExecutable, runHermesCommand } from '../environment/profileDiscovery';
+import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import {
     type ModelListItem,
     type ModelProviderGroup,
