@@ -234,7 +234,7 @@ export class App implements vscode.WebviewViewProvider {
 
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('hermes')) {
+                if (e.affectsConfiguration('tommys')) {
                     void this._onConfigurationChanged(e);
                 }
             })
