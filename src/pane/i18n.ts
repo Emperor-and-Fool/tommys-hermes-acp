@@ -6,6 +6,7 @@ import { pendingPermissions, refreshPermissionOptionLabels, syncPermissionDetail
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
 import { buildFaqAccordion } from './components/modals/info';
 import { updateMultiSelectToolbar } from './components/multiSelect';
+import { applyHistoryPickerLocale } from './components/composer/historyAttach';
 import { updateModelButtonDisplay } from './components/pickers/modelPicker';
 import { profileDisplayName } from './components/pickers/profilePicker';
 import { applyInputPlaceholder } from './components/status/statusBar';
@@ -56,8 +57,7 @@ export function applyLocale() {
     if (contextAttachSendYesBtn) contextAttachSendYesBtn.textContent = locale.contextAttachSendYes || '';
     if (contextAttachSendNoBtn) contextAttachSendNoBtn.textContent = locale.contextAttachSendNo || '';
     if (multiSelectAttachConfirmBtn) multiSelectAttachConfirmBtn.textContent = locale.contextAttachConfirm || '';
-    updateContextAttachButtonLabel();
-    renderContextAttachOptions();
+    applyHistoryPickerLocale();
     const openTabLabelFull = byId('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
     if (openTabBtn) openTabBtn.title = locale.openTab;

@@ -44,6 +44,9 @@ export interface RouterHost {
     handlePermissionResponse(id: string, optionId: string | null): void;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
+    /** The session-memory dropdown: the viewer tab, and the chip's X. */
+    openHistoryViewer(sessionId: string, title: string): void;
+    clearHistoryStaged(): void;
 
     /** The environment-detection surface, addressed directly: it is its own module. */
     detection(): EnvironmentDetection;
@@ -151,6 +154,12 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'deleteMessages':
             host.handleDeleteMessages(message.indices);
+            break;
+        case 'openHistoryViewer':
+            host.openHistoryViewer(message.sessionId, message.title);
+            break;
+        case 'clearHistoryStaged':
+            host.clearHistoryStaged();
             break;
     }
 }

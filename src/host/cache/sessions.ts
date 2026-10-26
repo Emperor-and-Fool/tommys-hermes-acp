@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import type { ChatMessage, SessionInfo, StoredImageRef } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
@@ -257,10 +257,13 @@ export class Sessions {
         }
     }
 
-    saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[]): void {
+    saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[], history?: HistoryRef): void {
         const record: ChatMessage = { role, text, timestamp: Date.now(), toolCallId };
         if (imageRefs && imageRefs.length) {
             record.imageRefs = imageRefs;
+        }
+        if (history) {
+            record.history = history;
         }
         this.messages.push(record);
         this.persistMessages();

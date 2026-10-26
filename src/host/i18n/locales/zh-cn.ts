@@ -378,4 +378,11 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyAttachCount: '附带（{0}/{1}）',
     historyViewerCancel: '取消',
     historyViewerUnavailable: '本地没有这段对话。',
+    historyPickerPlaceholder: '选择会话记忆',
+    historyPickerHeader: '会话记忆',
+    historyPickerEmpty: '暂无其他会话',
+    historyPickerHidden: '已隐藏',
+    historyChipSummary: '{0} 条消息，来自 {1}',
+    historyChipPending: '正在查找消息 ID',
+    historyChipClear: '移除附带的记忆',
 };

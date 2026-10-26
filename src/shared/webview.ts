@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, ContextAttachOption, SessionInfo } from './chat';
+import type { ChatMessage, ContextAttachOption, HistoryRef, SessionInfo } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -35,7 +35,7 @@ export type HostToPane =
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
-    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
     | { type: 'insertInput'; text: string }
@@ -58,6 +58,10 @@ export type HostToPane =
     // Context attach picker.
     | { type: 'showContextAttach'; count: number }
     | { type: 'hideContextAttach' }
+
+    // Session memory: the staged pick, and its disappearance after a send.
+    | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
+    | { type: 'historyCleared' }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironmentStart'; mode: 'connect' | 'manual' | 'configure' }
@@ -135,6 +139,10 @@ export type PaneToHost =
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
     | { type: 'historyPicked'; sessionId: string; indices: number[] }
     | { type: 'historyViewerCancel' }
+
+    // Session memory: open the viewer on one session, or drop the staged pick.
+    | { type: 'openHistoryViewer'; sessionId: string; title: string }
+    | { type: 'clearHistoryStaged' }
 
     /** Pane-side diagnostics, relayed to the extension's output channel. */
     | { type: 'webviewLog'; line: string };

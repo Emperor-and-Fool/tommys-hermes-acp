@@ -6,6 +6,7 @@ import { requestSessionExport } from '../multiSelect';
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { buildContextAttachPayload, hasUnconfirmedCustomMemorySelection, openContextAttachSendModal } from './contextAttach';
 import { detectFileMention, hideFilePicker } from './fileMention';
+import { syncHistoryPickerShrink } from './historyAttach';
 import { renderPendingImagesBar } from './images';
 import { clearReplyQuote, withReplyQuote } from './replyQuote';
 
@@ -221,6 +222,8 @@ function toggleQuickPanel() {
 
 export function updateQuickActionBtns() {
     const hasMessages = messagesEl.querySelectorAll('.message-group').length > 0;
+    // Every change to the transcript passes through here: restore, a new message, a new chat.
+    syncHistoryPickerShrink();
     const hasInput = !!inputEl.value.trim();
     if (copySessionBtn) copySessionBtn.disabled = !hasMessages;
     if (clearInputBtn) clearInputBtn.disabled = !hasInput;

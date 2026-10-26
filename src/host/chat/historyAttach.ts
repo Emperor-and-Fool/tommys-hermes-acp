@@ -34,6 +34,27 @@ export function anchorFor(messages: ChatMessage[]): string {
     return first.slice(0, 80);
 }
 
+/** The ids parallel to the attached messages; null where the lookup found none. */
+function messageIdsFor(ref: HistoryRef, messages: ChatMessage[]): Array<number | null> {
+    return attachableMessages(messages).map((_, index) => {
+        const id = ref.messageIds ? ref.messageIds[index] : undefined;
+        return typeof id === 'number' ? id : null;
+    });
+}
+
+/**
+ * The per-message lines of the block: what the transcript card shows, and what the stored
+ * `history` message keeps. The header, the span and the marker live in `formatHistoryBlock`.
+ */
+export function blockMessageLines(ref: HistoryRef, messages: ChatMessage[]): string[] {
+    const ids = messageIdsFor(ref, messages);
+    return attachableMessages(messages).map((message, index) => {
+        const text = normalise(message.text || '');
+        const id = ids[index];
+        return id === null ? `${message.role}: ${text}` : `${message.role} #${id}: ${text}`;
+    });
+}
+
 /**
  * The block the composer sends in front of the prompt.
  *
@@ -43,10 +64,7 @@ export function anchorFor(messages: ChatMessage[]): string {
  */
 export function formatHistoryBlock(ref: HistoryRef, messages: ChatMessage[]): string {
     const picked = attachableMessages(messages);
-    const ids = picked.map((_, index) => {
-        const id = ref.messageIds ? ref.messageIds[index] : undefined;
-        return typeof id === 'number' ? id : null;
-    });
+    const ids = messageIdsFor(ref, messages);
     const matched = ids.some(id => id !== null);
 
     const lines = [`${MARKER_OPEN}${ref.title}]`, `Session: @session:${ref.profile}/${ref.sessionId}`];
@@ -61,11 +79,7 @@ export function formatHistoryBlock(ref: HistoryRef, messages: ChatMessage[]): st
             lines.push(`Anchor: "${anchor}"`);
         }
     }
-    for (let index = 0; index < picked.length; index += 1) {
-        const id = ids[index];
-        const text = normalise(picked[index].text || '');
-        lines.push(id === null ? `${picked[index].role}: ${text}` : `${picked[index].role} #${id}: ${text}`);
-    }
+    lines.push(...blockMessageLines(ref, messages));
     lines.push(MARKER_CLOSE);
     return lines.join('\n');
 }

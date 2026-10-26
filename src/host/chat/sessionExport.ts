@@ -2,7 +2,7 @@
 import { getWebviewLocale, t } from '../i18n';
 import { formatLocaleString } from '../i18n/format';
 import type { LocaleStrings } from '../../shared/i18n';
-import type { ChatMessage, SessionInfo } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, SessionInfo } from '../../shared/chat';
 
 export function buildSessionExportPayload(session: SessionInfo, messages: ChatMessage[], modelFallback?: string): {
     sessionId: string;
@@ -38,9 +38,27 @@ export function formatMessagesAsMarkdown(messages: ChatMessage[]): string {
         if (!text) {
             continue;
         }
+        if (message.role === 'history') {
+            parts.push(formatHistoryBlockForExport(text, message.history));
+            continue;
+        }
         parts.push(`## ${exportRoleLabel(message.role, loc)}\n\n${text}`);
     }
     return parts.join('\n\n');
+}
+
+/** A slice of another conversation: its own header, and the lines quoted under it. */
+export function formatHistoryBlockForExport(text: string, ref?: HistoryRef): string {
+    const loc = getWebviewLocale();
+    const title = ref?.title || loc.roleMessage;
+    const handle = ref && ref.profile
+        ? ` (@session:${ref.profile}/${ref.sessionId})`
+        : ref ? ` (@session:${ref.sessionId})` : '';
+    const quote = text
+        .split('\n')
+        .map(line => `> ${line.replace(/\r$/, '')}`)
+        .join('\n');
+    return `## ${formatLocaleString(loc.historyCardHeader, title)}${handle}\n\n${quote}`;
 }
 
 export function exportRoleLabel(role: string, loc: LocaleStrings): string {

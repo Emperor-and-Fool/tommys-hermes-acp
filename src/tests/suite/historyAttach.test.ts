@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import {
     MAX_HISTORY_MESSAGES,
     HistoryAttach,
+    blockMessageLines,
     formatHistoryBlock,
     parseHistoryBlocks,
 } from '../../host/chat/historyAttach';
@@ -91,5 +92,14 @@ describe('history attach', () => {
         attach.clear();
         assert.strictEqual(attach.count, 0);
         assert.strictEqual(attach.block(), '');
+    });
+
+    it('blockMessageLines is exactly what the block carries, ids and all', () => {
+        const picked = [msg('user', 'x', 1), msg('assistant', 'y', 2)];
+        assert.deepStrictEqual(blockMessageLines(ref({ messageIds: [11, null] }), picked), ['user #11: x', 'assistant: y']);
+        const block = formatHistoryBlock(ref({ messageIds: [11, null] }), picked);
+        for (const line of blockMessageLines(ref({ messageIds: [11, null] }), picked)) {
+            assert.ok(block.includes(line));
+        }
     });
 });

@@ -2,6 +2,7 @@
 import { post } from './post';
 import * as composer from './components/composer/composer';
 import * as contextAttach from './components/composer/contextAttach';
+import * as historyAttach from './components/composer/historyAttach';
 import * as images from './components/composer/images';
 import * as replyQuote from './components/composer/replyQuote';
 import * as configureModal from './components/environment/configureModal';
@@ -92,7 +93,6 @@ export function boot(): void {
     profilePicker.initProfileDropdownClick();
     modelPicker.initModelBtnClick();
     modelPicker.initModelDropdownClick();
-    contextAttach.initContextAttachBtnClick();
     switchSession.initSwitchSessionStayBtnClick();
     switchSession.initSwitchSessionConfirmBtnClick();
     switchSession.initSwitchSessionModalClick();
@@ -101,6 +101,7 @@ export function boot(): void {
     contextAttach.initContextAttachSendYesBtnClick();
     contextAttach.initContextAttachSendNoBtnClick();
     contextAttach.initContextAttachSendModalClick();
+    historyAttach.initHistoryAttach();
     router.init();
     i18n.initApplyLocale();
     composer.initWirePickerRowReserve();

@@ -1,13 +1,13 @@
 import type { HostToPane } from '../shared/webview';
 import { maybeFocusInputAfterResponse, setInputMode } from './components/composer/composer';
-import { hideContextAttachPicker, showContextAttachPicker } from './components/composer/contextAttach';
+import { applyHistoryCleared, applyHistoryStaged, renderHistorySessionList } from './components/composer/historyAttach';
 import { positionFilePreview, previewRequests, renderFilePickerItems, showFilePreview } from './components/composer/fileMention';
 import { offerUndeliveredMessage } from './components/composer/replyQuote';
 import { closeConfigureEnvModal, finishConfigureEnvDetect, hideConfigureEnvDetectProgress, openConfigureEnvModal, setConfigureEnvDetecting, showConfigureEnvDetectPanel, updateConfigureEnvDetectProgress, updateConfigureEnvPathClearVisibility } from './components/environment/configureModal';
 import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvIcon, updateDetectEnvironmentStep } from './components/environment/detectPanel';
 import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
 import { insertIntoInput } from './components/messages/messageActions';
-import { appendMessage, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
+import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
 import { dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finishStreaming } from './components/messages/streaming';
 import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliaryContent } from './components/messages/toolCards';
@@ -33,6 +33,12 @@ export function init(): void {
         switch (msg.type) {
             case 'addMessage':
                 if (!isMessageForActiveSession(msg)) {
+                    break;
+                }
+                if (msg.role === 'history') {
+                    // The card belongs above the question it was attached to, which is where the
+                    // stored transcript puts it; appending would read differently after a reload.
+                    insertBeforeLastUser('history', msg.text, { history: msg.history });
                     break;
                 }
                 if (msg.role === 'assistant') {
@@ -220,6 +226,7 @@ export function init(): void {
             case 'sessionList':
                 if ((msg.sessions || []).length) state.paneHintText = '';
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
+                renderHistorySessionList();
                 if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
                     clearSwitchQueued();
                 }
@@ -246,6 +253,7 @@ export function init(): void {
                     state.pendingOpenCount = 0;
                 }
                 renderClosedList();
+                renderHistorySessionList();
                 break;
 
             case 'modelList':
@@ -337,12 +345,12 @@ export function init(): void {
                 dismissPermissionRequest(msg.id, locale.permissionCancelled);
                 break;
 
-            case 'showContextAttach':
-                showContextAttachPicker();
+            case 'historyStaged':
+                applyHistoryStaged(msg.ref, msg.pending === true);
                 break;
 
-            case 'hideContextAttach':
-                hideContextAttachPicker();
+            case 'historyCleared':
+                applyHistoryCleared();
                 break;
 
         }

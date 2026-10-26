@@ -378,4 +378,11 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyAttachCount: 'Attach ({0}/{1})',
     historyViewerCancel: 'Cancel',
     historyViewerUnavailable: 'This conversation is not available locally.',
+    historyPickerPlaceholder: 'Select session memory',
+    historyPickerHeader: 'Session memory',
+    historyPickerEmpty: 'No other sessions yet',
+    historyPickerHidden: 'hidden',
+    historyChipSummary: '{0} messages from {1}',
+    historyChipPending: 'looking up message ids',
+    historyChipClear: 'Remove attached memory',
 };

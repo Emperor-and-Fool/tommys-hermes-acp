@@ -298,6 +298,15 @@ export interface LocaleStrings {
     historyAttachCount: string;
     historyViewerCancel: string;
     historyViewerUnavailable: string;
+
+    // Session memory: the picker, the staged chip, the viewer
+    historyPickerPlaceholder: string;
+    historyPickerHeader: string;
+    historyPickerEmpty: string;
+    historyPickerHidden: string;
+    historyChipSummary: string;
+    historyChipPending: string;
+    historyChipClear: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

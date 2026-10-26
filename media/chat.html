@@ -135,18 +135,14 @@
                     <div id="modelList"></div>
                 </div>
             </div>
-            <div class="picker input-context-picker menu" id="contextAttachPicker" data-open="false" hidden>
+            <div class="picker input-context-picker menu" id="contextAttachPicker" data-open="false">
                 <button type="button" class="input-context-btn menu__trigger" id="contextAttachBtn" title="">
                     <span class="input-picker-icon" aria-hidden="true"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 1.2a5.3 5.3 0 1 1 0 10.6 5.3 5.3 0 0 1 0-10.6z"/><path d="M8 4v3.8l2.5 1.5-.8 1.3-3.3-2V4h1.6z"/></svg></span>
                     <span class="input-picker-label" id="contextAttachLabel"></span>
                 </button>
                 <div class="menu__panel" id="contextAttachDropdown">
-                    <div class="dropdown-header context-attach-header">
-                        <span id="contextAttachHeaderLead"></span>
-                        <span class="context-attach-help" id="contextAttachHelp" tabindex="0" role="button" aria-label="">?</span>
-                        <span id="contextAttachHeaderRest"></span>
-                    </div>
-                    <div class="context-attach-options" id="contextAttachList"></div>
+                    <div class="dropdown-header" id="historyPickerHeader"></div>
+                    <div class="history-session-list" id="historySessionList" role="listbox"></div>
                 </div>
             </div>
             </div>
@@ -157,6 +153,12 @@
                     <button type="button" class="reply-quote-clear" id="replyQuoteClear" aria-label="✕">✕</button>
                 </div>
                 <div class="reply-quote-body" id="replyQuoteBody"></div>
+            </div>
+            <div class="history-chip" id="historyChip" hidden>
+                <span class="history-chip-icon" aria-hidden="true"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 1.2a5.3 5.3 0 1 1 0 10.6 5.3 5.3 0 0 1 0-10.6z"/><path d="M8 4v3.8l2.5 1.5-.8 1.3-3.3-2V4h1.6z"/></svg></span>
+                <span class="history-chip-text" id="historyChipText"></span>
+                <span class="history-chip-pending" id="historyChipPending" hidden></span>
+                <button type="button" class="history-chip-clear" id="historyChipClear" aria-label="✕">✕</button>
             </div>
             <div class="composer-hint" id="composerHint" hidden></div>
             <div class="composer-notice" id="undeliveredNotice" role="status" hidden>

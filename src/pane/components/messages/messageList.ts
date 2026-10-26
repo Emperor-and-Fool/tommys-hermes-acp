@@ -426,3 +426,26 @@ export function restoreHistory(messages, localHistoryOnly) {
 export function isMessageForActiveSession(msg) {
     return !msg.sessionId || msg.sessionId === state.lastActiveSessionId;
 }
+
+/**
+ * A card that belongs above the question it was attached to.
+ *
+ * The stored transcript keeps a history slice before the user message it went with, so a reload
+ * reads that way; appending it live would put it below. Indices are then reassigned in DOM order,
+ * which is the same order the stored messages have.
+ */
+export function insertBeforeLastUser(role, text, options?) {
+    const users = messagesEl.querySelectorAll('.message-group.user');
+    const lastUser = users.length ? users[users.length - 1] : null;
+    if (!lastUser || !lastUser.parentNode) {
+        return appendMessage(role, text, options);
+    }
+    const id = appendMessage(role, text, options);
+    const group = document.getElementById(id);
+    if (group && group !== lastUser) {
+        lastUser.parentNode.insertBefore(group, lastUser);
+        reindexSessionIndices();
+        maybeScrollToBottom();
+    }
+    return id;
+}

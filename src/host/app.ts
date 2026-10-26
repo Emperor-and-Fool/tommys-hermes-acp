@@ -23,6 +23,11 @@ import { Profiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './tabs/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
+import { HistoryAttach, blockMessageLines } from './chat/historyAttach';
+import { exportSessionMessages, matchMessageIds } from './chat/historyLookup';
+import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
+import { findHermesExecutable } from './environment/profileDiscovery';
+import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
 import {
     ContextAttachOption,
@@ -163,13 +168,16 @@ export class App implements vscode.WebviewViewProvider {
         tabs: () => this._session.tabs,
         readMessages: (localId) => this._session.store.readMessages(localId),
         profile: () => this._profiles.resolveTarget().cliProfile,
-        onPicked: (pick) => {
-            // Phase 4 stages this pick; the log line is the proof the handover works today.
-            this._log(`History picked: ${pick.messages.length} message(s) from "${pick.ref.title}"`);
-        },
+        onPicked: (pick) => { this._stageHistory(pick); },
         focusComposer: () => this._postMessage({ type: 'focusComposer' }),
         log: (line) => this._log(line),
     });
+
+    /** The staged slice of another conversation: the chip, the block, and the lookup behind it. */
+    private readonly _historyAttach: HistoryAttach = new HistoryAttach();
+
+    /** The id lookup in flight: a send waits for it so the block carries ids, not just an anchor. */
+    private _historyLookup: Promise<void> = Promise.resolve();
 
     private readonly _extensionId: string;
 
@@ -372,11 +380,33 @@ export class App implements vscode.WebviewViewProvider {
         }
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
+        // A staged pick whose lookup is still running: wait rather than send only the anchor.
+        // runHermesCommand caps the export at 15 s, so this cannot hang the turn.
+        if (this._historyAttach.current) {
+            await this._historyLookup;
+            if (epoch !== this._turn.sendEpoch) {
+                return;
+            }
+        }
+        const staged = this._historyAttach.current;
         this._models.snapshotFromProfile();
         this._turn.promptSessionId = this._session.activeId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
             this._attachments.indexAttachments(imageRefs, text);
+        }
+        if (staged) {
+            // The card is part of the transcript before the question it belongs to, both live
+            // and in the stored file, so a reload reads the same way.
+            const lines = blockMessageLines(staged.ref, staged.messages).join('\n');
+            this._session.saveMessage('history', lines, undefined, undefined, staged.ref);
+            this._postMessage({
+                type: 'addMessage',
+                role: 'history',
+                text: lines,
+                history: staged.ref,
+                sessionId: this._session.activeId,
+            });
         }
         this._session.saveMessage('user', text, undefined, imageRefs);
         this._session.markEngaged();
@@ -387,19 +417,28 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (imageCount > 0) {
-            // Compose an ACP prompt with a text block followed by one image block per staged image.
-            // Hermes' ACP adapter advertises promptCapabilities.image=true and decodes these directly.
+        const historyBlock = staged ? this._historyAttach.block() : '';
+        if (imageCount > 0 || historyBlock) {
+            // Compose an ACP prompt: the attached conversation first, then the user's own text,
+            // then one image block per staged image. Hermes' ACP adapter advertises
+            // promptCapabilities.image=true and decodes these directly.
             const blocks: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string }> = [];
+            if (historyBlock) {
+                blocks.push({ type: 'text', text: historyBlock });
+            }
             if (promptText.length > 0) {
                 blocks.push({ type: 'text', text: promptText });
             }
-            for (const img of images!) {
+            for (const img of images || []) {
                 blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
             }
             await this._connection.acp?.sendMessage(blocks as any);
         } else {
             await this._connection.acp?.sendMessage(promptText);
+        }
+        if (staged) {
+            this._historyAttach.clear();
+            this._postMessage({ type: 'historyCleared' });
         }
     }
 
@@ -498,22 +537,70 @@ export class App implements vscode.WebviewViewProvider {
         this._historyViewer.open(hermesSessionId, title);
     }
 
-    /** TEMP(phase 4): remove with the debug command registered in extension.ts. */
-    public async debugOpenHistoryViewer(): Promise<void> {
-        const items = this._session.tabs
-            .filter(rec => rec.id !== this._session.activeId)
-            .map(rec => ({ label: rec.title, description: rec.hermesSessionId || 'local only', rec }));
-        if (items.length === 0) {
-            void vscode.window.showInformationMessage('No other session to open.');
+    /** The viewer came back with ticks: the chip first, the real ids when the lookup answers. */
+    private _stageHistory(pick: HistoryPick): void {
+        const staged = this._historyAttach.stage(pick.ref, pick.messages);
+        this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: true });
+        this._historyLookup = this._lookupHistoryIds(pick);
+    }
+
+    /**
+     * The real Hermes ids for the picked lines, read from the export at Attach time.
+     * A failed or slow export is not an error: the block falls back to the anchor.
+     */
+    private async _lookupHistoryIds(pick: HistoryPick): Promise<void> {
+        let match: { ids: Array<number | null>; from?: number; to?: number } | null = null;
+        try {
+            const executable = await this._resolveHermesExecutable();
+            if (executable) {
+                const exported = await exportSessionMessages(executable, pick.ref.profile, pick.ref.sessionId);
+                if (exported.length) {
+                    match = matchMessageIds(pick.messages, exported);
+                } else {
+                    this._log('History lookup: the export returned no messages; attaching by anchor');
+                }
+            } else {
+                this._log('History lookup: no Hermes executable found; attaching by anchor');
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this._log(`History lookup failed: ${message}`);
+        }
+        this._finishHistoryStaging(pick, match);
+    }
+
+    /** Stage what the lookup gave (the anchor when it gave nothing) and restate the chip. */
+    private _finishHistoryStaging(
+        pick: HistoryPick,
+        match: { ids: Array<number | null>; from?: number; to?: number } | null
+    ): void {
+        const current = this._historyAttach.current;
+        // A different pick staged while this lookup ran: only the live one may be restated.
+        if (!current || current.ref.sessionId !== pick.ref.sessionId || current.ref.title !== pick.ref.title) {
             return;
         }
-        const picked = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Session to open in the history viewer',
-        });
-        if (!picked) {
-            return;
+        const ref = match ? { ...pick.ref, from: match.from, to: match.to } : pick.ref;
+        const staged = this._historyAttach.stage(ref, pick.messages, match ? match.ids : undefined);
+        const matched = (staged.ref.messageIds || []).some(id => id !== null);
+        this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: false });
+        this._log(`History staged: ${staged.messages.length} message(s), ${matched ? 'ids found' : 'anchor only'}`);
+    }
+
+    /** The executable the connection would start: the configured path first, then the search. */
+    private async _resolveHermesExecutable(): Promise<string | undefined> {
+        const configured = vscode.workspace.getConfiguration('tommys').get<string>('path');
+        const quick = await tryResolveHermesQuick(configured);
+        if (quick) {
+            return quick;
         }
-        this.openHistoryViewer(picked.rec.hermesSessionId || picked.rec.id, picked.rec.title);
+        return (await findHermesExecutable(configured)) || undefined;
+    }
+
+    /** The chip's X: drop the pick and say so. */
+    public clearHistoryStaged(): void {
+        this._historyAttach.clear();
+        this._historyLookup = Promise.resolve();
+        this._postMessage({ type: 'historyCleared' });
     }
 
     public resolveWebviewView(
@@ -617,6 +704,8 @@ export class App implements vscode.WebviewViewProvider {
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
+            openHistoryViewer: (sessionId, title) => this.openHistoryViewer(sessionId, title),
+            clearHistoryStaged: () => this.clearHistoryStaged(),
             detection: () => this._detection,
         };
     }
