@@ -5,11 +5,10 @@ export const MAX_HISTORY_MESSAGES = 15;
 
 const MARKER_OPEN = '[From conversation: ';
 const MARKER_CLOSE = '[/From conversation]';
-const URI_PREFIX = 'tommys-session://';
 
 const BLOCK_RX = new RegExp(
     '\\[From conversation: ([\\s\\S]*?)\\]\\r?\\n' +
-    'URI: tommys-session:\\/\\/([^?\\s]+)\\?([^\\r\\n]*)\\r?\\n' +
+    'Session: @session:([^/\\s]+)/([^\\r\\n]+)\\r?\\n' +
     '([\\s\\S]*?)\\r?\\n?\\[\\/From conversation\\]',
     'g');
 
@@ -20,23 +19,51 @@ export function attachableMessages(messages: ChatMessage[]): ChatMessage[] {
         .slice(0, MAX_HISTORY_MESSAGES);
 }
 
+function normalise(text: string): string {
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+function iso(ms?: number): string | null {
+    return typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** The opening words of the first attached message: what the agent can search when no id matched. */
+export function anchorFor(messages: ChatMessage[]): string {
+    const first = messages.length ? normalise(messages[0].text || '') : '';
+    return first.slice(0, 80);
+}
+
 /**
  * The block the composer sends in front of the prompt.
  *
- * Not an embedded resource: Hermes advertises image support only, so the selection travels as
- * text with a marker of our own. The URI carries the source session id, which is what lets the
- * agent look further into that conversation on its own.
+ * Not an embedded resource: Hermes advertises image support only. The Session line is the handle
+ * the agent's session_search understands; per-line ids let it scroll to one message with
+ * session_id + around_message_id. When no id matched, the anchor is all it gets.
  */
 export function formatHistoryBlock(ref: HistoryRef, messages: ChatMessage[]): string {
     const picked = attachableMessages(messages);
-    const count = picked.length;
-    const from = picked.length ? picked[0].timestamp : ref.from;
-    const to = picked.length ? picked[picked.length - 1].timestamp : ref.to;
-    const uri = `${URI_PREFIX}${ref.sessionId}?count=${count}&from=${from}&to=${to}`;
-    const lines = [`${MARKER_OPEN}${ref.title}]`, `URI: ${uri}`];
-    const body = picked.map(m => `${m.role}: ${(m.text || '').trim()}`).join('\n');
-    if (body) {
-        lines.push(body);
+    const ids = picked.map((_, index) => {
+        const id = ref.messageIds ? ref.messageIds[index] : undefined;
+        return typeof id === 'number' ? id : null;
+    });
+    const matched = ids.some(id => id !== null);
+
+    const lines = [`${MARKER_OPEN}${ref.title}]`, `Session: @session:${ref.profile}/${ref.sessionId}`];
+    const from = matched ? iso(ref.from) : null;
+    const to = matched ? iso(ref.to) : null;
+    if (from && to) {
+        lines.push(`Span: ${from} → ${to}`);
+    }
+    if (!matched) {
+        const anchor = ref.anchor ?? anchorFor(picked);
+        if (anchor) {
+            lines.push(`Anchor: "${anchor}"`);
+        }
+    }
+    for (let index = 0; index < picked.length; index += 1) {
+        const id = ids[index];
+        const text = normalise(picked[index].text || '');
+        lines.push(id === null ? `${picked[index].role}: ${text}` : `${picked[index].role} #${id}: ${text}`);
     }
     lines.push(MARKER_CLOSE);
     return lines.join('\n');
@@ -48,6 +75,8 @@ export interface ParsedHistoryBlock {
     body: string;
 }
 
+const LINE_RX = /^(\S+)(?: #(\d+))?: ([\s\S]*)$/;
+
 /**
  * Split attached history out of a user message.
  *
@@ -56,20 +85,48 @@ export interface ParsedHistoryBlock {
  */
 export function parseHistoryBlocks(text: string): { blocks: ParsedHistoryBlock[]; rest: string } {
     const blocks: ParsedHistoryBlock[] = [];
-    const rest = text.replace(BLOCK_RX, (_match, title: string, sessionId: string, query: string, body: string) => {
-        const params = new URLSearchParams(query);
+    const rest = text.replace(BLOCK_RX, (_m, title: string, profile: string, sessionId: string, inner: string) => {
+        const ids: Array<number | null> = [];
+        const body: string[] = [];
+        let from: number | undefined;
+        let to: number | undefined;
+        let anchor: string | undefined;
+
+        for (const raw of inner.split(/\r?\n/)) {
+            const line = raw.trim();
+            if (!line) {
+                continue;
+            }
+            const span = /^Span: (.+?) → (.+)$/.exec(line);
+            if (span) {
+                const start = Date.parse(span[1]);
+                const end = Date.parse(span[2]);
+                if (Number.isFinite(start)) from = start;
+                if (Number.isFinite(end)) to = end;
+                continue;
+            }
+            const anchored = /^Anchor: "(.*)"$/.exec(line);
+            if (anchored) {
+                anchor = anchored[1];
+                continue;
+            }
+            const bodyLine = LINE_RX.exec(line);
+            if (bodyLine) {
+                ids.push(bodyLine[2] === undefined ? null : Number(bodyLine[2]));
+                body.push(line);
+                continue;
+            }
+            body.push(line);
+            ids.push(null);
+        }
+
         blocks.push({
-            ref: {
-                sessionId,
-                title,
-                count: Number(params.get('count')) || 0,
-                from: Number(params.get('from')) || 0,
-                to: Number(params.get('to')) || 0,
-            },
-            body: body.trim(),
+            ref: { sessionId, profile, title, count: body.length, messageIds: ids, from, to, anchor },
+            body: body.join('\n'),
         });
         return '';
     }).trim();
+
     return { blocks, rest };
 }
 
@@ -79,18 +136,30 @@ export interface StagedHistory {
     messages: ChatMessage[];
 }
 
-/** Holds the one selection the composer may attach to its next send. */
+/**
+ * Holds the one selection the composer may attach to its next send.
+ *
+ * The ids arrive from the export lookup at Attach time; without them the block falls back to the
+ * anchor, so an attach still says where it came from when the lookup failed.
+ */
 export class HistoryAttach {
     private staged: StagedHistory | null = null;
 
-    stage(ref: HistoryRef, messages: ChatMessage[]): StagedHistory {
+    stage(ref: HistoryRef, messages: ChatMessage[], ids?: Array<number | null>): StagedHistory {
         const picked = attachableMessages(messages);
+        const messageIds = picked.map((_, index) => {
+            const id = ids ? ids[index] : undefined;
+            return typeof id === 'number' ? id : null;
+        });
+        const matched = messageIds.some(id => id !== null);
         this.staged = {
             ref: {
                 ...ref,
                 count: picked.length,
-                from: picked.length ? picked[0].timestamp : ref.from,
-                to: picked.length ? picked[picked.length - 1].timestamp : ref.to,
+                messageIds,
+                from: matched ? ref.from : undefined,
+                to: matched ? ref.to : undefined,
+                anchor: matched ? undefined : ref.anchor ?? anchorFor(picked),
             },
             messages: picked,
         };

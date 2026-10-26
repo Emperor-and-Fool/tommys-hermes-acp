@@ -38,12 +38,18 @@ export interface StoredImageRef {
 export interface HistoryRef {
     /** The Hermes session the messages were read from. */
     sessionId: string;
+    /** The Hermes profile that session belongs to: the agent needs both to find it. */
+    profile: string;
     title: string;
     /** How many messages the attach carried. */
     count: number;
-    /** Timestamps of the first and last attached message. */
-    from: number;
-    to: number;
+    /** Real Hermes message ids, parallel to the attached messages; null where none matched. */
+    messageIds: Array<number | null>;
+    /** Real timestamps in ms of the matched messages, when at least one id was found. */
+    from?: number;
+    to?: number;
+    /** When no id matched: the opening words of the first message, for the agent to search by. */
+    anchor?: string;
 }
 
 /** One record of a transcript, as the pane renders it. */

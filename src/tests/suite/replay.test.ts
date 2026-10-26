@@ -41,7 +41,7 @@ describe('buildReplayMessages', () => {
 
     it('splits an attached history block out of a replayed user message', () => {
         const block = formatHistoryBlock(
-            { sessionId: 'sess-1', title: 'Earlier work', count: 0, from: 0, to: 0 },
+            { sessionId: 'sess-1', profile: 'dev', title: 'Earlier work', count: 0, messageIds: [10, 11], from: 10, to: 11 },
             [
                 { role: 'user', text: 'hi', timestamp: 10 },
                 { role: 'assistant', text: 'hello', timestamp: 11 },
