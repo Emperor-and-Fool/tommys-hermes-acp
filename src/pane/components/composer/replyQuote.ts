@@ -105,7 +105,7 @@ export function initDocumentSelectionchange(): void {
     });
 }
 
-export function initFunctionWiring3(): void {
+export function initQuoteHook(): void {
     window.__tommysQuote = function() { return state.lastSelectionQuote; };
 }
 

@@ -100,7 +100,7 @@ export function renderLogContent() {
     maybeScrollLogToBottom();
 }
 
-export function initFunction(): void {
+export function initLogCloseButton(): void {
     byId('closeLogBtn').addEventListener('click', function() {
         hideModal(logModal);
     });
@@ -126,7 +126,7 @@ export function initCopyLogBtnClick(): void {
     }
 }
 
-export function initFunctionWiring2(): void {
+export function initLogClearButton(): void {
     byId('clearLogBtn').addEventListener('click', function() {
         state.logs = [];
         renderLogContent();

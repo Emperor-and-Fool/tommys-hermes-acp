@@ -9,7 +9,7 @@ declare function acquireVsCodeApi(): {
 declare const marked: any;
 declare const DOMPurify: any;
 declare const hljs: any;
-declare const locale: any;
+declare let locale: any;
 declare function localeText(key: string, fallback?: string, ...args: any[]): string;
 
 interface Window {

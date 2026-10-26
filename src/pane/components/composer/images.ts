@@ -106,3 +106,7 @@ function bindImagePasteOnce() {
 export function initBindImagePasteOnce(): void {
     bindImagePasteOnce();
 }
+
+export function initPasteLog(): void {
+    hostLog('[paste] listener bound on #input');
+}

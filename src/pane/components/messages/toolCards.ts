@@ -6,11 +6,11 @@ import { appendMessage, maybeScrollToBottom } from './messageList';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming';
 
 
-export function initStatementWiring2(): void {
+export function initShowThoughtsFlag(): void {
     window._showThoughts = true;
 }
 
-export function initStatementWiring3(): void {
+export function initShowToolCallsFlag(): void {
     window._showToolCalls = true;
 }
 

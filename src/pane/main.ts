@@ -19,7 +19,6 @@ import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
 import * as statusBar from './components/status/statusBar';
 import * as i18n from './i18n';
-import * as post from './post';
 import * as router from './router';
 
 export function boot(): void {
@@ -28,18 +27,18 @@ export function boot(): void {
     composer.initWindowResize();
     messageList.initWindowScroll();
     images.initBindImagePasteOnce();
-    post.initStatement();
-    toolCards.initStatementWiring2();
-    toolCards.initStatementWiring3();
+    images.initPasteLog();
+    toolCards.initShowThoughtsFlag();
+    toolCards.initShowToolCallsFlag();
     messageList.initMessagesElScroll();
-    logViewer.initFunction();
+    logViewer.initLogCloseButton();
     logViewer.initCopyLogBtnClick();
-    logViewer.initFunctionWiring2();
+    logViewer.initLogClearButton();
     logViewer.initLogFilterErrorChange();
     logViewer.initLogFilterWarningChange();
     logViewer.initLogContentScroll();
     replyQuote.initDocumentSelectionchange();
-    replyQuote.initFunctionWiring3();
+    replyQuote.initQuoteHook();
     replyQuote.initUndeliveredPrimaryBtnClick();
     replyQuote.initUndeliveredDiscardBtnClick();
     replyQuote.initReplyQuoteToggleClick();
@@ -104,7 +103,7 @@ export function boot(): void {
     i18n.initApplyLocale();
     composer.initWirePickerRowReserve();
     post({ type: 'ready' } as any);
-    composer.initFunctionB();
+    composer.initFontSize();
 }
 
 boot();

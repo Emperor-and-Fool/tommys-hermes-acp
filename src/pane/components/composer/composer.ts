@@ -347,7 +347,7 @@ export function initWirePickerRowReserve(): void {
     wirePickerRowReserve();
 }
 
-export function initFunctionB(): void {
+export function initFontSize(): void {
     (function() {
         const KEY = 'tommys.chatFontSize';
         const MIN = 10, MAX = 28, DEFAULT = 16;
