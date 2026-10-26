@@ -198,3 +198,92 @@ export class HistoryAttach {
         return this.staged ? formatHistoryBlock(this.staged.ref, this.staged.messages) : '';
     }
 }
+
+/** One tab's staged pick, and the lookup that belongs to it. */
+interface TabStage {
+    attach: HistoryAttach;
+    pending: boolean;
+    lookup: Promise<void>;
+}
+
+/**
+ * The staged picks, one per local tab.
+ *
+ * A pick staged in one tab must never travel into another: the block would name a conversation
+ * as context for a question that was never about it — and could even name the tab's own session.
+ * Everything here is addressed by the local tab id, so a lookup that finishes after the user has
+ * moved on updates its own tab's entry and nothing else.
+ */
+export class HistoryStages {
+    private readonly _tabs = new Map<string, TabStage>();
+
+    /** Stage (or re-stage) this tab's pick. Any lookup it already has is left running. */
+    stage(tabId: string, ref: HistoryRef, messages: ChatMessage[], ids?: Array<number | null>): StagedHistory {
+        return this._entry(tabId).attach.stage(ref, messages, ids);
+    }
+
+    current(tabId: string): StagedHistory | null {
+        return this._tabs.get(tabId)?.attach.current ?? null;
+    }
+
+    block(tabId: string): string {
+        return this._tabs.get(tabId)?.attach.block() ?? '';
+    }
+
+    /** The lookup this tab's pick is waiting on; resolved when it has none. */
+    waitFor(tabId: string): Promise<void> {
+        return this._tabs.get(tabId)?.lookup ?? Promise.resolve();
+    }
+
+    isPending(tabId: string): boolean {
+        return this._tabs.get(tabId)?.pending ?? false;
+    }
+
+    /** Record the lookup the tab's current pick waits on; it clears its own pending flag. */
+    begin(tabId: string, lookup: Promise<void>): void {
+        const entry = this._entry(tabId);
+        entry.pending = true;
+        entry.lookup = lookup;
+        void lookup.then(
+            () => this._settle(tabId, entry, lookup),
+            () => this._settle(tabId, entry, lookup)
+        );
+    }
+
+    /** Drop this tab's pick. True when it had one. */
+    clear(tabId: string): boolean {
+        const entry = this._tabs.get(tabId);
+        if (!entry || !entry.attach.current) {
+            return false;
+        }
+        entry.attach.clear();
+        entry.lookup = Promise.resolve();
+        entry.pending = false;
+        return true;
+    }
+
+    /** The tab is gone: its pick goes with it. */
+    drop(tabId: string): void {
+        this._tabs.delete(tabId);
+    }
+
+    get size(): number {
+        return this._tabs.size;
+    }
+
+    private _settle(tabId: string, entry: TabStage, lookup: Promise<void>): void {
+        // A newer pick may have replaced this lookup while it ran.
+        if (this._tabs.get(tabId) === entry && entry.lookup === lookup) {
+            entry.pending = false;
+        }
+    }
+
+    private _entry(tabId: string): TabStage {
+        let entry = this._tabs.get(tabId);
+        if (!entry) {
+            entry = { attach: new HistoryAttach(), pending: false, lookup: Promise.resolve() };
+            this._tabs.set(tabId, entry);
+        }
+        return entry;
+    }
+}

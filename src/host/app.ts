@@ -22,7 +22,7 @@ import { Profiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './tabs/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
-import { HistoryAttach, blockMessageLines } from './chat/historyAttach';
+import { HistoryStages, blockMessageLines } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
@@ -161,11 +161,11 @@ export class App implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
     });
 
-    /** The staged slice of another conversation: the chip, the block, and the lookup behind it. */
-    private readonly _historyAttach: HistoryAttach = new HistoryAttach();
-
-    /** The id lookup in flight: a send waits for it so the block carries ids, not just an anchor. */
-    private _historyLookup: Promise<void> = Promise.resolve();
+    /**
+     * The staged slice of another conversation, one entry per local tab: a pick staged in one
+     * tab must never ride along with another tab's send.
+     */
+    private readonly _historyStages: HistoryStages = new HistoryStages();
 
     private readonly _extensionId: string;
 
@@ -225,6 +225,8 @@ export class App implements vscode.WebviewViewProvider {
             ensureRegistered: () => this._session.ensureRegistered(),
             msgPath: (id) => this._session.msgPath(id),
             postSessionList: () => this._session.postList(),
+            postHistoryState: (tabId) => this._postHistoryState(tabId),
+            dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             loadHistory: () => this._session.loadHistory(),
             activate: (id, options) => this._session.activate(id, options),
             workspaceState: context.workspaceState,
@@ -342,6 +344,9 @@ export class App implements vscode.WebviewViewProvider {
      *  conversation (and leave an empty row in the catalog). */
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
+        // The tab whose pane sent this. Captured before any await: `promptSessionId` is only set
+        // once the turn is ready, and a switch mid-send must not move the message to the new tab.
+        const tabId = this._session.activeId;
         const epoch = this._turn.sendEpoch;
         await this._connection.awaitSessionReady();
         if (epoch !== this._turn.sendEpoch) {
@@ -366,17 +371,28 @@ export class App implements vscode.WebviewViewProvider {
         }
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
-        // A staged pick whose lookup is still running: wait rather than send only the anchor.
-        // runHermesCommand caps the export at 15 s, so this cannot hang the turn.
-        if (this._historyAttach.current) {
-            await this._historyLookup;
+        // This tab's staged pick, and only this tab's: a lookup still running is waited for
+        // rather than sending the anchor. runHermesCommand caps the export at 15 s.
+        if (this._historyStages.current(tabId)) {
+            await this._historyStages.waitFor(tabId);
             if (epoch !== this._turn.sendEpoch) {
                 return;
             }
         }
-        const staged = this._historyAttach.current;
+        let staged = this._historyStages.current(tabId);
+        const ownHermesId = this._session.tabs.find(rec => rec.id === tabId)?.hermesSessionId;
+        if (staged && (staged.ref.sessionId === tabId || (!!ownHermesId && staged.ref.sessionId === ownHermesId))) {
+            // The dropdown leaves the current session out; this is the host-side net. A tab that
+            // quotes itself would send its own conversation back as context for its own question.
+            this._log(`History pick ignored: ${staged.ref.sessionId} is this tab's own session`);
+            this._historyStages.clear(tabId);
+            if (this._session.activeId === tabId) {
+                this._postMessage({ type: 'historyCleared' });
+            }
+            staged = null;
+        }
         this._models.snapshotFromProfile();
-        this._turn.promptSessionId = this._session.activeId;
+        this._turn.promptSessionId = tabId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
             this._attachments.indexAttachments(imageRefs, text);
@@ -399,7 +415,7 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        const historyBlock = staged ? this._historyAttach.block() : '';
+        const historyBlock = staged ? this._historyStages.block(tabId) : '';
         if (imageCount > 0 || historyBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,
             // then one image block per staged image. Hermes' ACP adapter advertises
@@ -419,8 +435,10 @@ export class App implements vscode.WebviewViewProvider {
             await this._connection.acp?.sendMessage(text);
         }
         if (staged) {
-            this._historyAttach.clear();
-            this._postMessage({ type: 'historyCleared' });
+            this._historyStages.clear(tabId);
+            if (this._session.activeId === tabId) {
+                this._postMessage({ type: 'historyCleared' });
+            }
         }
     }
 
@@ -518,16 +536,17 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The viewer came back with ticks: the chip first, the real ids when the lookup answers. */
     private _stageHistory(pick: HistoryPick): void {
-        const staged = this._historyAttach.stage(pick.ref, pick.messages);
+        const tabId = this._session.activeId;
+        const staged = this._historyStages.stage(tabId, pick.ref, pick.messages);
         this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: true });
-        this._historyLookup = this._lookupHistoryIds(pick);
+        this._historyStages.begin(tabId, this._lookupHistoryIds(tabId, pick));
     }
 
     /**
      * The real Hermes ids for the picked lines, read from the export at Attach time.
      * A failed or slow export is not an error: the block falls back to the anchor.
      */
-    private async _lookupHistoryIds(pick: HistoryPick): Promise<void> {
+    private async _lookupHistoryIds(tabId: string, pick: HistoryPick): Promise<void> {
         let match: { ids: Array<number | null>; from?: number; to?: number } | null = null;
         try {
             const executable = await this._resolveHermesExecutable();
@@ -545,24 +564,28 @@ export class App implements vscode.WebviewViewProvider {
             const message = err instanceof Error ? err.message : String(err);
             this._log(`History lookup failed: ${message}`);
         }
-        this._finishHistoryStaging(pick, match);
+        this._finishHistoryStaging(tabId, pick, match);
     }
 
     /** Stage what the lookup gave (the anchor when it gave nothing) and restate the chip. */
     private _finishHistoryStaging(
+        tabId: string,
         pick: HistoryPick,
         match: { ids: Array<number | null>; from?: number; to?: number } | null
     ): void {
-        const current = this._historyAttach.current;
-        // A different pick staged while this lookup ran: only the live one may be restated.
+        const current = this._historyStages.current(tabId);
+        // A different pick staged in this tab while the lookup ran: only the live one is restated.
         if (!current || current.ref.sessionId !== pick.ref.sessionId || current.ref.title !== pick.ref.title) {
             return;
         }
         const ref = match ? { ...pick.ref, from: match.from, to: match.to } : pick.ref;
-        const staged = this._historyAttach.stage(ref, pick.messages, match ? match.ids : undefined);
+        const staged = this._historyStages.stage(tabId, ref, pick.messages, match ? match.ids : undefined);
         const matched = (staged.ref.messageIds || []).some(id => id !== null);
-        this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: false });
-        this._log(`History staged: ${staged.messages.length} message(s), ${matched ? 'ids found' : 'anchor only'}`);
+        // The entry is this tab's; the pane is only told when this tab is the one on screen.
+        if (this._session.activeId === tabId) {
+            this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: false });
+        }
+        this._log(`History staged in ${tabId}: ${staged.messages.length} message(s), ${matched ? 'ids found' : 'anchor only'}`);
     }
 
     /** The executable the connection would start: the configured path first, then the search. */
@@ -575,11 +598,24 @@ export class App implements vscode.WebviewViewProvider {
         return (await findHermesExecutable(configured)) || undefined;
     }
 
-    /** The chip's X: drop the pick and say so. */
+    /** The chip's X: drop the active tab's pick and say so. */
     public clearHistoryStaged(): void {
-        this._historyAttach.clear();
-        this._historyLookup = Promise.resolve();
+        this._historyStages.clear(this._session.activeId);
         this._postMessage({ type: 'historyCleared' });
+    }
+
+    /** The pane is showing another tab now: restate that tab's own pick, or that it has none. */
+    private _postHistoryState(tabId: string): void {
+        const staged = this._historyStages.current(tabId);
+        if (!staged) {
+            this._postMessage({ type: 'historyCleared' });
+            return;
+        }
+        this._postMessage({
+            type: 'historyStaged',
+            ref: staged.ref,
+            pending: this._historyStages.isPending(tabId),
+        });
     }
 
     public resolveWebviewView(

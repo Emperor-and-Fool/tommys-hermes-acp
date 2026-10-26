@@ -42,6 +42,10 @@ export interface TabLifecycleHost {
     ensureRegistered(): void;
     msgPath(id: string): string;
     postSessionList(): void;
+    /** Restate the active tab's staged history pick in the pane (or that it has none). */
+    postHistoryState(tabId: string): void;
+    /** Forget one tab's staged pick: the tab is gone. */
+    dropHistoryStage(tabId: string): void;
     loadHistory(): void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
     workspaceState: vscode.Memento;
@@ -229,7 +233,11 @@ export class TabLifecycle {
     }
 
     restoreMessages(target?: ChatSurface): void {
-        if (this._host.session.messages.length === 0) return;
+        if (this._host.session.messages.length === 0) {
+            // Nothing to repaint, but the chip still belongs to the tab now on screen.
+            this.postHistoryState();
+            return;
+        }
         this._host.log(`Restoring ${this._host.session.messages.length} messages`);
         const msg: HostToPane = {
             type: 'restoreHistory',
@@ -241,6 +249,12 @@ export class TabLifecycle {
         } else {
             this._host.post(msg);
         }
+        this.postHistoryState();
+    }
+
+    /** One place for it: every path that puts another tab on screen ends here. */
+    private postHistoryState(): void {
+        this._host.postHistoryState(this._host.session.activeId);
     }
 
     async createBlankTab(): Promise<void> {
@@ -252,6 +266,7 @@ export class TabLifecycle {
         this._host.snapshotModelFromProfile();
         this._host.post({ type: 'newChat' });
         this._host.postSessionList();
+        this.postHistoryState();
     }
 
     async endPromptBeforeSwitch(options?: { interrupt?: boolean }): Promise<boolean> {
@@ -288,6 +303,9 @@ export class TabLifecycle {
         const resumed = await this.resumeTabHermesSession(sessionId);
         if (!resumed) {
             this.restoreMessages();
+        } else {
+            // The replay repaints this tab when it arrives; the chip is this tab's already.
+            this.postHistoryState();
         }
         await this._host.syncModelStateForCurrentSession();
         this._host.syncPromptUiIfReturningToOwner();
@@ -328,6 +346,8 @@ export class TabLifecycle {
     async hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
         const acp = this._host.acp();
         for (const id of toHide) {
+            // A closed tab's staged pick has nowhere to go; it must not outlive the tab.
+            this._host.dropHistoryStage(id);
             if (acp) {
                 try {
                     await acp.setSessionHidden(id, true);
@@ -349,6 +369,7 @@ export class TabLifecycle {
             } else {
                 this._host.session.messages = [];
                 this._host.post({ type: 'noActiveTab' });
+                this.postHistoryState();
             }
         }
         await this.refreshFromHermes();
