@@ -60,9 +60,6 @@ const files = [
     'package.json',
     'package.nls.json',
     'package.nls.zh-cn.json',
-    'media/chat.html',
-    'media/chat.css',
-    'media/pane.js',
 ];
 
 function walk(rel, out = []) {
@@ -81,7 +78,8 @@ for (const rel of walk('out')) {
     if (rel.startsWith(path.join('out', 'tests'))) continue;
     files.push(rel);
 }
-for (const rel of walk(path.join('media', 'vendor'))) files.push(rel);
+// media/ is copied whole, so the installed copy mirrors it and can be swept like out/.
+for (const rel of walk('media')) files.push(rel);
 
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 let copied = 0;
@@ -91,9 +89,8 @@ const mismatched = [];
 // stale module in out/ is the same silent failure this script exists to prevent. Anything the
 // repo no longer compiles comes out of the installed copy, and empty directories with it.
 //
-// Only out/ is swept. media/ is not: the installed package legitimately carries files this
-// script does not copy (the activity-bar icon among them, referenced from package.json), so
-// pruning it against this file list would delete the pane's own icon.
+// out/ and media/ are swept: both are copied whole, so whatever the installed copy holds
+// beyond them is a leftover — a retired script, a renamed stylesheet.
 const wanted = new Set(files);
 const pruned = [];
 function prune(relDir) {
@@ -115,7 +112,7 @@ function prune(relDir) {
 if (dryRun) {
     const present = files.filter((rel) => existsSync(path.join(repo, rel)));
     const stale = [];
-    for (const root of ['out']) {
+    for (const root of ['out', 'media']) {
         const sweep = (relDir) => {
             const abs = path.join(target, relDir);
             if (!existsSync(abs)) return;
@@ -143,7 +140,7 @@ for (const rel of files) {
     if (sha(from) !== sha(to)) mismatched.push(rel);
 }
 
-for (const root of ['out']) prune(root);
+for (const root of ['out', 'media']) prune(root);
 
 // The installed manifest must declare the views the JS registers.
 const installedPkg = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
