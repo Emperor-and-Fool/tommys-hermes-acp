@@ -1,17 +1,11 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
-import type { ChatMessage, SessionInfo, StoredImageRef } from './types/chat';
 import * as path from 'path';
-import { AcpClient, PermissionRequest } from './acp/AcpClient';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import {
-    activeSessionPathFor,
-    migrateLegacySessionStorage,
-    sessionsPathFor,
-} from './cache/profileStorage';
+import { migrateLegacySessionStorage } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from './i18n/types';
@@ -55,19 +49,12 @@ export class App implements vscode.WebviewViewProvider {
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
 
-    private get _scopeKey(): string { return this._session.scopeKey; }
 
-    private get _sessionMessages(): ChatMessage[] { return this._session.messages; }
 
-    private set _sessionMessages(value: ChatMessage[]) { this._session.messages = value; }
 
-    private get _sessionId(): string { return this._session.activeId; }
 
-    private set _sessionId(value: string) { this._session.activeId = value; }
 
-    private get _sessions(): SessionInfo[] { return this._session.tabs; }
 
-    private set _sessions(value: SessionInfo[]) { this._session.tabs = value; }
 
     // ---- Lifecycle ----
     /** Every live renderer: the sidebar view and/or the single chat panel. */
@@ -75,7 +62,7 @@ export class App implements vscode.WebviewViewProvider {
     /** Context attach: the picker over this tab's own transcript, and the prompt it prepends. */
     private readonly _contextAttach: ContextAttachOffer = new ContextAttachOffer({
         post: (msg) => this._postMessage(msg),
-        messages: () => this._sessionMessages,
+        messages: () => this._session.messages,
     });
 
     /**
@@ -84,38 +71,36 @@ export class App implements vscode.WebviewViewProvider {
      * place where the runner reaches the pane, the transcript and the tab list.
      */
     private readonly _turn: PromptRunner = new PromptRunner({
-        acp: () => this._acp,
-        sessionId: () => this._sessionId,
-        messages: () => this._sessionMessages,
-        tabs: () => this._sessions,
+        acp: () => this._connection.acp,
+        sessionId: () => this._session.activeId,
+        messages: () => this._session.messages,
+        tabs: () => this._session.tabs,
         resolveCwd: () => this._files.resolveCwd(),
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
-        acpStatus: () => this._acp?.status,
+        acpStatus: () => this._connection.acp?.status,
         isViewingPromptSession: () => this._isViewingPromptSession(),
-        cancelPendingPermissions: () => this._cancelPendingPermissions(),
-        awaitSessionReady: () => this._awaitSessionReady(),
+        cancelPendingPermissions: () => this._turn.cancelPendingPermissions(),
+        awaitSessionReady: () => this._connection.awaitSessionReady(),
         setContextAttachAwaitingReply: (value) => { this._contextAttach.setAwaitingReply(value); },
-        detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
-        bindHermesSessionId: (id) => this._bindHermesSessionId(id),
+        detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
+        bindHermesSessionId: (id) => this._lifecycle.bindHermesSessionId(id),
         applySessionModelPreference: () => this._models.applySessionPreference(),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
-        saveMessage: (role, text) => this._saveMessage(role, text),
-        savePermissionRequest: (id, request) => this._savePermissionRequest(id, request),
+        saveMessage: (role, text) => this._session.saveMessage(role, text),
+        savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
         resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
         permissionOptionLabel: (id, optionId) => {
-            const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
+            const stored = this._session.messages.find(m => m.permissionId === id && m.role === 'permission');
             const opt = stored?.options?.find(o => o.optionId === optionId);
             return opt ? resolvePermissionOptionLabel(getWebviewLocale(), opt) : undefined;
         },
     });
 
     /** Hermes: process, link, events, teardown. */
-    private _connection!: Connection;
+    private readonly _connection: Connection;
 
-    /** Read-only view of the live client; there is deliberately no setter. */
-    private get _acp(): AcpClient | undefined { return this._connection?.acp; }
 
     /** Which profile/agent we connect to, and which the picker offers. */
     private readonly _profiles: Profiles;
@@ -125,7 +110,7 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _detection = new EnvironmentDetection({
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
-        reconnect: () => this._connect(this._profiles.selectionId || undefined),
+        reconnect: () => this._connection.connect(this._profiles.selectionId || undefined),
         resetViewTitle: () => this._resetViewTitleToDefault(),
     });
 
@@ -133,15 +118,15 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Which model, from where: the chip, the switch, and the persisted choice. */
     private readonly _models: ModelState = new ModelState({
-        acp: () => this._acp,
-        tabs: () => this._sessions,
-        sessionId: () => this._sessionId,
-        saveCatalog: () => this._saveCatalog(),
-        profileScope: () => ({ historyDir: this._historyDir, scopeKey: this._scopeKey }),
+        acp: () => this._connection.acp,
+        tabs: () => this._session.tabs,
+        sessionId: () => this._session.activeId,
+        saveCatalog: () => this._session.saveCatalog(),
+        profileScope: () => ({ historyDir: this._historyDir, scopeKey: this._session.scopeKey }),
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
-        detachOtherPrompt: () => this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true }),
+        detachOtherPrompt: () => this._turn.detachActivePrompt(this._turn.promptSessionId!, { savePartial: true }),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
     });
 
@@ -159,8 +144,8 @@ export class App implements vscode.WebviewViewProvider {
         onViewResolved: () => { this._webviewLocale = getLocale(); },
         onViewVisible: () => {
             this._syncWebviewLocale();
-            if (!this._acp) {
-                this._connect();
+            if (!this._connection.acp) {
+                this._connection.connect();
             }
         },
         localResourceRoots: () => [this._extensionUri],
@@ -207,7 +192,7 @@ export class App implements vscode.WebviewViewProvider {
         });
         this._session.init();
         this._lifecycle = new TabLifecycle({
-            acp: () => this._acp,
+            acp: () => this._connection.acp,
             session: this._session,
             post: (msg) => this._postMessage(msg),
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
@@ -216,18 +201,18 @@ export class App implements vscode.WebviewViewProvider {
             attachments: this._attachments,
             offerContextAttach: (messages) => this._contextAttach.offer(messages),
             promptSessionId: () => this._turn.promptSessionId,
-            detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
+            detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
             syncPromptUiIfReturningToOwner: () => this._syncPromptUiIfReturningToOwner(),
             snapshotModelFromProfile: () => this._models.snapshotFromProfile(),
-            saveCatalog: () => this._saveCatalog(),
-            saveCurrent: () => this._saveCurrentSession(),
-            ensureRegistered: () => this._ensureSessionRegistered(),
-            msgPath: (id) => this._msgPath(id),
-            postSessionList: () => this._postSessionList(),
-            loadHistory: () => this._loadHistory(),
-            activate: (id, options) => this._activateSession(id, options),
+            saveCatalog: () => this._session.saveCatalog(),
+            saveCurrent: () => this._session.saveCurrent(),
+            ensureRegistered: () => this._session.ensureRegistered(),
+            msgPath: (id) => this._session.msgPath(id),
+            postSessionList: () => this._session.postList(),
+            loadHistory: () => this._session.loadHistory(),
+            activate: (id, options) => this._session.activate(id, options),
             workspaceState: context.workspaceState,
         });
         this._connection = new Connection({
@@ -256,17 +241,9 @@ export class App implements vscode.WebviewViewProvider {
         );
     }
 
-    private _msgPath(sid: string): string { return this._session.msgPath(sid); }
 
-    private _saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[]): void {
-        this._session.saveMessage(role, text, toolCallId, imageRefs);
-    }
 
-    private _persistMessages(): void { this._session.persistMessages(); }
 
-    private _savePermissionRequest(id: string, request: PermissionRequest): void {
-        this._session.savePermissionRequest(id, request);
-    }
 
     private _resolvePermissionHistory(
         id: string,
@@ -277,78 +254,46 @@ export class App implements vscode.WebviewViewProvider {
         this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
     }
 
-    private _loadHistory(): void { this._session.loadHistory(); }
 
-    private _saveCurrentSession(): void { this._session.saveCurrent(); }
 
-    private _ensureSessionRegistered(): void { this._session.ensureRegistered(); }
 
-    private _postSessionList(): void { this._session.postList(); }
 
-    private _postHiddenSessions(): void { this._session.postHidden(); }
 
-    private _saveCatalog(): boolean { return this._session.saveCatalog(); }
 
-    private _markSessionAgentEngaged(): void { this._session.markEngaged(); }
 
-    private _handleDeleteMessages(indices: unknown): void { this._session.handleDeleteMessages(indices); }
 
-    /**
-     * A prompt belongs to the tab it was started in, so switching away from a running one
-     * has to end it first. Returns false when the switch must not happen at all.
-     */
 
-    private _activateSession(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
-        this._session.activate(sessionId, options);
-    }
 
-    private _handleReorderSessions(sessionIds: unknown): void { this._session.handleReorderSessions(sessionIds); }
 
-    /**
-     * Close tabs by hiding their sessions.
-     *
-     * Closing is not deletion: the transcript, the title and the cwd all stay in Hermes,
-     * the row simply stops being an open tab, and `[+ Open Tab]` is where it comes back.
-     */
 
-    /** Hide the given tabs, move focus off a closed tab, then re-read the catalog. */
 
-    /** Open a closed session as a tab; with nothing picked, open a blank tab instead of
-     *  starting a session inside the tab the user is already reading. */
 
-    /**
-     * Retitle a tab through Hermes, then re-read the catalog.
-     *
-     * The rule lives in `session/catalog`; this supplies the wire call, the rescan and the log
-     * line, so the handler goes away with the provider and the rule stays.
-     */
 
-    private _handleTogglePinSession(sessionId: string): void { this._session.handleTogglePinSession(sessionId); }
 
     private _isViewingPromptSession(): boolean {
-        return !this._turn.promptSessionId || this._turn.promptSessionId === this._sessionId;
+        return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
     }
 
     private _otherSessionIsPrompting(): boolean {
-        return this._acp?.status === 'prompting'
+        return this._connection.acp?.status === 'prompting'
             && !!this._turn.promptSessionId
-            && this._turn.promptSessionId !== this._sessionId;
+            && this._turn.promptSessionId !== this._session.activeId;
     }
 
     private _syncPromptUiIfReturningToOwner(): void {
-        if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._sessionId) {
+        if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._session.activeId) {
             return;
         }
-        if (this._acp?.status !== 'prompting') {
+        if (this._connection.acp?.status !== 'prompting') {
             return;
         }
-        this._postMessage({ type: 'status', status: 'prompting', sessionId: this._sessionId });
+        this._postMessage({ type: 'status', status: 'prompting', sessionId: this._session.activeId });
         if (this._turn.lastThoughtText) {
             this._postMessage({
                 type: 'addMessage',
                 role: 'thought',
                 text: this._turn.lastThoughtText,
-                sessionId: this._sessionId,
+                sessionId: this._session.activeId,
             });
         }
         if (this._turn.lastAssistantText) {
@@ -356,89 +301,28 @@ export class App implements vscode.WebviewViewProvider {
                 type: 'addMessage',
                 role: 'assistant',
                 text: this._turn.lastAssistantText,
-                sessionId: this._sessionId,
+                sessionId: this._session.activeId,
             });
         }
     }
 
-    /**
-     * Bind a fresh ACP connection to a logical session.
-     *
-     * Replaces the old behaviour where every connect issued `session/new`, so each
-     * view reload (and each tab round-trip) left an empty session behind in
-     * state.db. Priority: the tab's bound id, then the workspace pointer, then the
-     * session `session/new` just created.
-     */
-    /**
-     * Adopt Hermes sessions into the tab list.
-     *
-     * The extension used to treat its own JSON list as the only truth, so sessions
-     * created by the dashboard or TUI were invisible in the sidebar and every
-     * reconnect added a throwaway row. `session/list` is the real catalog; local
-     * entries become a cache keyed by `hermesSessionId`.
-     */
-    /** Read the catalog; null when there is no connection to ask. */
 
-    /** Refresh the tab list from Hermes, then repaint it. */
 
-    /** Resume one tab's Hermes session; false when the tab has nothing to resume. */
 
-    /**
-     * Render the transcript Hermes replayed for a loaded session.
-     *
-     * `session/load` streams history as whole-message updates; AcpClient collects
-     * them and hands them over once the load resolves. They are cached to the
-     * tab's message file so the next switch renders from disk instead of
-     * replaying, and only painted when that tab is still the open one.
-     */
 
-    /** Remember which Hermes session backs the current tab and this workspace. */
 
-    /** True when the current tab has a usable Hermes session. */
-    private async _ensureAcpReadyForCurrentSession(): Promise<boolean> {
-        return this._turn.ensureSessionReady();
-    }
 
-    private _clearPromptStallTimer(): void {
-        this._turn.clearStallHint();
-    }
 
-    private async _detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void> {
-        return this._turn.detachActivePrompt(fromSessionId, options);
-    }
 
-    /**
-     * Attachments are bytes Hermes never stores, so the pane keeps them: content-addressed
-     * files beside the transcript, hashes recorded on the message. The same screenshot twice
-     * costs one file.
-     */
 
-    /** Attachment hashes back to what the webview renders, for the transcript being posted. */
 
-    /**
-     * The replay is text-only and rewrites the transcript file, so refs stored on a record can
-     * be lost. This sidecar is written on send and never rewritten by a replay.
-     */
 
-    /** Attachments for a message that carries no refs: exact key first, then by order. */
 
-    private _flushThoughtToHistory(): void {
-        this._turn.flushThought();
-    }
 
-    private async _connect(selectionId?: string): Promise<void> { return this._connection.connect(selectionId); }
 
-    private async _awaitSessionReady(): Promise<void> { return this._connection.awaitSessionReady(); }
 
-    private _postTokenUsage(): void { this._connection.postTokenUsage(); }
 
-    private _handlePermissionResponse(id: string, optionId: string | null): void {
-        this._turn.handlePermissionResponse(id, optionId);
-    }
 
-    private _cancelPendingPermissions(): void {
-        this._turn.cancelPendingPermissions();
-    }
 
     /** Point the *live* session at another model. No session/new: Hermes' set_session_model
      *  swaps the agent in place, and a fresh session here would silently drop the tab's
@@ -446,7 +330,7 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _handleUserMessage(text: string, contextAttach?: ContextAttachOption, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         const epoch = this._turn.sendEpoch;
-        await this._awaitSessionReady();
+        await this._connection.awaitSessionReady();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -454,11 +338,11 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (this._sessions.length === 0) {
+        if (this._session.tabs.length === 0) {
             this._postMessage({ type: 'noActiveTab' });
             return;
         }
-        const ready = await this._ensureAcpReadyForCurrentSession();
+        const ready = await this._turn.ensureSessionReady();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -470,13 +354,13 @@ export class App implements vscode.WebviewViewProvider {
         const imageCount = images?.length ?? 0;
         this._log(`User message: ${text.slice(0, 80)}${imageCount ? ` [+${imageCount} image(s)]` : ''}`);
         this._models.snapshotFromProfile();
-        this._turn.promptSessionId = this._sessionId;
+        this._turn.promptSessionId = this._session.activeId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
             this._attachments.indexAttachments(imageRefs, text);
         }
-        this._saveMessage('user', text, undefined, imageRefs);
-        this._markSessionAgentEngaged();
+        this._session.saveMessage('user', text, undefined, imageRefs);
+        this._session.markEngaged();
         if (this._contextAttach.isActive()) {
             this._contextAttach.setAwaitingReply(true);
         }
@@ -494,38 +378,32 @@ export class App implements vscode.WebviewViewProvider {
             for (const img of images!) {
                 blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
             }
-            await this._acp?.sendMessage(blocks as any);
+            await this._connection.acp?.sendMessage(blocks as any);
         } else {
-            await this._acp?.sendMessage(promptText);
+            await this._connection.acp?.sendMessage(promptText);
         }
     }
 
-    private async _handleCancel(): Promise<void> {
-        return this._turn.cancel();
-    }
 
-    private _handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void {
-        this._session.handleSessionExport(sessionId, action, indices);
-    }
 
     public async sendText(text: string): Promise<void> {
-        await this._awaitSessionReady();
+        await this._connection.awaitSessionReady();
         await this._models.awaitSwitch();
-        if (!this._acp) {
+        if (!this._connection.acp) {
             vscode.window.showWarningMessage(t('hermesNotConnectedConnecting'));
-            await this._connect();
+            await this._connection.connect();
         }
-        if (!this._acp) {
+        if (!this._connection.acp) {
             vscode.window.showWarningMessage(t('hermesNotConnected'));
             return;
         }
-        this._turn.promptSessionId = this._sessionId;
+        this._turn.promptSessionId = this._session.activeId;
         this._models.snapshotFromProfile();
-        this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._sessionId });
-        this._saveMessage('user', text);
-        this._markSessionAgentEngaged();
-        await this._ensureAcpReadyForCurrentSession();
-        await this._acp.sendMessage(text);
+        this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
+        this._session.saveMessage('user', text);
+        this._session.markEngaged();
+        await this._turn.ensureSessionReady();
+        await this._connection.acp.sendMessage(text);
     }
 
     /** Commands from extension.ts. The work lives in environment/detection.ts. */
@@ -577,7 +455,7 @@ export class App implements vscode.WebviewViewProvider {
         }
         this._webviewLocale = current;
         this._postMessage({ type: 'setLocale', locale: getWebviewLocale() });
-        this._postSessionList();
+        this._session.postList();
     }
 
     private async _syncModelStateForCurrentSession(): Promise<void> {
@@ -585,32 +463,16 @@ export class App implements vscode.WebviewViewProvider {
         if (this._otherSessionIsPrompting()) {
             return;
         }
-        if (this._acpBoundSessionId === this._sessionId) {
+        if (this._acpBoundSessionId === this._session.activeId) {
             await this._models.applySessionPreference();
         }
     }
 
-    /** One-line delegates: the tab lifecycle moved to tabs/lifecycle.ts, the callers stayed. */
-    private _restoreMessages(target?: ChatSurface): void { this._lifecycle.restoreMessages(target); }
 
-    private _bindHermesSessionId(hermesSessionId: string): void { this._lifecycle.bindHermesSessionId(hermesSessionId); }
 
-    private async _handleSwitchSession(
-        sessionId: string,
-        options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
-    ): Promise<void> {
-        await this._lifecycle.switchTo(sessionId, options);
-    }
 
-    private async _handleCloseSessions(sessionId: string, mode: unknown): Promise<void> {
-        await this._lifecycle.closeSessions(sessionId, mode);
-    }
 
-    private async _handleOpenTab(sessionId?: string): Promise<void> { await this._lifecycle.openTab(sessionId); }
 
-    private async _handleRenameSession(sessionId: unknown, rawTitle: unknown): Promise<void> {
-        await this._lifecycle.renameTab(sessionId, rawTitle);
-    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -641,18 +503,18 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.postRole(surface);
         this._syncWebviewLocale();
         this._postPluginInfo();
-        this._postSessionList();
+        this._session.postList();
         this._profiles.postList();
-        this._postHiddenSessions();
+        this._session.postHidden();
         this._postConfig();
-        this._postTokenUsage();
+        this._connection.postTokenUsage();
         // A pane can be brand new (container move, view re-show): replay the state
         // a freshly connected pane would have or it renders placeholders — an empty
         // "Profile" pill, a model chip with nothing in it.
         this._postMessage({ type: 'activeAgent', name: this._profiles.displayName });
         this._models.postList();
         if (surface.role === 'chat') {
-            this._restoreMessages(surface);
+            this._lifecycle.restoreMessages(surface);
         }
         if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel
             && this._surfaces.hasViewSurface) {
@@ -662,14 +524,14 @@ export class App implements vscode.WebviewViewProvider {
         // the ACP client. The new pane knows nothing and its composer starts
         // disabled, so replay the live status — otherwise the UI looks frozen and
         // only a window reload recovers.
-        if (this._acp) {
-            const liveStatus = this._acp.status;
-            this._surfaces.postTo(surface, { type: 'status', status: liveStatus, sessionId: this._sessionId });
+        if (this._connection.acp) {
+            const liveStatus = this._connection.acp.status;
+            this._surfaces.postTo(surface, { type: 'status', status: liveStatus, sessionId: this._session.activeId });
             if (liveStatus === 'idle' || liveStatus === 'error') {
                 this._connection.drop();
             }
         }
-        this._connect();
+        this._connection.connect();
     }
 
     /** Everything the router may call, bound to this pane and this surface. */
@@ -688,37 +550,37 @@ export class App implements vscode.WebviewViewProvider {
                 contextAttach as ContextAttachOption | undefined,
                 images as Array<{ mimeType: string; data: string }> | undefined,
             ),
-            handleCancel: () => this._handleCancel(),
+            handleCancel: () => this._turn.cancel(),
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),
-            postHiddenSessions: () => this._postHiddenSessions(),
-            handleOpenTab: (sessionId) => this._handleOpenTab(sessionId),
-            handleReorderSessions: (ids) => this._handleReorderSessions(ids),
-            handleCloseSessions: (sessionId, mode) => this._handleCloseSessions(sessionId, mode),
-            handleRenameSession: (sessionId, title) => this._handleRenameSession(sessionId, title),
-            handleTogglePinSession: (sessionId) => this._handleTogglePinSession(sessionId),
-            handleSessionExport: (sessionId, action, indices) => this._handleSessionExport(sessionId, action, indices),
+            postHiddenSessions: () => this._session.postHidden(),
+            handleOpenTab: (sessionId) => this._lifecycle.openTab(sessionId),
+            handleReorderSessions: (ids) => this._session.handleReorderSessions(ids),
+            handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
+            handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
+            handleTogglePinSession: (sessionId) => this._session.handleTogglePinSession(sessionId),
+            handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => this._connection.switchProfile(name),
             handleSwitchSession: (sessionId, interrupt) => {
                 if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
                     this._surfaces.openPanel();
                 }
-                this._enqueueChatOp(() => this._handleSwitchSession(sessionId, { interrupt }));
+                this._enqueueChatOp(() => this._lifecycle.switchTo(sessionId, { interrupt }));
             },
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
             postProfileList: () => this._profiles.postList(),
             retry: () => this._connection.retry(),
-            handlePermissionResponse: (id, optionId) => this._handlePermissionResponse(id, optionId),
+            handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             handleInsertEditor: (text) => this._files.insertEditor(text),
-            handleDeleteMessages: (indices) => this._handleDeleteMessages(indices),
+            handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
             detection: () => this._detection,
         };
     }
 
     private _activeTabTitle(): string {
-        const rec = this._sessions.find(item => item.id === this._sessionId);
+        const rec = this._session.tabs.find(item => item.id === this._session.activeId);
         return rec?.title || t('newChat');
     }
 
@@ -843,30 +705,30 @@ export class App implements vscode.WebviewViewProvider {
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');
         this._turn.sendEpoch++;
-        this._flushThoughtToHistory();
+        this._turn.flushThought();
         this._turn.saveAssistantText();
-        this._cancelPendingPermissions();
-        this._saveCurrentSession();
-        this._persistMessages();
+        this._turn.cancelPendingPermissions();
+        this._session.saveCurrent();
+        this._session.persistMessages();
 
         this._connection.drop();
         this._models.reset();
         this._connection.tokenUsage = null;
-        this._postTokenUsage();
+        this._connection.postTokenUsage();
 
         this._postMessage({ type: 'newChat' });
-        await this._connect(this._profiles.selectionId || undefined);
-        this._restoreMessages();
+        await this._connection.connect(this._profiles.selectionId || undefined);
+        this._lifecycle.restoreMessages();
     }
 
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
         this._turn.sendEpoch++;
-        this._flushThoughtToHistory();
+        this._turn.flushThought();
         this._turn.saveAssistantText();
-        this._cancelPendingPermissions();
-        this._saveCurrentSession();
-        this._persistMessages();
+        this._turn.cancelPendingPermissions();
+        this._session.saveCurrent();
+        this._session.persistMessages();
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
 
@@ -900,9 +762,9 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     public dispose(): void {
-        this._clearPromptStallTimer();
-        this._saveCurrentSession();
-        this._cancelPendingPermissions();
+        this._turn.clearStallHint();
+        this._session.saveCurrent();
+        this._turn.cancelPendingPermissions();
         this._detection.clear();
         this._connection.dispose();
         this._surfaces.detachView();
