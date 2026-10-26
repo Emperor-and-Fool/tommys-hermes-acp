@@ -6,13 +6,12 @@ import * as path from 'path';
 import { AcpClient, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { ModelState } from '../models/modelState';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
-import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../environment/hermesProfile';
-import { discoverHermesProfiles, tryResolveHermesQuick } from '../environment/profileDiscovery';
+import { normalizeHermesCliProfile } from '../environment/hermesProfile';
+import { tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { EnvironmentDetection } from '../environment/detection';
 import {
     activeSessionPathFor,
     migrateLegacySessionStorage,
-    sanitizeProfileScopeKey,
     sessionsPathFor,
 } from '../cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
@@ -28,6 +27,7 @@ import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { Sessions } from '../cache/sessions';
+import { Profiles } from '../environment/profiles';
 import { TabLifecycle } from '../tabs/lifecycle';
 import { PromptRunner } from './promptRunner';
 import { classifyLogLevel, LogLevel } from '../logLevel';
@@ -46,26 +46,6 @@ export { CHAT_PANEL_VIEW_TYPE } from '../webview/surfaces';
 
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
 
-interface HermesAgentConfig {
-    name: string;
-    path?: string;
-    profile?: string;
-    cwd?: string;
-}
-
-interface ProfileListEntry {
-    id: string;
-    label: string;
-}
-
-interface ConnectionTarget {
-    scopeKey: string;
-    selectionId: string;
-    displayName: string;
-    cliProfile: string;
-    configPath?: string;
-    configCwd?: string;
-}
 
 export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
@@ -112,16 +92,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private set _sessionId(value: string) { this._session.activeId = value; }
     private get _sessions(): SessionInfo[] { return this._session.tabs; }
     private set _sessions(value: SessionInfo[]) { this._session.tabs = value; }
-    private _activeAgentName: string = '';
-    /** Agent name or CLI profile id used for reconnect / switch. */
-    private _activeSelectionId: string = '';
     /** One-shot guard for the automatic reconnect after a lost connection. */
     private _reconnectAttempts = 0;
     private _disposed = false;
-    /** Selection id of the profile/agent used last, restored on activation. */
-    private _persistedSelectionId: string = '';
-    private _discoveredProfiles: string[] | null = null;
-    private _profileDiscoveryPromise: Promise<void> | undefined;
+    /** Which profile/agent we connect to, and which the picker offers. */
+    private readonly _profiles: Profiles;
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
     private readonly _extensionId: string;
@@ -172,7 +147,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private readonly _detection = new EnvironmentDetection({
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
-        reconnect: () => this._connect(this._activeSelectionId || undefined),
+        reconnect: () => this._connect(this._profiles.selectionId || undefined),
         resetViewTitle: () => this._resetViewTitleToDefault(),
     });
     /** Which model, from where: the chip, the switch, and the persisted choice. */
@@ -194,9 +169,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     ) {
         const context = this._context;
         this._extensionId = context.extension.id;
-        // The profile/agent last picked in the UI outlives the window: without this the
-        // extension always reopened on the `tommys.profile` setting, not on the user's pick.
-        this._persistedSelectionId = context.globalState.get<string>('activeSelectionId') || '';
+        this._profiles = new Profiles({
+            log: (line) => this._log(line),
+            post: (msg) => this._postMessage(msg),
+            globalState: context.globalState,
+        });
         this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
@@ -204,12 +181,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._attachments = new AttachmentStore(this._historyDir);
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
-        // Seed the in-memory selection first: _resolveConnectionTarget() prefers it over
-        // the configured profile, and still falls back when the id no longer resolves.
-        this._activeSelectionId = this._persistedSelectionId;
-        const initialTarget = this._resolveConnectionTarget(this._persistedSelectionId || undefined);
-        this._activeSelectionId = initialTarget.selectionId;
-        this._activeAgentName = initialTarget.displayName;
+        const initialTarget = this._profiles.seed();
         this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
@@ -304,14 +276,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._syncWebviewLocale();
         this._postPluginInfo();
         this._postSessionList();
-        this._postProfileList();
+        this._profiles.postList();
         this._postHiddenSessions();
         this._postConfig();
         this._postTokenUsage();
         // A pane can be brand new (container move, view re-show): replay the state
         // a freshly connected pane would have or it renders placeholders — an empty
         // "Profile" pill, a model chip with nothing in it.
-        this._postMessage({ type: 'activeAgent', name: this._activeAgentName });
+        this._postMessage({ type: 'activeAgent', name: this._profiles.displayName });
         this._models.postList();
         if (surface.role === 'chat') {
             this._restoreMessages(surface);
@@ -371,7 +343,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             },
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
-            postProfileList: () => this._postProfileList(),
+            postProfileList: () => this._profiles.postList(),
             retry: () => this._handleRetry(),
             handlePermissionResponse: (id, optionId) => this._handlePermissionResponse(id, optionId),
             handleInsertEditor: (text) => this._files.insertEditor(text),
@@ -555,87 +527,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private _markSessionAgentEngaged(): void { this._session.markEngaged(); }
 
-    private _resolveConnectionTarget(selectionId?: string): ConnectionTarget {
-        const config = vscode.workspace.getConfiguration('tommys');
-        const configPath = config.get<string>('path') || undefined;
-        const configCwd = config.get<string>('cwd') || undefined;
-        const configProfile = config.get<string>('profile') || undefined;
-        const agents = this._readAgentConfigs();
-
-        if (agents.length > 0) {
-            const resolvedId = selectionId || this._activeSelectionId || agents[0].name;
-            const agent = agents.find(a => a.name === resolvedId) || agents[0];
-            return {
-                scopeKey: sanitizeProfileScopeKey(agent.name),
-                selectionId: agent.name,
-                displayName: agent.name,
-                cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
-                configPath: agent.path || configPath,
-                configCwd: agent.cwd || configCwd,
-            };
-        }
-
-        const resolvedId = selectionId || this._activeSelectionId || normalizeHermesCliProfile(configProfile);
-        const cliProfile = normalizeHermesCliProfile(resolvedId);
-        return {
-            scopeKey: scopeKeyForCliProfile(cliProfile),
-            selectionId: cliProfile,
-            displayName: this._profileLabelFor(cliProfile),
-            cliProfile,
-            configPath,
-            configCwd,
-        };
-    }
-
-    private _profileLabelFor(cliProfile: string): string {
-        return normalizeHermesCliProfile(cliProfile) === 'default'
-            ? t('defaultAgent')
-            : cliProfile;
-    }
-
     private _bindProfileScope(scopeKey: string): void { this._session.bindProfileScope(scopeKey); }
-
-    private async _ensureDiscoveredProfiles(): Promise<void> {
-        if (this._readAgentConfigs().length > 0) {
-            this._discoveredProfiles = null;
-            return;
-        }
-        if (this._discoveredProfiles) {
-            return;
-        }
-        if (this._profileDiscoveryPromise) {
-            await this._profileDiscoveryPromise;
-            return;
-        }
-        this._profileDiscoveryPromise = (async () => {
-            const config = vscode.workspace.getConfiguration('tommys');
-            const hermesPath = config.get<string>('path') || undefined;
-            try {
-                this._discoveredProfiles = await discoverHermesProfiles(hermesPath);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._log(`Profile discovery failed: ${msg}`);
-                this._discoveredProfiles = ['default'];
-            }
-        })();
-        try {
-            await this._profileDiscoveryPromise;
-        } finally {
-            this._profileDiscoveryPromise = undefined;
-        }
-    }
-
-    private _getProfileEntries(): ProfileListEntry[] {
-        const agents = this._readAgentConfigs();
-        if (agents.length > 0) {
-            return agents.map(a => ({ id: a.name, label: a.name }));
-        }
-        const profiles = this._discoveredProfiles ?? ['default'];
-        return profiles.map(p => ({
-            id: p,
-            label: this._profileLabelFor(p),
-        }));
-    }
 
     private async _connect(selectionId?: string): Promise<void> {
         if (this._acp) {
@@ -661,12 +553,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _connectInner(selectionId?: string): Promise<void> {
-        const target = this._resolveConnectionTarget(selectionId);
+        const target = this._profiles.resolveTarget(selectionId);
         if (target.scopeKey !== this._scopeKey) {
             this._bindProfileScope(target.scopeKey);
         }
-        this._activeSelectionId = target.selectionId;
-        this._activeAgentName = target.displayName;
+        this._profiles.selectionId = target.selectionId;
+        this._profiles.displayName = target.displayName;
 
         this._log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._postMessage({ type: 'activeAgent', name: target.displayName });
@@ -892,7 +784,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._log('Reconnecting after connection loss');
-        await this._connect(this._activeSelectionId || undefined);
+        await this._connect(this._profiles.selectionId || undefined);
         this._restoreMessages();
     }
 
@@ -903,7 +795,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._models.reset();
         this._tokenUsage = null;
         this._postTokenUsage();
-        await this._connect(this._activeSelectionId || undefined);
+        await this._connect(this._profiles.selectionId || undefined);
     }
 
     private _resetViewTitleToDefault(): void {
@@ -922,12 +814,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     public configureEnvironment(): void {
         this._detection.configureEnvironment();
-    }
-
-    private _postProfileList(): void {
-        void this._ensureDiscoveredProfiles().then(() => {
-            this._postMessage({ type: 'profileList', profiles: this._getProfileEntries() });
-        });
     }
 
     /** Point the *live* session at another model. No session/new: Hermes' set_session_model
@@ -1033,8 +919,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleSwitchAgent(selectionId: string): Promise<void> {
-        const target = this._resolveConnectionTarget(selectionId);
-        if (target.selectionId === this._activeSelectionId && this._acp) {
+        const target = this._profiles.resolveTarget(selectionId);
+        if (target.selectionId === this._profiles.selectionId && this._acp) {
             return;
         }
         this._log(`Switch profile/agent: ${target.displayName}`);
@@ -1050,36 +936,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._acpBoundSessionId = '';
         this._postTokenUsage();
         this._bindProfileScope(target.scopeKey);
-        this._activeSelectionId = target.selectionId;
-        this._activeAgentName = target.displayName;
-        void this._context.globalState.update('activeSelectionId', target.selectionId);
+        this._profiles.selectionId = target.selectionId;
+        this._profiles.displayName = target.displayName;
+        this._profiles.persistSelection(target.selectionId);
         // View reset only: the other profile's tab is restored by _bindProfileScope above and
         // replayed by _restoreMessages below, so nothing of the old profile stays on screen.
         this._postMessage({ type: 'newChat' });
         this._postSessionList();
-        this._postProfileList();
+        this._profiles.postList();
         this._postMessage({ type: 'activeAgent', name: target.displayName });
         await this._connect(target.selectionId);
         this._restoreMessages();
-    }
-
-    private _readAgentConfigs(): HermesAgentConfig[] {
-        const config = vscode.workspace.getConfiguration('tommys');
-        const raw = config.get<unknown>('agents');
-        if (!Array.isArray(raw)) {
-            return [];
-        }
-        return raw.flatMap(entry => {
-            if (!entry || typeof entry !== 'object') {
-                return [];
-            }
-            const name = (entry as { name?: unknown }).name;
-            if (typeof name !== 'string' || !name.trim()) {
-                return [];
-            }
-            const agent = entry as HermesAgentConfig;
-            return [{ ...agent, name: name.trim() }];
-        });
     }
 
     public insertIntoInput(text: string): void {
@@ -1229,7 +1096,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._postTokenUsage();
 
         this._postMessage({ type: 'newChat' });
-        await this._connect(this._activeSelectionId || undefined);
+        await this._connect(this._profiles.selectionId || undefined);
         this._restoreMessages();
     }
 
@@ -1287,14 +1154,14 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             void this._models.sync();
         }
         if (e.affectsConfiguration('tommys.agents')) {
-            this._discoveredProfiles = null;
-            this._postProfileList();
+            this._profiles.forgetDiscovered();
+            this._profiles.postList();
         }
         const reconnectKeys = ['tommys.path', 'tommys.cwd', 'tommys.profile'];
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration('tommys.profile') && this._readAgentConfigs().length === 0) {
+            if (e.affectsConfiguration('tommys.profile') && this._profiles.readAgentConfigs().length === 0) {
                 const config = vscode.workspace.getConfiguration('tommys');
-                this._activeSelectionId = normalizeHermesCliProfile(config.get<string>('profile'));
+                this._profiles.selectionId = normalizeHermesCliProfile(config.get<string>('profile'));
             }
             await this._reconnectForConfig();
         }
@@ -1308,7 +1175,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._acp?.dispose();
         this._acp = undefined;
         this._models.reset();
-        await this._connect(this._activeSelectionId || undefined);
+        await this._connect(this._profiles.selectionId || undefined);
     }
 
     private _getHtml(target?: vscode.Webview): string {
