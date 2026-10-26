@@ -709,7 +709,8 @@ export class AcpClient {
                 cwd: typeof row?.cwd === 'string' ? row.cwd : undefined,
                 hidden: row?.hidden === true,
                 messageCount: Number(row?.message_count ?? row?.messageCount ?? 0) || 0,
-                updatedAt: Number(row?.updated_at ?? row?.updatedAt ?? 0) || 0,
+                // Hermes stamps in seconds; the tab order compares against Date.now() milliseconds.
+                updatedAt: Number(row?.updated_at ?? row?.updatedAt ?? 0) * 1000 || 0,
             }))
             .filter((row: CatalogSession) => row.sessionId.length > 0);
     }
