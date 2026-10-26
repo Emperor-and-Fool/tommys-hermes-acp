@@ -13,6 +13,8 @@ import { clearReplyQuote, withReplyQuote } from './replyQuote';
 const inputAreaEl = byId('input-area');
 
 const inputCompositeEl = byId('inputComposite');
+/* chat.js:16 — the wrapper above #inputComposite. A lookup, so top level is fine. */
+const inputCompositeShellEl = inputCompositeEl ? inputCompositeEl.closest('.input-composite-shell') : null;
 
 const inputQuickPanel = byId('inputQuickPanel');
 
@@ -407,7 +409,7 @@ export function initFontSize(): void {
             size = Math.max(MIN, Math.min(MAX, px));
             document.documentElement.style.setProperty('--chat-fs', size + 'px');
             localStorage.setItem(KEY, String(size));
-            label.textContent = size;
+            label.textContent = String(size);
             pickerRowReserve();
         }
         apply(size);
