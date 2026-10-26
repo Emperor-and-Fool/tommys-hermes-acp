@@ -11,7 +11,7 @@ import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
 import { cancelSessionMarkdownRender, chatSearchState, getGroupMarkdownText, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
-import { restorePermissionMessage } from './permissionCard';
+import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 

@@ -1,7 +1,7 @@
 import type { HostToPane } from '../shared/webview';
 import { maybeFocusInputAfterResponse, setInputMode } from './components/composer/composer';
 import { hideContextAttachPicker, showContextAttachPicker } from './components/composer/contextAttach';
-import { positionFilePreview, renderFilePickerItems, showFilePreview } from './components/composer/fileMention';
+import { positionFilePreview, previewRequests, renderFilePickerItems, showFilePreview } from './components/composer/fileMention';
 import { offerUndeliveredMessage } from './components/composer/replyQuote';
 import { closeConfigureEnvModal, finishConfigureEnvDetect, hideConfigureEnvDetectProgress, openConfigureEnvModal, setConfigureEnvDetecting, showConfigureEnvDetectPanel, updateConfigureEnvDetectProgress, updateConfigureEnvPathClearVisibility } from './components/environment/configureModal';
 import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvIcon, updateDetectEnvironmentStep } from './components/environment/detectPanel';
@@ -301,9 +301,9 @@ export function init(): void {
                 break;
 
             case 'filePreview':
-                if (state.previewRequests.has(msg.requestId)) {
-                    const anchor = state.previewRequests.get(msg.requestId);
-                    state.previewRequests.delete(msg.requestId);
+                if (previewRequests.has(msg.requestId)) {
+                    const anchor = previewRequests.get(msg.requestId);
+                    previewRequests.delete(msg.requestId);
                     showFilePreview(msg.path || '', msg.content, msg.error);
                     positionFilePreview(anchor);
                 }

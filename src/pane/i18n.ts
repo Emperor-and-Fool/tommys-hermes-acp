@@ -2,7 +2,7 @@ import { renderContextAttachOptions, updateContextAttachButtonLabel } from './co
 import { setConfigureEnvDetectDetailsTitle, updateConfigureEnvPathClearVisibility, updateConfigureEnvSystemHint } from './components/environment/configureModal';
 import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnvDetailsTitle } from './components/environment/detectPanel';
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
-import { refreshPermissionOptionLabels, syncPermissionDetailView } from './components/messages/permissionCard';
+import { pendingPermissions, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/messages/permissionCard';
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
 import { buildFaqAccordion } from './components/modals/info';
 import { updateMultiSelectToolbar } from './components/multiSelect';

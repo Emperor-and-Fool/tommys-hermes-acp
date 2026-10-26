@@ -4,6 +4,9 @@ import { state } from '../../state';
 import { createGroup, maybeScrollToBottom } from './messageList';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming';
 
+/* Permission cards awaiting a decision. Mutated, never reassigned: not state. */
+export const pendingPermissions = new Map<string, any>();
+
 
 const PERM_COLLAPSED_LINES = 3;
 
