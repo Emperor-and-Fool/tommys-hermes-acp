@@ -27,17 +27,13 @@ import type { HostToPane, PaneToHost } from '../types/webview';
 import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
-import { buildSessionExportPayload } from './sessionExport';
 import { SessionStore } from '../cache/sessionStore';
-import { applyCatalogRows, renameSession } from '../cache/catalog';
-import { backfillAgentEngaged, hermesSessionIdFor, markAgentEngaged, normalizePinnedOrder, pinSession, registerSession, reorderSessions } from '../tabs/tabs';
+import { Sessions } from '../cache/sessions';
+import { renameSession } from '../cache/catalog';
+import { hermesSessionIdFor } from '../tabs/tabs';
 import { buildReplayMessages } from '../cache/replay';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
 import { PromptRunner } from './promptRunner';
-import {
-    canAggregateToolTexts,
-    rebuildAggregatedToolText,
-} from './toolAggregate';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import {
     ContextAttachOption,
@@ -114,13 +110,16 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _historyDir: string;
     /** Bytes Hermes never stores: content-addressed images and the index that finds them. */
     private _attachments: AttachmentStore;
-    private _scopeKey: string;
-    private _store: SessionStore;
-    private _sessionMessages: ChatMessage[] = [];
-    private _sessionId: string = '';
-    private _sessions: SessionInfo[] = [];
-    /** Sessions Hermes has flagged hidden: closed tabs waiting to be opened again. */
-    private _hiddenSessions: CatalogSession[] = [];
+    /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
+    private _session!: Sessions;
+    private get _scopeKey(): string { return this._session.scopeKey; }
+    private get _store(): SessionStore { return this._session.store; }
+    private get _sessionMessages(): ChatMessage[] { return this._session.messages; }
+    private set _sessionMessages(value: ChatMessage[]) { this._session.messages = value; }
+    private get _sessionId(): string { return this._session.activeId; }
+    private set _sessionId(value: string) { this._session.activeId = value; }
+    private get _sessions(): SessionInfo[] { return this._session.tabs; }
+    private set _sessions(value: SessionInfo[]) { this._session.tabs = value; }
     private _activeAgentName: string = '';
     /** Agent name or CLI profile id used for reconnect / switch. */
     private _activeSelectionId: string = '';
@@ -223,14 +222,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         // the configured profile, and still falls back when the id no longer resolves.
         this._activeSelectionId = this._persistedSelectionId;
         const initialTarget = this._resolveConnectionTarget(this._persistedSelectionId || undefined);
-        this._scopeKey = initialTarget.scopeKey;
         this._activeSelectionId = initialTarget.selectionId;
         this._activeAgentName = initialTarget.displayName;
-        this._store = new SessionStore(this._historyDir, this._scopeKey);
-        this._loadSessions();
-        this._sessionId = this._restoreActiveSession();
-        this._ensureSessionRegistered();
-        this._loadHistory();
+        this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
+            post: (msg) => this._postMessage(msg),
+            log: (line) => this._log(line),
+            updatePanelTitle: () => this._surfaces.updatePanelTitle(),
+            modelLabel: () => this._models.currentLabel,
+        });
+        this._session.init();
 
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
@@ -241,21 +241,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         );
     }
 
-    private _restoreActiveSession(): string {
-        const id = this._store.readActiveId();
-        if (id && this._sessions.some(s => s.id === id)) {
-            return id;
-        }
-        return Date.now().toString(36);
-    }
-
-    private _saveActiveSession(): void {
-        this._store.writeActiveId(this._sessionId);
-    }
-
-    private _msgPath(sid: string): string {
-        return this._store.msgPath(sid);
-    }
+    private _msgPath(sid: string): string { return this._session.msgPath(sid); }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -456,26 +442,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * operation as an open with a different value, and a session created by the TUI or the
      * dashboard appears without any adoption step.
      */
-    private _applyCatalog(rows: CatalogSession[]): void {
-        const result = applyCatalogRows({
-            previous: this._sessions,
-            rows,
-            activeId: this._sessionId,
-            activeHasMessages: this._sessionMessages.length > 0,
-        });
-        if (result.activeChanged) {
-            // The tab the pane showed is gone from the catalog, so it points at the newest.
-            this._sessionId = result.activeId;
-            this._sessionMessages = [];
-        }
-        this._sessions = result.sessions;
-        this._hiddenSessions = result.hiddenRows;
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-        this._postSessionList();
-        this._postHiddenSessions();
-    }
+    private _applyCatalog(rows: CatalogSession[]): void { this._session.applyCatalog(rows); }
     /** Read the catalog; null when there is no connection to ask. */
     private async _readCatalog(): Promise<CatalogSession[] | null> {
         const acp = this._acp;
@@ -701,12 +668,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
 
     private _saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[]): void {
-        const record: ChatMessage = { role, text, timestamp: Date.now(), toolCallId };
-        if (imageRefs && imageRefs.length) {
-            record.imageRefs = imageRefs;
-        }
-        this._sessionMessages.push(record);
-        this._persistMessages();
+        this._session.saveMessage(role, text, toolCallId, imageRefs);
     }
 
     /**
@@ -727,90 +689,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** Attachments for a message that carries no refs: exact key first, then by order. */
 
     private _upsertToolMessage(toolCallId: string, text: string): void {
-        const stored = this._findToolMessage(toolCallId);
-        if (stored) {
-            if (stored.aggregatedTools?.length) {
-                const entry = stored.aggregatedTools.find(t => t.toolCallId === toolCallId);
-                if (entry) {
-                    entry.text = text;
-                }
-                stored.text = rebuildAggregatedToolText(stored.aggregatedTools);
-            } else {
-                stored.text = text;
-            }
-            stored.timestamp = Date.now();
-            this._persistMessages();
-            return;
-        }
-
-        const last = this._sessionMessages[this._sessionMessages.length - 1];
-        if (last?.role === 'tool' && canAggregateToolTexts(last.text, text)) {
-            if (!last.aggregatedTools?.length) {
-                last.aggregatedTools = [{
-                    toolCallId: last.toolCallId || `tool_${last.timestamp}`,
-                    text: last.text,
-                }];
-                delete last.toolCallId;
-            }
-            last.aggregatedTools.push({ toolCallId, text });
-            last.text = rebuildAggregatedToolText(last.aggregatedTools);
-            last.timestamp = Date.now();
-            this._persistMessages();
-            return;
-        }
-
-        this._saveMessage('tool', text, toolCallId);
-    }
-
-    private _findToolMessage(toolCallId: string): ChatMessage | undefined {
-        return this._sessionMessages.find(m => {
-            if (m.role !== 'tool') {
-                return false;
-            }
-            if (m.toolCallId === toolCallId) {
-                return true;
-            }
-            return m.aggregatedTools?.some(t => t.toolCallId === toolCallId) ?? false;
-        });
+        this._session.upsertToolMessage(toolCallId, text);
     }
 
     private _flushThoughtToHistory(): void {
         this._turn.flushThought();
     }
 
-    private _persistMessages(): void {
-        if (this._store.writeMessages(this._sessionId, this._sessionMessages)) {
-            this._saveCurrentSession();
-        }
-    }
-
-    private _permissionBodyText(title?: string, detail?: string): string {
-        const parts: string[] = [];
-        if (title?.trim()) {
-            parts.push(title.trim());
-        }
-        if (detail?.trim()) {
-            parts.push(detail.trim());
-        }
-        return parts.join('\n\n');
-    }
+    private _persistMessages(): void { this._session.persistMessages(); }
 
     private _savePermissionRequest(id: string, request: PermissionRequest): void {
-        this._sessionMessages.push({
-            role: 'permission',
-            text: this._permissionBodyText(request.title, request.detail),
-            timestamp: Date.now(),
-            permissionId: id,
-            title: request.title,
-            detail: request.detail,
-            options: request.options.map(o => ({
-                optionId: o.optionId,
-                name: o.name,
-                kind: o.kind,
-            })),
-            resolved: false,
-        });
-        this._persistMessages();
+        this._session.savePermissionRequest(id, request);
     }
 
     private _resolvePermissionHistory(
@@ -819,136 +708,22 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         selectedOptionId?: string,
         selectedLabel?: string
     ): void {
-        const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
-        if (!stored) {
-            return;
-        }
-        stored.resolved = true;
-        stored.outcome = outcome;
-        stored.selectedOptionId = selectedOptionId;
-        stored.selectedLabel = selectedLabel;
-        if (outcome === 'selected' && selectedLabel) {
-            stored.text = `${stored.text}\n\n${t('permissionSelected', selectedLabel)}`;
-        } else if (outcome === 'cancelled') {
-            stored.text = `${stored.text}\n\n${t('permissionCancelled')}`;
-        }
-        this._persistMessages();
+        this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
     }
 
-    private _loadHistory(): void {
-        const messages = this._store.readMessages(this._sessionId);
-        if (messages.length) {
-            this._sessionMessages = messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            this._log(`Loaded ${this._sessionMessages.length} messages from history`);
-            return;
-        }
-        this._sessionMessages = [];
-    }
+    private _loadHistory(): void { this._session.loadHistory(); }
 
-    private _saveCurrentSession(): void {
-        const firstUser = this._sessionMessages.find(m => m.role === 'user')?.text.slice(0, 40);
-        const existing = this._sessions.find(s => s.id === this._sessionId);
-        if (existing) {
-            existing.updatedAt = Date.now();
-            existing.messageCount = this._sessionMessages.length;
-            // Hermes owns the title of any session it knows about: the catalog supplies it,
-            // and this cache must not overwrite it with the first user message (which here is
-            // usually the injected memory preamble). Only a purely local chat, which Hermes
-            // has never seen, derives a title from its own text.
-            if (firstUser && !existing.hermesSessionId) {
-                existing.title = firstUser;
-            }
-        } else {
-            this._sessions.unshift({
-                id: this._sessionId,
-                title: firstUser || t('newChat'),
-                createdAt: parseInt(this._sessionId, 36) || Date.now(),
-                updatedAt: Date.now(),
-                messageCount: this._sessionMessages.length,
-            });
-        }
-        try {
-            if (this._saveCatalog()) {
-                this._saveActiveSession();
-            }
-        } catch { /* non-critical */ }
-        this._postSessionList();
-    }
+    private _saveCurrentSession(): void { this._session.saveCurrent(); }
 
-    private _ensureSessionRegistered(): void {
-        const firstUser = this._sessionMessages.find(m => m.role === 'user')?.text.slice(0, 40);
-        const next = registerSession(this._sessions, {
-            id: this._sessionId,
-            title: firstUser || t('newChat'),
-            messageCount: this._sessionMessages.length,
-        });
-        if (next === this._sessions) {
-            return;
-        }
-        this._sessions = next;
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-    }
+    private _ensureSessionRegistered(): void { this._session.ensureRegistered(); }
 
-    private _postSessionList(): void {
-        this._surfaces.updatePanelTitle();
-        this._postMessage({
-            type: 'sessionList',
-            sessions: this._sessions,
-            activeSessionId: this._sessionId,
-        });
-    }
+    private _postSessionList(): void { this._session.postList(); }
 
-    private _postHiddenSessions(): void {
-        this._postMessage({
-            type: 'hiddenSessions',
-            sessions: this._hiddenSessions,
-        });
-    }
+    private _postHiddenSessions(): void { this._session.postHidden(); }
 
-    /**
-     * One write point for the session catalog: the same 50-record snapshot was assembled in
-     * eleven places, and the store that owns this file needs a single seam to cut along.
-     * Returns whether the write happened, for the one caller that does more on success.
-     */
-    private _saveCatalog(): boolean {
-        return this._store.writeCatalog(this._sessions);
-    }
+    private _saveCatalog(): boolean { return this._session.saveCatalog(); }
 
-    private _loadSessions(): void {
-        this._sessions = this._store.readCatalog();
-        for (const session of this._sessions) {
-            this._backfillAgentEngaged(session);
-        }
-        this._normalizePinnedOrder();
-    }
-
-    private _normalizePinnedOrder(): void {
-        this._sessions = normalizePinnedOrder(this._sessions);
-    }
-
-    private _backfillAgentEngaged(session: SessionInfo): void {
-        if (session.agentEngaged !== undefined) {
-            return;
-        }
-        try {
-            // The transcript is the only evidence of whether the agent ever answered here.
-            backfillAgentEngaged(session, this._store.readMessages(session.id));
-        } catch {
-            session.agentEngaged = false;
-        }
-    }
-
-    private _markSessionAgentEngaged(): void {
-        if (!markAgentEngaged(this._sessions, this._sessionId)) {
-            return;
-        }
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-        this._postSessionList();
-    }
+    private _markSessionAgentEngaged(): void { this._session.markEngaged(); }
 
     private _resolveConnectionTarget(selectionId?: string): ConnectionTarget {
         const config = vscode.workspace.getConfiguration('tommys');
@@ -988,21 +763,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             : cliProfile;
     }
 
-    private _bindProfileScope(scopeKey: string): void {
-        if (scopeKey === this._scopeKey) {
-            return;
-        }
-        this._saveCurrentSession();
-        this._scopeKey = scopeKey;
-        this._store.setScope(scopeKey);
-        this._sessions = [];
-        this._loadSessions();
-        this._sessionId = this._restoreActiveSession();
-        this._sessionMessages = [];
-        this._loadHistory();
-        this._ensureSessionRegistered();
-        this._postSessionList();
-    }
+    private _bindProfileScope(scopeKey: string): void { this._session.bindProfileScope(scopeKey); }
 
     private async _ensureDiscoveredProfiles(): Promise<void> {
         if (this._readAgentConfigs().length > 0) {
@@ -1416,20 +1177,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
 
 
-    private _handleDeleteMessages(indices: unknown): void {
-        if (!Array.isArray(indices) || indices.length === 0) {
-            return;
-        }
-        const sorted = [...new Set(indices.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= 0))]
-            .sort((a, b) => b - a);
-        for (const index of sorted) {
-            if (index < this._sessionMessages.length) {
-                this._sessionMessages.splice(index, 1);
-            }
-        }
-        this._persistMessages();
-        this._saveCurrentSession();
-    }
+    private _handleDeleteMessages(indices: unknown): void { this._session.handleDeleteMessages(indices); }
 
     private async _createBlankTab(): Promise<void> {
         this._saveCurrentSession();
@@ -1458,17 +1206,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return true;
     }
 
-    /** Point the pane at another tab: save the old one, load the new one's transcript. */
     private _activateSession(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
-        this._log(`Switch to session: ${sessionId}`);
-        if (!options?.skipSaveCurrent) {
-            this._saveCurrentSession();
-        }
-        this._sessionId = sessionId;
-        this._sessionMessages = [];
-        this._loadHistory();
-        this._postMessage({ type: 'newChat' });
-        this._postSessionList();
+        this._session.activate(sessionId, options);
     }
 
     private async _handleSwitchSession(
@@ -1498,21 +1237,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             && this._turn.promptSessionId === this._sessionId;
     }
 
-    private _handleReorderSessions(sessionIds: unknown): void {
-        if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
-            return;
-        }
-        const next = reorderSessions(this._sessions, sessionIds);
-        if (!next) {
-            return;
-        }
-        this._sessions = next;
-        this._log(`Reorder sessions: ${this._sessions.map(s => s.id).join(', ')}`);
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-        this._postSessionList();
-    }
+    private _handleReorderSessions(sessionIds: unknown): void { this._session.handleReorderSessions(sessionIds); }
 
     /**
      * Close tabs by hiding their sessions.
@@ -1637,56 +1362,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._log(`Rename refused for ${hermesSessionId}: ${outcome.reason}${detail}`);
     }
 
-    private _handleTogglePinSession(sessionId: string): void {
-        const next = pinSession(this._sessions, sessionId);
-        if (next === this._sessions) {
-            return;
-        }
-        this._sessions = next;
-        const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
-        this._log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
-        try {
-            this._saveCatalog();
-        } catch { /* non-critical */ }
-        this._postSessionList();
-    }
+    private _handleTogglePinSession(sessionId: string): void { this._session.handleTogglePinSession(sessionId); }
 
     private _handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void {
-        if (action !== 'copy' && action !== 'export') {
-            return;
-        }
-        const session = this._sessions.find(s => s.id === sessionId);
-        if (!session) {
-            return;
-        }
-        let messages = sessionId === this._sessionId
-            ? this._sessionMessages
-            : this._loadSessionMessagesFromDisk(sessionId);
-        if (Array.isArray(indices) && indices.length > 0) {
-            const pick = new Set(
-                indices.filter((index): index is number => typeof index === 'number' && index >= 0)
-            );
-            messages = messages.filter((_, index) => pick.has(index));
-        }
-        const payload = buildSessionExportPayload(session, messages, this._models.currentLabel);
-        this._postMessage({
-            type: 'sessionExport',
-            action,
-            ...payload,
-        });
-    }
-
-    private _loadSessionMessagesFromDisk(sessionId: string): ChatMessage[] {
-        try {
-            const p = this._msgPath(sessionId);
-            if (!fs.existsSync(p)) {
-                return [];
-            }
-            const messages: ChatMessage[] = JSON.parse(fs.readFileSync(p, 'utf-8'));
-            return messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        } catch {
-            return [];
-        }
+        this._session.handleSessionExport(sessionId, action, indices);
     }
 
     private async _handleSwitchAgent(selectionId: string): Promise<void> {
