@@ -322,6 +322,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "check": "tsc -p ./ --noEmit --noUnusedLocals --noUnusedParameters",
+        "check:pane": "tsc -p src/pane --noEmit",
+        "build:pane": "esbuild src/pane/main.ts --bundle --format=iife --target=es2020 --outfile=media/pane.js",
     "deploy": "node scripts/deploy.mjs",
     "package": "npx --no-install @vscode/vsce package --allow-missing-repository",
     "test": "node ./out/tests/runTest.js"

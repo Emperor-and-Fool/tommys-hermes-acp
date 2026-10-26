@@ -15,5 +15,5 @@
     "declaration": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "out", "src/out", ".vscode-test"]
+  "exclude": ["src/pane", "node_modules", "out", "src/out", ".vscode-test"]
 }
