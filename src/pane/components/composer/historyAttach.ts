@@ -4,7 +4,7 @@
  * hidden ones (hiddenSessions). Picking one opens the read-only viewer; what comes back is a
  * staged ref, which turns into the block the next send carries.
  */
-import { contextAttachBtn, contextAttachLabel, contextAttachPicker, historyChip, historyChipClear, historyChipPending, historyChipText, historySessionList } from '../../dom';
+import { historyPickerBtn, historyPickerLabel, historyPicker, historyChip, historyChipClear, historyChipPending, historyChipText, historySessionList } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import type { HistoryRef } from '../../../shared/chat';
@@ -60,15 +60,15 @@ function sessionRows(): PickerRow[] {
 }
 
 function setPickerOpen(open: boolean): void {
-    if (!contextAttachPicker) {
+    if (!historyPicker) {
         return;
     }
-    contextAttachPicker.dataset.open = open ? 'true' : 'false';
-    contextAttachPicker.classList.toggle('is-open', open);
+    historyPicker.dataset.open = open ? 'true' : 'false';
+    historyPicker.classList.toggle('is-open', open);
     if (open) {
         // The other pickers are the modal module's business, but only one may be open.
         document.querySelectorAll('.picker.is-open').forEach(function(other) {
-            if (other !== contextAttachPicker) {
+            if (other !== historyPicker) {
                 other.classList.remove('is-open');
                 (other as HTMLElement).dataset.open = 'false';
             }
@@ -181,22 +181,22 @@ function replayMotion(picker: HTMLElement, cls: string, animationName: string): 
 
 /** An empty session: the full label moves in and glows three times, when there is a session to pick. */
 export function playHistoryPickerIntro(): void {
-    if (!contextAttachPicker || document.body.classList.contains('is-viewer') || sessionRows().length === 0) {
+    if (!historyPicker || document.body.classList.contains('is-viewer') || sessionRows().length === 0) {
         return;
     }
-    replayMotion(contextAttachPicker, 'is-entering', 'context-attach-enter');
-    replayMotion(contextAttachPicker, 'is-attention', 'context-attach-attention-pulse');
+    replayMotion(historyPicker, 'is-entering', 'history-picker-enter');
+    replayMotion(historyPicker, 'is-attention', 'history-picker-attention-pulse');
 }
 
 /** Labels, tooltip and list on every locale change (and at boot). */
 export function applyHistoryPickerLocale(): void {
     const placeholder = locale.historyPickerPlaceholder || 'Select session memory';
-    if (contextAttachLabel) {
-        contextAttachLabel.textContent = placeholder;
+    if (historyPickerLabel) {
+        historyPickerLabel.textContent = placeholder;
     }
-    if (contextAttachBtn) {
-        contextAttachBtn.title = placeholder;
-        contextAttachBtn.setAttribute('aria-label', placeholder);
+    if (historyPickerBtn) {
+        historyPickerBtn.title = placeholder;
+        historyPickerBtn.setAttribute('aria-label', placeholder);
     }
     const header = document.getElementById('historyPickerHeader');
     if (header) {
@@ -207,14 +207,14 @@ export function applyHistoryPickerLocale(): void {
 }
 
 export function initHistoryAttach(): void {
-    if (contextAttachBtn && contextAttachPicker) {
-        contextAttachBtn.addEventListener('click', function(e) {
+    if (historyPickerBtn && historyPicker) {
+        historyPickerBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const open = contextAttachPicker.dataset.open !== 'true';
+            const open = historyPicker.dataset.open !== 'true';
             renderHistorySessionList();
             setPickerOpen(open);
         });
-        const dropdown = document.getElementById('contextAttachDropdown');
+        const dropdown = document.getElementById('historyPickerDropdown');
         if (dropdown) {
             dropdown.addEventListener('click', function(e) { e.stopPropagation(); });
         }

@@ -1,4 +1,4 @@
-import { byId, closedPicker, configureEnvModal, contextAttachPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu } from '../../dom';
+import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu } from '../../dom';
 import { state } from '../../state';
 import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';
@@ -74,7 +74,7 @@ export function closeAllDropdowns() {
     setMenuOpen(closedPicker, false);
     setMenuOpen(profilePicker, false);
     setMenuOpen(modelPicker, false);
-    setMenuOpen(contextAttachPicker, false);
+    setMenuOpen(historyPicker, false);
 }
 
 export function initDocumentClickDocument(): void {

@@ -234,21 +234,6 @@
           "default": true,
           "description": "%configuration.tommys.showToolCalls.description%"
         },
-        "tommys.contextAttachVisibility": {
-          "type": "string",
-          "default": "onNewSession",
-          "enum": [
-            "onNewSession",
-            "always",
-            "never"
-          ],
-          "enumDescriptions": [
-            "%configuration.tommys.contextAttachVisibility.onNewSession.description%",
-            "%configuration.tommys.contextAttachVisibility.always.description%",
-            "%configuration.tommys.contextAttachVisibility.never.description%"
-          ],
-          "description": "%configuration.tommys.contextAttachVisibility.description%"
-        },
         "tommys.models": {
           "type": "array",
           "default": [],

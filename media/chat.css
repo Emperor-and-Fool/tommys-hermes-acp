@@ -2149,29 +2149,25 @@ body.surface-notabs #tab-bar {
     overflow: hidden;
 }
 .input-model-picker,
-.input-context-picker {
+.input-history-picker {
     min-width: 0;
     max-width: min(160px, 36vw);
     flex-shrink: 1;
 }
-.input-context-picker[hidden] {
+.input-history-picker[hidden] {
     display: none !important;
 }
-.input-context-picker.is-hiding {
-    animation: context-attach-exit 0.32s ease-in forwards;
-    pointer-events: none;
+.input-history-picker.is-entering {
+    animation: history-picker-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.input-context-picker.is-entering {
-    animation: context-attach-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.input-context-picker.is-attention .input-context-btn {
-    animation: context-attach-attention-pulse 0.75s ease-in-out 3 both;
+.input-history-picker.is-attention .input-history-btn {
+    animation: history-picker-attention-pulse 0.75s ease-in-out 3 both;
 }
 .input-model-picker .input-model-btn.is-placeholder,
-.input-context-picker .input-context-btn.is-placeholder {
+.input-history-picker .input-history-btn.is-placeholder {
     color: color-mix(in srgb, var(--dim) 88%, transparent);
 }
-@keyframes context-attach-enter {
+@keyframes history-picker-enter {
     from {
         opacity: 0;
         transform: translateY(6px) scale(0.94);
@@ -2181,17 +2177,7 @@ body.surface-notabs #tab-bar {
         transform: translateY(0) scale(1);
     }
 }
-@keyframes context-attach-exit {
-    from {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(4px) scale(0.92);
-    }
-}
-@keyframes context-attach-attention-pulse {
+@keyframes history-picker-attention-pulse {
     0%, 100% {
         color: var(--dim);
         background: transparent;
@@ -2206,7 +2192,7 @@ body.surface-notabs #tab-bar {
 }
 /* Specifics only: the look is .menu__trigger at the top of this file. */
 .input-model-picker .input-model-btn,
-.input-context-picker .input-context-btn {
+.input-history-picker .input-history-btn {
     max-width: min(160px, 36vw);
     min-width: 0;
     width: 100%;
@@ -2233,163 +2219,23 @@ body.surface-notabs #tab-bar {
     min-width: 0;
 }
 .input-model-picker .input-model-btn:hover,
-.input-context-picker .input-context-btn:hover {
+.input-history-picker .input-history-btn:hover {
     color: var(--fg);
     background: color-mix(in srgb, var(--fg) 7%, transparent);
 }
 .input-composite-shell:focus-within .input-model-btn,
-.input-composite-shell:focus-within .input-context-btn,
+.input-composite-shell:focus-within .input-history-btn,
 .input-model-picker.is-open .input-model-btn,
-.input-context-picker.is-open .input-context-btn {
+.input-history-picker.is-open .input-history-btn {
     color: var(--fg);
 }
 .input-model-picker .menu__panel,
-.input-context-picker .menu__panel {
+.input-history-picker .menu__panel {
     top: auto;
     bottom: calc(100% + 6px);
     left: 0;
     min-width: 260px;
     max-width: min(320px, 92vw);
-}
-.context-attach-header {
-    display: flex;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 4px;
-    line-height: 1.45;
-    white-space: normal;
-    padding: 10px 10px 9px;
-    margin: 0;
-    background: color-mix(in srgb, var(--primary) 14%, var(--bg));
-    border-bottom: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border));
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--fg);
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    text-transform: none;
-    letter-spacing: 0;
-}
-.context-attach-header #contextAttachHeaderLead {
-    color: color-mix(in srgb, var(--primary) 85%, var(--fg));
-}
-.context-attach-options {
-    padding: 4px 0 2px;
-}
-.context-attach-help {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-    border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
-    background: color-mix(in srgb, var(--primary) 10%, var(--bg));
-    color: color-mix(in srgb, var(--primary) 80%, var(--fg));
-    font-size: 10px;
-    font-weight: 700;
-    cursor: help;
-    flex-shrink: 0;
-    position: relative;
-}
-.context-attach-tooltip {
-    position: fixed;
-    z-index: 10000;
-    max-width: min(300px, calc(100vw - 24px));
-    padding: 8px 10px;
-    border-radius: 6px;
-    background: var(--bg);
-    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
-    color: var(--fg);
-    font-size: 11px;
-    font-weight: 400;
-    line-height: 1.45;
-    white-space: pre-line;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-    pointer-events: none;
-}
-.context-attach-preview {
-    position: fixed;
-    z-index: 10000;
-    width: min(320px, calc(100vw - 24px));
-    max-height: min(280px, 40vh);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    border-radius: 6px;
-    background: var(--bg);
-    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-    pointer-events: auto;
-}
-.context-attach-preview[hidden] {
-    display: none !important;
-}
-.context-attach-preview-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 6px 7px 10px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    flex-shrink: 0;
-}
-.context-attach-preview-title {
-    flex: 1;
-    min-width: 0;
-    font-size: 10px;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--primary) 80%, var(--fg));
-}
-.context-attach-preview-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--dim);
-    font-size: 12px;
-    line-height: 1;
-    cursor: pointer;
-}
-.context-attach-preview-close:hover {
-    color: var(--fg);
-    background: color-mix(in srgb, var(--fg) 8%, transparent);
-}
-.context-attach-preview-list {
-    margin: 0;
-    padding: 6px 0;
-    list-style: none;
-    overflow-y: auto;
-}
-.context-attach-preview-item {
-    padding: 5px 10px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-}
-.context-attach-preview-item:last-child {
-    border-bottom: none;
-}
-.context-attach-preview-role {
-    display: block;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--dim);
-    margin-bottom: 2px;
-}
-.context-attach-preview-text {
-    display: block;
-    font-size: 11px;
-    line-height: 1.4;
-    color: var(--fg);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 4.2em;
-    overflow: hidden;
 }
 .multi-select-toolbar button.ms-danger:hover:not(:disabled) {
     border-color: var(--error);
@@ -2814,7 +2660,7 @@ body.surface-notabs #tab-bar {
     animation: input-border-glow 1.8s ease-in-out infinite;
 }
 .input-composite-shell.waiting .input-model-btn,
-.input-composite-shell.waiting .input-context-btn {
+.input-composite-shell.waiting .input-history-btn {
     animation: input-model-text-glow 1.8s ease-in-out infinite;
 }
 @keyframes input-border-glow {
@@ -3338,12 +3184,12 @@ body.is-viewer .multi-select-toolbar {
     transition: max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
 }
 .input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder) .input-picker-label,
-.input-composite-shell.waiting .input-context-btn .input-picker-label {
+.input-composite-shell.waiting .input-history-btn .input-picker-label {
     max-width: 0;
     opacity: 0;
 }
 .input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder),
-.input-composite-shell.waiting .input-context-btn {
+.input-composite-shell.waiting .input-history-btn {
     width: auto;
     max-width: none;
     padding: 4px 7px;
