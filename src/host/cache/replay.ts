@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../shared/chat';
+import { parseHistoryBlocks } from '../chat/historyAttach';
 
 /** One record from the agent's replay, as ACP delivers it. */
 export interface ReplayItem {
@@ -22,6 +23,24 @@ export function buildReplayMessages(replay: ReplayItem[], base: number = Date.no
         const text = (item.text || '').trim();
         if (!text) {
             continue;
+        }
+        if (item.role === 'user') {
+            // Attached history rides inside the user text; lift it back out as its own card.
+            const parsed = parseHistoryBlocks(text);
+            if (parsed.blocks.length) {
+                for (const block of parsed.blocks) {
+                    messages.push({
+                        role: 'history',
+                        text: block.body,
+                        timestamp: base + messages.length,
+                        history: block.ref,
+                    });
+                }
+                if (parsed.rest) {
+                    messages.push({ role: 'user', text: parsed.rest, timestamp: base + messages.length });
+                }
+                continue;
+            }
         }
         if (item.role === 'tool' && item.toolCallId) {
             const at = toolIndex.get(item.toolCallId);

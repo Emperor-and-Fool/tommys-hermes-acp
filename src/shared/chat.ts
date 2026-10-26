@@ -34,6 +34,18 @@ export interface StoredImageRef {
     mimeType: string;
 }
 
+/** Where an attached slice of another conversation came from. */
+export interface HistoryRef {
+    /** The Hermes session the messages were read from. */
+    sessionId: string;
+    title: string;
+    /** How many messages the attach carried. */
+    count: number;
+    /** Timestamps of the first and last attached message. */
+    from: number;
+    to: number;
+}
+
 /** One record of a transcript, as the pane renders it. */
 export interface ChatMessage {
     role: string;
@@ -51,6 +63,8 @@ export interface ChatMessage {
     selectedLabel?: string;
     /** Content-addressed attachments for this message: Hermes never stores the bytes. */
     imageRefs?: StoredImageRef[];
+    /** Set on role 'history': which conversation the slice came from. */
+    history?: HistoryRef;
 }
 
 /** One tab: the session row as Hermes reports it, plus the view flags Hermes cannot know. */

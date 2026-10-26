@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { buildReplayMessages } from '../../host/cache/replay';
+import { formatHistoryBlock } from '../../host/chat/historyAttach';
 
 describe('buildReplayMessages', () => {
     it('drops empty records and keeps the order', () => {
@@ -36,5 +37,20 @@ describe('buildReplayMessages', () => {
     it('answers an empty list for a replay with nothing in it', () => {
         assert.deepStrictEqual(buildReplayMessages([], 1), []);
         assert.deepStrictEqual(buildReplayMessages([{ role: 'user', text: '' }], 1), []);
+    });
+
+    it('splits an attached history block out of a replayed user message', () => {
+        const block = formatHistoryBlock(
+            { sessionId: 'sess-1', title: 'Earlier work', count: 0, from: 0, to: 0 },
+            [
+                { role: 'user', text: 'hi', timestamp: 10 },
+                { role: 'assistant', text: 'hello', timestamp: 11 },
+            ]
+        );
+        const messages = buildReplayMessages([{ role: 'user', text: `${block}\n\nWhat changed?` }], 5);
+        assert.deepStrictEqual(messages.map(m => m.role), ['history', 'user']);
+        assert.strictEqual(messages[0].history?.sessionId, 'sess-1');
+        assert.strictEqual(messages[0].history?.count, 2);
+        assert.strictEqual(messages[1].text, 'What changed?');
     });
 });
