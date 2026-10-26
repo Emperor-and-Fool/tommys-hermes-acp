@@ -176,6 +176,38 @@ export function syncHistoryPickerShrink(): void {
     contextAttachPicker.classList.toggle('is-compact', hasMessages);
 }
 
+/** Restart one of the picker's motions; the class comes off when its animation ends. */
+function replayMotion(picker: HTMLElement, cls: string, animationName: string): void {
+    picker.classList.remove(cls);
+    void picker.offsetWidth;
+    picker.classList.add(cls);
+    const done = function(e: AnimationEvent) {
+        if (e.animationName !== animationName) {
+            return;
+        }
+        picker.classList.remove(cls);
+        picker.removeEventListener('animationend', done);
+    };
+    picker.addEventListener('animationend', done);
+}
+
+/** The first message landed: the label folds into the clock, with one glow to show where. */
+export function playHistoryPickerShrink(): void {
+    if (!contextAttachPicker || document.body.classList.contains('is-viewer')) {
+        return;
+    }
+    replayMotion(contextAttachPicker, 'is-attention-once', 'context-attach-attention-pulse');
+}
+
+/** An empty session: the full label moves in and glows three times, when there is a session to pick. */
+export function playHistoryPickerIntro(): void {
+    if (!contextAttachPicker || document.body.classList.contains('is-viewer') || sessionRows().length === 0) {
+        return;
+    }
+    replayMotion(contextAttachPicker, 'is-entering', 'context-attach-enter');
+    replayMotion(contextAttachPicker, 'is-attention', 'context-attach-attention-pulse');
+}
+
 /** Labels, tooltip and list on every locale change (and at boot). */
 export function applyHistoryPickerLocale(): void {
     const placeholder = locale.historyPickerPlaceholder || 'Select session memory';
