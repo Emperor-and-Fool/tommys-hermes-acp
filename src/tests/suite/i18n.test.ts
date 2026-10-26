@@ -1,7 +1,7 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { formatLocaleString } from '../../i18n/format';
-import { initI18n, resolveLocale, resolveLocaleFromLanguage, t } from '../../i18n';
+import { formatLocaleString } from '../../host/i18n/format';
+import { initI18n, resolveLocale, resolveLocaleFromLanguage, t } from '../../host/i18n';
 
 describe('i18n', () => {
     it('resolveLocaleFromLanguage maps zh-cn variants', () => {

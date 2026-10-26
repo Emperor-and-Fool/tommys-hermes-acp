@@ -4,7 +4,7 @@ import {
     PermissionBridge,
     extractPermissionDetail,
     normalizePermissionOptions,
-} from '../../acp/permissionBridge';
+} from '../../host/acp/permissionBridge';
 
 describe('PermissionBridge', () => {
     it('resolves with selected optionId', async () => {

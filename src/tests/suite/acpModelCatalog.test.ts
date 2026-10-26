@@ -5,7 +5,7 @@ import {
     buildCatalogFromModelOptions,
     parseProviderFromDescription,
     resolveModelCatalog,
-} from '../../models/acpModelCatalog';
+} from '../../host/models/acpModelCatalog';
 
 describe('acpModelCatalog', () => {
     it('buildCatalogFromModelOptions maps provider rows to grouped catalog', () => {

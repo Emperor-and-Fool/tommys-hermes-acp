@@ -14,7 +14,7 @@ import {
     SETTINGS_MODEL_CONFIG_ID,
     isHermesModelValueId,
     shouldUseHermesSetModel,
-} from '../../models/modelConfig';
+} from '../../host/models/modelConfig';
 
 describe('modelConfig', () => {
     it('flattenSelectOptions handles flat and grouped options', () => {

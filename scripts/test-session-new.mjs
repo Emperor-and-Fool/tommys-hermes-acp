@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
-import { resolveMcpServersForSession } from '../out/acp/mcpConfig.js';
+import { resolveMcpServersForSession } from '../out/host/acp/mcpConfig.js';
 
 function makeStream(proc) {
     const childInput = new WritableStream({

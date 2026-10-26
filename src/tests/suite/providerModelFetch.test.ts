@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { fetchOpenAiCompatibleModels } from '../../models/providerModelFetch';
+import { fetchOpenAiCompatibleModels } from '../../host/models/providerModelFetch';
 
 describe('providerModelFetch', () => {
     it('fetchOpenAiCompatibleModels parses OpenAI-compatible responses', async () => {

@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { extractTextFromContentBlock } from '../../acp/contentText';
+import { extractTextFromContentBlock } from '../../host/acp/contentText';
 
 describe('extractTextFromContentBlock', () => {
     it('reads standard ACP text blocks', () => {

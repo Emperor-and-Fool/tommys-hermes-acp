@@ -2,7 +2,7 @@ import { describe, it } from 'mocha';
 import assert from 'assert';
 import * as os from 'os';
 import * as path from 'path';
-import { parseProfileListOutput, buildHermesExecutableCandidates } from '../../environment/profileDiscovery';
+import { parseProfileListOutput, buildHermesExecutableCandidates } from '../../host/environment/profileDiscovery';
 
 describe('profileDiscovery', () => {
     it('parseProfileListOutput extracts profile ids and puts default first', () => {

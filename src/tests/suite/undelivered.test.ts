@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { findUndelivered, lastUserMessageText } from '../../cache/undelivered';
-import type { ChatMessage } from '../../types/chat';
+import { findUndelivered, lastUserMessageText } from '../../host/cache/undelivered';
+import type { ChatMessage } from '../../shared/chat';
 
 const user = (text: string): ChatMessage => ({ role: 'user', text, timestamp: 1 });
 const assistant = (text: string): ChatMessage => ({ role: 'assistant', text, timestamp: 2 });

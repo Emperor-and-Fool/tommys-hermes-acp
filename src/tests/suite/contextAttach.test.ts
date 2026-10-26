@@ -8,8 +8,8 @@ import {
     resolveAttachMessages,
     resolveCustomAttachMessages,
     truncateAttachMessages,
-} from '../../chat/contextAttach';
-import { en } from '../../i18n/locales/en';
+} from '../../host/chat/contextAttach';
+import { en } from '../../host/i18n/locales/en';
 
 describe('contextAttach', () => {
     const messages = [

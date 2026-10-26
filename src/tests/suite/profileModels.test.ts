@@ -6,7 +6,7 @@ import {
     inferNameFromUrl,
     parseModelsFromConfigYaml,
     parseProviderDrafts,
-} from '../../models/profileModels';
+} from '../../host/models/profileModels';
 
 const sampleDefaultConfig = `
 model:

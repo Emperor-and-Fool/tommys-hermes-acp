@@ -5,8 +5,8 @@ import {
     inferInstallMethod,
     isAcpCheckOk,
     parsePipShowLocation,
-} from '../../environment/hermesEnvironmentDetect';
-import type { HermesExecutableCandidate } from '../../environment/hermesEnvironmentDetect';
+} from '../../host/environment/hermesEnvironmentDetect';
+import type { HermesExecutableCandidate } from '../../host/environment/hermesEnvironmentDetect';
 
 describe('hermesEnvironmentDetect', () => {
     it('parsePipShowLocation extracts Location field', () => {

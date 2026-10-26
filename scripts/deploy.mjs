@@ -143,7 +143,7 @@ const views = Object.values(installedPkg.contributes?.views ?? {}).flat();
 const viewIds = views.map((v) => v.id);
 const chatView = 'tommysChat';
 // The view is registered in extension.ts, not in the provider.
-const entry = readFileSync(path.join(target, 'out', 'extension.js'), 'utf8');
+const entry = readFileSync(path.join(target, 'out', 'host', 'extension.js'), 'utf8');
 const registersChat = entry.includes(`registerWebviewViewProvider('${chatView}'`);
 
 console.log(`deploy: ${copied} files -> ${target}`);

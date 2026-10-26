@@ -13,7 +13,7 @@
     "Chat",
     "Other"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/host/extension.js",
   "activationEvents": [
     "onView:tommysChat",
     "onWebviewPanel:tommys.chatPanel"

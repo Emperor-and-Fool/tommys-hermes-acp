@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { AcpClient } from '../../acp/AcpClient';
+import { AcpClient } from '../../host/acp/AcpClient';
 
 describe('State Machine', () => {
     // canTransition is a static helper that mirrors the internal VALID transitions

@@ -4,7 +4,7 @@ import {
     mergeMcpServerMaps,
     substituteMcpVariables,
     toSessionMcpServer,
-} from '../../acp/mcpConfig';
+} from '../../host/acp/mcpConfig';
 
 describe('mcpConfig', () => {
     it('substituteMcpVariables resolves workspaceFolder and env', () => {

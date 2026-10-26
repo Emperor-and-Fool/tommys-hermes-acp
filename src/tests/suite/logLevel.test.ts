@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { describe, it } from 'mocha';
-import { classifyLogLevel } from '../../logLevel';
+import { classifyLogLevel } from '../../host/logLevel';
 
 describe('logLevel', () => {
     it('classifies error lines', () => {

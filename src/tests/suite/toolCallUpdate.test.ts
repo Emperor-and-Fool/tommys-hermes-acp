@@ -6,7 +6,7 @@ import {
     formatToolCallDisplay,
     formatToolCallSummary,
     parseToolCallSessionUpdate,
-} from '../../acp/toolCallUpdate';
+} from '../../host/acp/toolCallUpdate';
 
 describe('toolCallUpdate', () => {
     it('parseToolCallSessionUpdate defaults tool_call to pending', () => {

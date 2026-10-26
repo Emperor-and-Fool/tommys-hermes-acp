@@ -7,7 +7,7 @@ import {
     isDirectoryOnPath,
     normalizeWindowsUserPath,
     sanitizeWindowsPathEntry,
-} from '../../environment/hermesPathSetup';
+} from '../../host/environment/hermesPathSetup';
 
 describe('hermesPathSetup', () => {
     it('getHermesExecutableDirectory returns parent directory', () => {

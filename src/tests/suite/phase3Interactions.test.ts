@@ -1,8 +1,8 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { sliceTextByLines } from '../../acp/fsRead';
-import { parsePlanSessionUpdate } from '../../acp/planUpdate';
-import { parseElicitationFormFields } from '../../acp/elicitationBridge';
+import { sliceTextByLines } from '../../host/acp/fsRead';
+import { parsePlanSessionUpdate } from '../../host/acp/planUpdate';
+import { parseElicitationFormFields } from '../../host/acp/elicitationBridge';
 
 describe('fsRead', () => {
     it('sliceTextByLines returns full content when no range', () => {

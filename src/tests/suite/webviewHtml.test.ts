@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { buildWebviewHtml, highlightSheetFor } from '../../webview/html';
-import { en } from '../../i18n/locales/en';
+import { buildWebviewHtml, highlightSheetFor } from '../../host/webview/html';
+import { en } from '../../host/i18n/locales/en';
 
 // vscode.ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4.
 const repoRoot = path.resolve(__dirname, '../../..');

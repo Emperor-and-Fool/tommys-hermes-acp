@@ -2,8 +2,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CATALOG_LIMIT, SessionStore, TRANSCRIPT_LIMIT } from '../../cache/sessionStore';
-import type { ChatMessage, SessionInfo } from '../../types/chat';
+import { CATALOG_LIMIT, SessionStore, TRANSCRIPT_LIMIT } from '../../host/cache/sessionStore';
+import type { ChatMessage, SessionInfo } from '../../shared/chat';
 
 function tempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'session-store-'));
