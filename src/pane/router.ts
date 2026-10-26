@@ -21,6 +21,7 @@ import { renderProfileList } from './components/pickers/profilePicker';
 import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
+import { afterHistoryRestored, applyViewerSurfaceRole } from './components/viewer/historyViewer';
 import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
@@ -120,8 +121,16 @@ export function init(): void {
                 break;
 
             case 'surfaceRole':
+                if (msg.role === 'viewer') {
+                    applyViewerSurfaceRole();
+                    break;
+                }
                 document.body.classList.toggle('surface-rail', msg.role === 'rail');
                 document.body.classList.toggle('surface-notabs', !!msg.hideTabs);
+                break;
+
+            case 'focusComposer':
+                inputEl.focus();
                 break;
 
             case 'noActiveTab':
@@ -135,6 +144,7 @@ export function init(): void {
 
             case 'restoreHistory':
                 restoreHistory(msg.messages, msg.localHistoryOnly);
+                afterHistoryRestored(msg.messages, msg.sessionId);
                 break;
 
             case 'detectEnvironmentStart':

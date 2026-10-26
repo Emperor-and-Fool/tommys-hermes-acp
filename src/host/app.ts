@@ -12,6 +12,7 @@ import { SupportedLocale } from '../shared/i18n';
 import { buildWebviewHtml } from './webview/html';
 import { ContextAttachOffer } from './chat/contextAttach';
 import { Surfaces } from './webview/surfaces';
+import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
 import type { ChatSurface } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
@@ -149,6 +150,24 @@ export class App implements vscode.WebviewViewProvider {
             }
         },
         localResourceRoots: () => [this._extensionUri],
+        log: (line) => this._log(line),
+    });
+
+    /**
+     * The read-only history viewer: one temporary editor tab, deliberately outside `_surfaces`,
+     * so no chat traffic is ever fanned out to it.
+     */
+    private readonly _historyViewer: HistoryViewer = new HistoryViewer({
+        html: (webview) => this._getHtml(webview),
+        localResourceRoots: () => [this._extensionUri],
+        tabs: () => this._session.tabs,
+        readMessages: (localId) => this._session.store.readMessages(localId),
+        profile: () => this._profiles.resolveTarget().cliProfile,
+        onPicked: (pick) => {
+            // Phase 4 stages this pick; the log line is the proof the handover works today.
+            this._log(`History picked: ${pick.messages.length} message(s) from "${pick.ref.title}"`);
+        },
+        focusComposer: () => this._postMessage({ type: 'focusComposer' }),
         log: (line) => this._log(line),
     });
 
@@ -474,6 +493,29 @@ export class App implements vscode.WebviewViewProvider {
 
 
 
+    /** Phase 3: another session's transcript, read-only, in one temporary editor tab. */
+    public openHistoryViewer(hermesSessionId: string, title: string): void {
+        this._historyViewer.open(hermesSessionId, title);
+    }
+
+    /** TEMP(phase 4): remove with the debug command registered in extension.ts. */
+    public async debugOpenHistoryViewer(): Promise<void> {
+        const items = this._session.tabs
+            .filter(rec => rec.id !== this._session.activeId)
+            .map(rec => ({ label: rec.title, description: rec.hermesSessionId || 'local only', rec }));
+        if (items.length === 0) {
+            void vscode.window.showInformationMessage('No other session to open.');
+            return;
+        }
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Session to open in the history viewer',
+        });
+        if (!picked) {
+            return;
+        }
+        this.openHistoryViewer(picked.rec.hermesSessionId || picked.rec.id, picked.rec.title);
+    }
+
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -768,6 +810,7 @@ export class App implements vscode.WebviewViewProvider {
         this._detection.clear();
         this._connection.dispose();
         this._surfaces.detachView();
+        this._historyViewer.dispose();
         this._output.dispose();
     }
 

@@ -1,7 +1,8 @@
 import type { ChatMessage, HistoryRef } from '../../shared/chat';
+import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
 
-/** One attach may carry at most this many messages. */
-export const MAX_HISTORY_MESSAGES = 15;
+/** The cap lives in `shared/` because the pane refuses the tick as well; re-exported for callers here. */
+export { MAX_HISTORY_MESSAGES };
 
 const MARKER_OPEN = '[From conversation: ';
 const MARKER_CLOSE = '[/From conversation]';

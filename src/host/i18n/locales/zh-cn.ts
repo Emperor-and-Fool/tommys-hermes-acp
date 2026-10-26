@@ -375,4 +375,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyCardCount: '{0} 条消息',
     historyCardSpan: '范围',
     historyCardAnchor: '定位片段',
+    historyAttachCount: '附带（{0}/{1}）',
+    historyViewerCancel: '取消',
+    historyViewerUnavailable: '本地没有这段对话。',
 };

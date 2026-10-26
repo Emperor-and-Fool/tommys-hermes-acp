@@ -1,3 +1,4 @@
+import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
 import { byId, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn } from '../dom';
 import { assistantRoleLabel } from '../i18n';
 import { post } from '../post';
@@ -34,10 +35,48 @@ export function isSelectableRole(role) {
     return role === 'user' || role === 'assistant' || role === 'thought' || role === 'tool';
 }
 
+/**
+ * The roles a history attach may carry. Which roles to allow is SKDJ's open decision, so it is
+ * one list here and nothing else names a role for this purpose.
+ */
+export const HISTORY_PICK_ROLES: string[] = ['user', 'assistant'];
+
+function isHistoryPick(): boolean {
+    return state.multiSelectPurpose === 'historyPick';
+}
+
+/** Whether the transcript offers this role a tick box as it stands. */
+export function shouldOfferSelection(role: string): boolean {
+    if (!isSelectableRole(role)) {
+        return false;
+    }
+    if (document.body.classList.contains('is-viewer')) {
+        return HISTORY_PICK_ROLES.indexOf(role) >= 0;
+    }
+    return true;
+}
+
+/** Past the cap: the next tick is refused rather than counted. */
+function atHistoryPickLimit(): boolean {
+    return isHistoryPick() && getSelectedGroups().length >= MAX_HISTORY_MESSAGES;
+}
+
+function selectableForPurpose(group) {
+    if (!isHistoryPick()) {
+        return true;
+    }
+    return HISTORY_PICK_ROLES.some(function(role) {
+        return group.classList.contains(role);
+    });
+}
+
 function getSelectableGroups() {
     const found: NodeListOf<HTMLElement> = messagesEl.querySelectorAll('.message-group.selectable');
     return Array.from(found).filter(function(group) {
         if (group.style.display === 'none') {
+            return false;
+        }
+        if (!selectableForPurpose(group)) {
             return false;
         }
         if (state.multiSelectPurpose === 'contextAttach' && !isGroupInContextAttachRegion(group)) {
@@ -61,6 +100,17 @@ function getGroupCheckbox(group) {
 }
 
 export function setGroupSelected(group, selected) {
+    if (!group.classList.contains('selectable')) {
+        return;
+    }
+    // A tick past the cap, or on a role a history attach cannot carry, is refused here: every
+    // path (the checkbox, a row click, select-all) ends in this function.
+    if (selected && atHistoryPickLimit() && !group.classList.contains('is-selected')) {
+        // The browser has already flipped a clicked box: put it back, the tick is refused.
+        const refused = getGroupCheckbox(group);
+        if (refused) refused.checked = false;
+        return;
+    }
     group.classList.toggle('is-selected', selected);
     const checkbox = getGroupCheckbox(group);
     if (checkbox) checkbox.checked = selected;
@@ -69,6 +119,9 @@ export function setGroupSelected(group, selected) {
 
 export function setGroupsSelected(updates) {
     updates.forEach(function(entry) {
+        if (entry.selected && atHistoryPickLimit() && !entry.group.classList.contains('is-selected')) {
+            return;
+        }
         entry.group.classList.toggle('is-selected', entry.selected);
         const checkbox = getGroupCheckbox(entry.group);
         if (checkbox) checkbox.checked = entry.selected;
@@ -90,18 +143,35 @@ export function updateMultiSelectToolbar() {
     const selected = getSelectedGroups();
     const count = selected.length;
     const isAttachMode = state.multiSelectPurpose === 'contextAttach';
+    const isHistoryPickMode = isHistoryPick();
     if (multiSelectCount) {
-        multiSelectCount.textContent = count > 0
-            ? (locale.multiSelectCount || '{0} selected').replace('{0}', String(count))
-            : (locale.selectMessages || 'Select');
+        // The history picker carries its count in the Attach button instead.
+        multiSelectCount.textContent = isHistoryPickMode
+            ? ''
+            : count > 0
+                ? (locale.multiSelectCount || '{0} selected').replace('{0}', String(count))
+                : (locale.selectMessages || 'Select');
     }
     const hasSelection = count > 0;
     if (multiSelectDeleteBtn) multiSelectDeleteBtn.disabled = !hasSelection;
     if (multiSelectCopyBtn) multiSelectCopyBtn.disabled = !hasSelection;
     if (multiSelectExportBtn) multiSelectExportBtn.disabled = !hasSelection;
+    // Only the ticks, Attach and Cancel exist in the history viewer.
+    if (multiSelectAllBtn) multiSelectAllBtn.hidden = isHistoryPickMode;
+    if (multiSelectDeleteBtn) multiSelectDeleteBtn.hidden = isHistoryPickMode;
+    if (multiSelectCopyBtn) multiSelectCopyBtn.hidden = isHistoryPickMode;
+    if (multiSelectExportBtn) multiSelectExportBtn.hidden = isHistoryPickMode;
     if (multiSelectAttachConfirmBtn) {
-        multiSelectAttachConfirmBtn.hidden = !isAttachMode;
+        multiSelectAttachConfirmBtn.hidden = !isAttachMode && !isHistoryPickMode;
         multiSelectAttachConfirmBtn.disabled = !hasSelection;
+        if (isHistoryPickMode) {
+            multiSelectAttachConfirmBtn.textContent = (locale.historyAttachCount || 'Attach ({0}/{1})')
+                .replace('{0}', String(count))
+                .replace('{1}', String(MAX_HISTORY_MESSAGES));
+        }
+    }
+    if (multiSelectExitBtn && isHistoryPickMode) {
+        multiSelectExitBtn.textContent = locale.historyViewerCancel || 'Cancel';
     }
     const selectableGroups = getSelectableGroups();
     if (multiSelectAllBtn) {
@@ -174,6 +244,9 @@ export function wireSelectableGroup(group) {
     group.addEventListener('click', function(e) {
         if (!state.multiSelectMode) return;
         if (state.multiSelectPurpose === 'contextAttach' && !isGroupInContextAttachRegion(group)) {
+            return;
+        }
+        if (isHistoryPick() && !selectableForPurpose(group)) {
             return;
         }
         if (e.target.closest('.message-actions, .block-actions, .insert-dropdown, .insert-dropdown-menu, .msg-select-wrap')) {
@@ -270,6 +343,9 @@ export function initInputElKeydown(): void {
 export function initMultiSelectAllBtnClick(): void {
     if (multiSelectAllBtn) {
         multiSelectAllBtn.addEventListener('click', function() {
+            if (isHistoryPick()) {
+                return;
+            }
             if (!state.multiSelectMode) {
                 enterMultiSelectMode(null, state.multiSelectPurpose);
             }
@@ -285,7 +361,7 @@ export function initMultiSelectAllBtnClick(): void {
 export function initMultiSelectDeleteBtnClick(): void {
     if (multiSelectDeleteBtn) {
         multiSelectDeleteBtn.addEventListener('click', function() {
-            if (multiSelectDeleteBtn.disabled) return;
+            if (multiSelectDeleteBtn.disabled || isHistoryPick()) return;
             deleteSelectedGroups();
         });
     }
@@ -294,7 +370,7 @@ export function initMultiSelectDeleteBtnClick(): void {
 export function initMultiSelectCopyBtnClick(): void {
     if (multiSelectCopyBtn) {
         multiSelectCopyBtn.addEventListener('click', function() {
-            if (multiSelectCopyBtn.disabled) return;
+            if (multiSelectCopyBtn.disabled || isHistoryPick()) return;
             const indices = getSelectedMessageIndices();
             if (!indices.length) return;
             requestSessionExport('copy', indices);
@@ -305,7 +381,7 @@ export function initMultiSelectCopyBtnClick(): void {
 export function initMultiSelectExportBtnClick(): void {
     if (multiSelectExportBtn) {
         multiSelectExportBtn.addEventListener('click', function() {
-            if (multiSelectExportBtn.disabled) return;
+            if (multiSelectExportBtn.disabled || isHistoryPick()) return;
             exportSelectedGroups();
         });
     }
@@ -321,6 +397,10 @@ export function initMultiSelectAttachConfirmBtnClick(): void {
     if (multiSelectAttachConfirmBtn) {
         multiSelectAttachConfirmBtn.addEventListener('click', function() {
             if (multiSelectAttachConfirmBtn.disabled) {
+                return;
+            }
+            // In the history viewer the same button carries the pick; the viewer owns that post.
+            if (state.multiSelectPurpose !== 'contextAttach') {
                 return;
             }
             confirmContextAttachSelection();

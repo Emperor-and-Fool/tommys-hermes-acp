@@ -34,6 +34,9 @@ export interface StoredImageRef {
     mimeType: string;
 }
 
+/** One history attach may carry at most this many messages; the pane's tic and the host agree. */
+export const MAX_HISTORY_MESSAGES = 15;
+
 /** Where an attached slice of another conversation came from. */
 export interface HistoryRef {
     /** The Hermes session the messages were read from. */

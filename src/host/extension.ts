@@ -82,6 +82,8 @@ export function activate(context: vscode.ExtensionContext) {
     bindChatCommand(context, 'tommys.detectEnvironment', provider => provider.detectEnvironment());
     bindChatCommand(context, 'tommys.detectEnvironmentBusy', () => undefined);
     bindChatCommand(context, 'tommys.configureEnvironment', provider => provider.configureEnvironment());
+    // TEMP(phase 4): remove this command and its package.json entry with the debug path.
+    bindChatCommand(context, 'tommys.debugOpenHistoryViewer', provider => provider.debugOpenHistoryViewer());
 
     console.log('Tommys Hermes ACP activated');
 }

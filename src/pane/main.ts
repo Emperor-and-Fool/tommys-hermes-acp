@@ -18,6 +18,7 @@ import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
 import * as statusBar from './components/status/statusBar';
+import * as viewer from './components/viewer/historyViewer';
 import * as i18n from './i18n';
 import * as router from './router';
 
@@ -57,6 +58,7 @@ export function boot(): void {
     multiSelect.initMultiSelectExportBtnClick();
     multiSelect.initMultiSelectExitBtnClick();
     multiSelect.initMultiSelectAttachConfirmBtnClick();
+    viewer.initHistoryViewer();
     modal.initDocumentClick();
     modal.initDocumentKeydown();
     detectPanel.initDetectEnvToggleClick();

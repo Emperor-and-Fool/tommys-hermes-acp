@@ -18,6 +18,7 @@
   "commands.tommys.openHelp.title": "Help",
   "commands.tommys.openFaq.title": "FAQ",
   "commands.tommys.openLogs.title": "Logs",
+  "commands.tommys.debugOpenHistoryViewer.title": "Debug: Open History Viewer",
   "commands.tommys.detectEnvironment.title": "Environment detection",
   "commands.tommys.detectEnvironmentBusy.title": "Detecting environment....",
   "commands.tommys.configureEnvironment.title": "Environment configuration",

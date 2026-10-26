@@ -375,4 +375,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyCardCount: '{0} messages',
     historyCardSpan: 'Span',
     historyCardAnchor: 'Anchor quote',
+    historyAttachCount: 'Attach ({0}/{1})',
+    historyViewerCancel: 'Cancel',
+    historyViewerUnavailable: 'This conversation is not available locally.',
 };

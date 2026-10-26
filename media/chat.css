@@ -3311,3 +3311,20 @@ mark.search-mark-active {
     font-size: 11px;
     white-space: pre-wrap;
 }
+
+/* History viewer: another session read-only, ticked for a history attach.
+   The transcript and the multi-select toolbar are all this tab offers. */
+body.is-viewer #toolbar,
+body.is-viewer #tab-bar,
+body.is-viewer #input-area .input-resize-handle,
+body.is-viewer #input-area #filePicker,
+body.is-viewer #input-area .input-quick-panel,
+body.is-viewer #input-area .input-composite-wrap {
+    display: none;
+}
+body.is-viewer #input-area {
+    padding-top: 0;
+}
+body.is-viewer .multi-select-toolbar {
+    padding-top: 12px;
+}

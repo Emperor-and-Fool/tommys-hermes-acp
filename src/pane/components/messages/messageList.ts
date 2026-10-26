@@ -5,7 +5,7 @@ import { escapeHtml } from '../../util/html';
 import { setInputMode, updateQuickActionBtns } from '../composer/composer';
 import { forceHideContextAttachPicker, hideContextAttachPreview, hideContextAttachTooltip, isInsideContextAttachPreview } from '../composer/contextAttach';
 import { processFileRefs } from '../composer/fileMention';
-import { exitMultiSelectMode, isSelectableRole, setGroupSelected, wireSelectableGroup } from '../multiSelect';
+import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
@@ -174,7 +174,7 @@ export function createGroup(role, id?) {
     const group = document.createElement('div');
     group.className = 'message-group ' + role;
     group.id = id || newMessageId();
-    if (isSelectableRole(role)) {
+    if (shouldOfferSelection(role)) {
         group.classList.add('selectable');
         const selectWrap = document.createElement('label');
         selectWrap.className = 'msg-select-wrap';

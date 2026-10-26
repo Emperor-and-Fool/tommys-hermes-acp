@@ -292,6 +292,12 @@ export interface LocaleStrings {
     historyCardCount: string;
     historyCardSpan: string;
     historyCardAnchor: string;
+
+    // History viewer
+    /** The pick button: "{0} ticked of {1}". */
+    historyAttachCount: string;
+    historyViewerCancel: string;
+    historyViewerUnavailable: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

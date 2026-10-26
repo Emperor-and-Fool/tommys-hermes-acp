@@ -17,7 +17,7 @@ import type { LocaleStrings } from './i18n';
 /** Host → pane: every message the extension posts, in the same one place. */
 export type HostToPane =
     // Chrome: which renderer, locale, settings, identity.
-    | { type: 'surfaceRole'; role: 'chat' | 'rail'; hideTabs: boolean }
+    | { type: 'surfaceRole'; role: 'chat' | 'rail' | 'viewer'; hideTabs: boolean }
     | { type: 'setLocale'; locale: LocaleStrings }
     | { type: 'config'; showThoughts: boolean; showToolCalls: boolean }
     | { type: 'pluginInfo'; displayName: string; version: string; publisher: string; description?: string; repository?: string; iconUri?: string }
@@ -28,12 +28,13 @@ export type HostToPane =
     | { type: 'openHelp' }
     | { type: 'openFaq' }
     | { type: 'openLogs' }
+    | { type: 'focusComposer' }
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
-    | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean }
+    | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
     | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
@@ -129,6 +130,11 @@ export type PaneToHost =
     // Turn-level answers and transcript surgery.
     | { type: 'permissionResponse'; id: string; optionId: string | null }
     | { type: 'deleteMessages'; indices: number[] }
+
+    // The read-only history viewer: ticks from another session's transcript, or a cancel.
+    // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
+    | { type: 'historyPicked'; sessionId: string; indices: number[] }
+    | { type: 'historyViewerCancel' }
 
     /** Pane-side diagnostics, relayed to the extension's output channel. */
     | { type: 'webviewLog'; line: string };

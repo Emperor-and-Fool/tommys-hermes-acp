@@ -15,7 +15,11 @@ import type { HostToPane } from '../../shared/webview';
 /** Webview panel id; the serializer re-creates it after a window reload. */
 export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
 
-export type SurfaceRole = 'chat' | 'rail';
+/**
+ * Which renderer of the pane this webview is. `viewer` never enters the surface list: it is the
+ * read-only history viewer's own editor tab, and no chat traffic is fanned out to it.
+ */
+export type SurfaceRole = 'chat' | 'rail' | 'viewer';
 
 /** One renderer of the chat: the side bar view or the single editor panel. */
 export interface ChatSurface {
