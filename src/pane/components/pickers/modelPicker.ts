@@ -102,9 +102,9 @@ export function updateModelButtonDisplay(payload) {
     }
     modelLabelEl.textContent = payload.currentLabel || payload.currentValueId || '';
     modelBtn.classList.remove('is-placeholder');
-    modelBtn.title = payload.fromAgent
-        ? locale.modelFromAgent
-        : locale.modelLocalPreference;
+    // Folded to its icon between turns, the button's tooltip is where the model's name shows.
+    const source = payload.fromAgent ? locale.modelFromAgent : locale.modelLocalPreference;
+    modelBtn.title = [modelLabelEl.textContent, source].filter(Boolean).join(' — ');
     pickerRowReserve();
 }
 

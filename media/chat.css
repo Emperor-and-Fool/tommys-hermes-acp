@@ -2167,9 +2167,6 @@ body.surface-notabs #tab-bar {
 .input-context-picker.is-attention .input-context-btn {
     animation: context-attach-attention-pulse 0.75s ease-in-out 3 both;
 }
-.input-context-picker.is-attention-once .input-context-btn {
-    animation: context-attach-attention-pulse 0.75s ease-in-out 1 both;
-}
 .input-model-picker .input-model-btn.is-placeholder,
 .input-context-picker .input-context-btn.is-placeholder {
     color: color-mix(in srgb, var(--dim) 88%, transparent);
@@ -3333,16 +3330,20 @@ body.is-viewer .multi-select-toolbar {
 }
 
 /* Session memory: the picker that lists other sessions, and the chip of the staged pick. */
-/* The label folds away rather than vanishing, so the shrink to the clock is seen. */
-.input-context-picker .input-picker-label {
+/* Model and session memory trade places. While the agent works (the composer's .waiting) the
+   model shows its name and the memory folds to its clock; when it is done they swap. Labels fold
+   rather than vanish, so the swap is seen. An unchosen model keeps its label: it asks for a pick. */
+.input-picker-row .input-picker-label {
     max-width: 140px;
     transition: max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
 }
-.input-context-picker.is-compact .input-picker-label {
+.input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder) .input-picker-label,
+.input-composite-shell.waiting .input-context-btn .input-picker-label {
     max-width: 0;
     opacity: 0;
 }
-.input-context-picker.is-compact .input-context-btn {
+.input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder),
+.input-composite-shell.waiting .input-context-btn {
     width: auto;
     max-width: none;
     padding: 4px 7px;

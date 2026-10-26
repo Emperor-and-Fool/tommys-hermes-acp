@@ -14,7 +14,7 @@ import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
-import { playHistoryPickerIntro, playHistoryPickerShrink } from '../composer/historyAttach';
+import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 
 const RESTORE_BATCH_SIZE = 30;
@@ -303,10 +303,6 @@ export function appendMessage(role, text, options?) {
 
     const id = mountMessage(group, built, options);
     updateQuickActionBtns();
-    // The session's first live message: the picker folds into its clock, visibly.
-    if (!restoring && messagesEl.querySelectorAll('.message-group').length === 1) {
-        playHistoryPickerShrink();
-    }
     if (chatSearchState.query) scheduleChatSearch();
     maybeScrollToBottom();
     return id;

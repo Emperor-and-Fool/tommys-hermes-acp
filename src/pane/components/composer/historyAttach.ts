@@ -4,7 +4,7 @@
  * hidden ones (hiddenSessions). Picking one opens the read-only viewer; what comes back is a
  * staged ref, which turns into the block the next send carries.
  */
-import { contextAttachBtn, contextAttachLabel, contextAttachPicker, historyChip, historyChipClear, historyChipPending, historyChipText, historySessionList, messagesEl } from '../../dom';
+import { contextAttachBtn, contextAttachLabel, contextAttachPicker, historyChip, historyChipClear, historyChipPending, historyChipText, historySessionList } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import type { HistoryRef } from '../../../shared/chat';
@@ -164,18 +164,6 @@ export function applyHistoryCleared(): void {
     renderHistoryChip();
 }
 
-/**
- * A session with a transcript needs no label: the clock alone says it, and the label's words
- * move into the tooltip. Called wherever the transcript changes.
- */
-export function syncHistoryPickerShrink(): void {
-    if (!contextAttachPicker) {
-        return;
-    }
-    const hasMessages = !!messagesEl && messagesEl.querySelector('.message-group') !== null;
-    contextAttachPicker.classList.toggle('is-compact', hasMessages);
-}
-
 /** Restart one of the picker's motions; the class comes off when its animation ends. */
 function replayMotion(picker: HTMLElement, cls: string, animationName: string): void {
     picker.classList.remove(cls);
@@ -189,14 +177,6 @@ function replayMotion(picker: HTMLElement, cls: string, animationName: string): 
         picker.removeEventListener('animationend', done);
     };
     picker.addEventListener('animationend', done);
-}
-
-/** The first message landed: the label folds into the clock, with one glow to show where. */
-export function playHistoryPickerShrink(): void {
-    if (!contextAttachPicker || document.body.classList.contains('is-viewer')) {
-        return;
-    }
-    replayMotion(contextAttachPicker, 'is-attention-once', 'context-attach-attention-pulse');
 }
 
 /** An empty session: the full label moves in and glows three times, when there is a session to pick. */
@@ -249,5 +229,4 @@ export function initHistoryAttach(): void {
         });
     }
     applyHistoryPickerLocale();
-    syncHistoryPickerShrink();
 }
