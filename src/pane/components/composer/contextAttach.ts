@@ -120,7 +120,8 @@ function bindContextAttachTooltip() {
 
 function getContextAttachRegionGroups() {
     // The prior-session divider is gone from the markup, so every group is attachable.
-    return Array.from(messagesEl.querySelectorAll('.message-group'));
+    const found: NodeListOf<HTMLElement> = messagesEl.querySelectorAll('.message-group');
+    return Array.from(found);
 }
 
 function ensureGroupSelectableForContextAttach(group) {

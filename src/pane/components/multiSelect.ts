@@ -35,7 +35,8 @@ export function isSelectableRole(role) {
 }
 
 function getSelectableGroups() {
-    return Array.from(messagesEl.querySelectorAll('.message-group.selectable')).filter(function(group) {
+    const found: NodeListOf<HTMLElement> = messagesEl.querySelectorAll('.message-group.selectable');
+    return Array.from(found).filter(function(group) {
         if (group.style.display === 'none') {
             return false;
         }

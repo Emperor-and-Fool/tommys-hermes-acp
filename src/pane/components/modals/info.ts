@@ -9,7 +9,7 @@ export function buildFaqAccordion(container) {
     if (!container || container.querySelector('.faq-list')) {
         return;
     }
-    const nodes = Array.from(container.childNodes);
+    const nodes = Array.from<Node>(container.childNodes);
     const wrapper = document.createElement('div');
     wrapper.className = 'faq-list';
     let i = 0;
