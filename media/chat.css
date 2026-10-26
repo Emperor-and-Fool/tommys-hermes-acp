@@ -3289,3 +3289,25 @@ mark.search-mark-active {
     .new-label-full { display: none; }
     .new-label-short { display: inline; }
 }
+
+/* History card — an attached slice of another conversation. */
+.message.history {
+    border-left: 2px solid var(--border);
+    padding-left: 6px;
+}
+.message.history .aux-label {
+    font-style: italic;
+}
+.history-meta {
+    padding: 0 8px 4px;
+    font-size: 10px;
+    color: var(--dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.message.history .aux-body-content {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    white-space: pre-wrap;
+}

@@ -371,4 +371,8 @@ hermes --profile &lt;name&gt; acp</code></pre>
     contextAttachSendYes: 'Attach',
     contextAttachSendNo: 'Do not attach',
     contextAttachPreviewTitle: 'Memory to attach ({0} selected / ~{1} input tokens)',
+    historyCardHeader: 'From conversation: {0}',
+    historyCardCount: '{0} messages',
+    historyCardSpan: 'Span',
+    historyCardAnchor: 'Anchor quote',
 };

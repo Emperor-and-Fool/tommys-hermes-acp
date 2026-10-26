@@ -371,4 +371,8 @@ hermes --profile &lt;name&gt; acp</code></pre>
     contextAttachSendYes: '附带',
     contextAttachSendNo: '不附带',
     contextAttachPreviewTitle: '将附带的记忆（已选{0}条/约{1}输入Token）',
+    historyCardHeader: '来自对话：{0}',
+    historyCardCount: '{0} 条消息',
+    historyCardSpan: '范围',
+    historyCardAnchor: '定位片段',
 };

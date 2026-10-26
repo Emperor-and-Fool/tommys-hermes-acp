@@ -286,6 +286,12 @@ export interface LocaleStrings {
     contextAttachSendYes: string;
     contextAttachSendNo: string;
     contextAttachPreviewTitle: string;
+
+    // History card
+    historyCardHeader: string;
+    historyCardCount: string;
+    historyCardSpan: string;
+    historyCardAnchor: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

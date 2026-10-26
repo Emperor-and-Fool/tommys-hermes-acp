@@ -14,6 +14,7 @@ import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
+import { buildHistoryCard } from './historyCard';
 
 
 const RESTORE_BATCH_SIZE = 30;
@@ -230,6 +231,9 @@ function buildMessage(role, text, options) {
 }
 
 function buildCard(role, text, options) {
+    if (role === 'history') {
+        return { card: buildHistoryCard(text, options && options.history), auxParts: null };
+    }
     if (role === 'tool' || role === 'thought') {
         const auxParts = buildAuxiliaryMessage(role, text);
         if (!(options && options.restore)) {
@@ -405,7 +409,7 @@ export function restoreHistory(messages, localHistoryOnly) {
             if (m.role === 'permission') {
                 restorePermissionMessage(m);
             } else {
-                appendMessage(m.role, m.text, { restore: true, deferMarkdown: true, images: m.images });
+                appendMessage(m.role, m.text, { restore: true, deferMarkdown: true, images: m.images, history: m.history });
             }
         }
         if (cursor < messages.length) {
