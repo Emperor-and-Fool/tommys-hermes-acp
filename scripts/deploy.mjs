@@ -62,7 +62,6 @@ const files = [
     'package.nls.zh-cn.json',
     'media/chat.html',
     'media/chat.css',
-    'media/chat.js',
     'media/pane.js',
 ];
 

@@ -19,3 +19,4 @@ packaging/**
 .vscode-test/**
 package-lock.json
 *.vsix
+*.old
