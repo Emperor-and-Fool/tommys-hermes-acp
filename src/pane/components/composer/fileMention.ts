@@ -4,6 +4,9 @@ import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { syncInputHeightFromContent } from './composer';
 
+/* File-ref previews awaiting a host reply. Mutated, never reassigned. */
+export const previewRequests = new Map<string, any>();
+
 
 function hideFilePreview() {
     if (state.previewHideTimer) {
@@ -73,7 +76,7 @@ function attachFileRefPreview(link) {
 
 export function processFileRefs(container) {
     if (!container) return;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
     const nodesToReplace = [];
     while (walker.nextNode()) {
         const node = walker.currentNode;
