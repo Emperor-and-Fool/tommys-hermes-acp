@@ -370,6 +370,57 @@ body.vscode-high-contrast-light {
     color: var(--dim);
     margin-top: 4px;
 }
+/* Permission card: approval mode. A setting, not an answer: it sits above the buttons. */
+.message.permission .permission-approval-block {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-self: flex-start;
+    margin: 2px 0 8px;
+}
+.message.permission .permission-approval {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.message.permission .permission-approval-btn {
+    background: var(--input-bg);
+    border: 0;
+    border-right: 1px solid var(--border);
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 3px 10px;
+}
+.message.permission .permission-approval-btn:last-of-type {
+    border-right: 0;
+}
+.message.permission .permission-approval-btn:hover:not(:disabled) {
+    background: var(--text-block);
+}
+.message.permission .permission-approval-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.message.permission .permission-approval-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--primary) 20%, var(--input-bg));
+    color: var(--primary);
+    font-weight: 700;
+}
+.message.permission .permission-approval[data-mode="off"] .permission-approval-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--error) 18%, var(--input-bg));
+    color: var(--error);
+}
+.message.permission .permission-approval-error {
+    font-size: 10px;
+    color: var(--error);
+}
+.message.permission .permission-approval-error[hidden] {
+    display: none;
+}
 .message.user .label {
     color: color-mix(in srgb, var(--fg) 65%, transparent);
 }

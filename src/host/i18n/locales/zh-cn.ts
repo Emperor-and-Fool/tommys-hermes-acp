@@ -368,4 +368,9 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyChipSummary: '{0} 条消息，来自 {1}',
     historyChipPending: '正在查找消息 ID',
     historyChipClear: '移除附带的记忆',
+    approvalModeManual: '手动',
+    approvalModeSmart: '智能',
+    approvalModeOff: '关闭',
+    approvalModeTooltip: '该审批模式作用于整个 profile，包括命令行中的 Hermes。关闭会完全跳过智能审批。',
+    approvalModeFailed: '无法更改审批模式。',
 };

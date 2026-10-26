@@ -1,7 +1,7 @@
 import { setConfigureEnvDetectDetailsTitle, updateConfigureEnvPathClearVisibility, updateConfigureEnvSystemHint } from './components/environment/configureModal';
 import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnvDetailsTitle } from './components/environment/detectPanel';
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
-import { pendingPermissions, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/messages/permissionCard';
+import { pendingPermissions, refreshApprovalModeLabels, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/messages/permissionCard';
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
 import { buildFaqAccordion } from './components/modals/info';
 import { updateMultiSelectToolbar } from './components/multiSelect';
@@ -178,6 +178,7 @@ export function applyLocale() {
         const labelEl = group.querySelector('.permission-label');
         if (labelEl) labelEl.textContent = locale.permissionTitle || 'Permission required';
         refreshPermissionOptionLabels(group);
+        refreshApprovalModeLabels(group);
         if (group._permissionState) {
             group._permissionState.moreBtn.textContent = locale.permissionShowMore || 'Show more';
             group._permissionState.lessBtn.textContent = locale.permissionCollapse || 'Collapse';

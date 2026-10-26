@@ -9,7 +9,7 @@
  * Typing the contract is its own piece of work — this file is where that type will land.
  */
 import type { EnvironmentDetection } from '../environment/detection';
-import type { PaneToHost } from '../../shared/webview';
+import type { PaneToHost, ApprovalMode } from '../../shared/webview';
 
 /** What the router may call. One function per capability the pane can ask for. */
 export interface RouterHost {
@@ -42,6 +42,8 @@ export interface RouterHost {
 
     retry(): Promise<void>;
     handlePermissionResponse(id: string, optionId: string | null): void;
+    /** Write Hermes' approvals.mode for the active profile. */
+    setApprovalMode(mode: ApprovalMode): Promise<void>;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
     /** The session-memory dropdown: the viewer tab, and the chip's X. */
@@ -148,6 +150,9 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'permissionResponse':
             host.handlePermissionResponse(message.id, message.optionId ?? null);
+            break;
+        case 'setApprovalMode':
+            void host.setApprovalMode(message.mode);
             break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');

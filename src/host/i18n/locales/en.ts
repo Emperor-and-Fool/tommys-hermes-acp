@@ -368,4 +368,9 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyChipSummary: '{0} messages from {1}',
     historyChipPending: 'looking up message ids',
     historyChipClear: 'Remove attached memory',
+    approvalModeManual: 'Manual',
+    approvalModeSmart: 'Smart',
+    approvalModeOff: 'Off',
+    approvalModeTooltip: 'Approval mode for this whole profile, Hermes CLI included. Off skips Smart approval entirely.',
+    approvalModeFailed: 'Could not change the approval mode.',
 };

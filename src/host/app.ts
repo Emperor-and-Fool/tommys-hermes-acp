@@ -26,6 +26,8 @@ import { HistoryStages, blockMessageLines } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
+import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './environment/approvalMode';
+import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
 /**
@@ -166,6 +168,9 @@ export class App implements vscode.WebviewViewProvider {
      * tab must never ride along with another tab's send.
      */
     private readonly _historyStages: HistoryStages = new HistoryStages();
+
+    /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
+    private readonly _approvalModes: Map<string, ApprovalMode> = new Map();
 
     private readonly _extensionId: string;
 
@@ -479,6 +484,10 @@ export class App implements vscode.WebviewViewProvider {
             this._profiles.postList();
         }
         const reconnectKeys = ['tommys.path', 'tommys.cwd', 'tommys.profile'];
+        if (e.affectsConfiguration('tommys.profile')) {
+            // Another profile means another approvals.mode.
+            this._approvalModes.clear();
+        }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
             if (e.affectsConfiguration('tommys.profile') && this._profiles.readAgentConfigs().length === 0) {
                 const config = vscode.workspace.getConfiguration('tommys');
@@ -695,7 +704,10 @@ export class App implements vscode.WebviewViewProvider {
             handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
             handleTogglePinSession: (sessionId) => this._session.handleTogglePinSession(sessionId),
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
-            handleSwitchAgent: (name) => this._connection.switchProfile(name),
+            handleSwitchAgent: (name) => {
+                this._approvalModes.clear();
+                this._connection.switchProfile(name);
+            },
             handleSwitchSession: (sessionId, interrupt) => {
                 if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
                     this._surfaces.openPanel();
@@ -707,6 +719,7 @@ export class App implements vscode.WebviewViewProvider {
             postProfileList: () => this._profiles.postList(),
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
+            setApprovalMode: (mode) => this.setApprovalMode(mode),
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
             openHistoryViewer: (sessionId, title) => this.openHistoryViewer(sessionId, title),
@@ -733,6 +746,54 @@ export class App implements vscode.WebviewViewProvider {
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
+        if (msg.type === 'permissionRequest') {
+            // The card is about to ask for a decision; its switch needs the current mode now.
+            this._postApprovalMode();
+        }
+    }
+
+    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
+    private _postApprovalMode(): void {
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const cached = this._approvalModes.get(profile);
+        this._postMessage({ type: 'approvalMode', mode: cached ?? 'unknown' });
+        void this._refreshApprovalMode(profile, cached);
+    }
+
+    private async _refreshApprovalMode(profile: string, previous: ApprovalMode | undefined): Promise<void> {
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            return;
+        }
+        const mode = await readApprovalMode(executable, profile);
+        this._approvalModes.set(profile, mode);
+        if (mode !== previous) {
+            this._postMessage({ type: 'approvalMode', mode });
+        }
+    }
+
+    /** The switch was used: write it to the profile, and say so (or put the old value back). */
+    public async setApprovalMode(mode: ApprovalMode): Promise<void> {
+        if (!isSettableApprovalMode(mode)) {
+            this._log(`Approval mode ignored: ${String(mode)}`);
+            return;
+        }
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const previous = this._approvalModes.get(profile) ?? 'unknown';
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            this._log('Approval mode not set: no Hermes executable found');
+            this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
+            return;
+        }
+        if (await writeApprovalMode(executable, profile, mode)) {
+            this._approvalModes.set(profile, mode);
+            this._postMessage({ type: 'approvalMode', mode });
+            this._log(`Approval mode set to ${mode} (profile=${profile})`);
+            return;
+        }
+        this._log(`Approval mode write failed: ${mode} (profile=${profile})`);
+        this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
     }
 
     private _postConfig(): void {

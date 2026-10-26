@@ -8,7 +8,7 @@ import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvI
 import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
 import { insertIntoInput } from './components/messages/messageActions';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
-import { dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
+import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finishStreaming } from './components/messages/streaming';
 import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliaryContent } from './components/messages/toolCards';
 import { renderAboutContent } from './components/modals/info';
@@ -343,6 +343,10 @@ export function init(): void {
 
             case 'permissionDismiss':
                 dismissPermissionRequest(msg.id, locale.permissionCancelled);
+                break;
+
+            case 'approvalMode':
+                applyApprovalMode(msg.mode, msg.error);
                 break;
 
             case 'historyStaged':

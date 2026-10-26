@@ -1,4 +1,5 @@
 import { byId, messagesEl, statusText } from '../../dom';
+import type { ApprovalMode } from '../../../shared/webview';
 import { post } from '../../post';
 import { state } from '../../state';
 import { createGroup, maybeScrollToBottom } from './messageList';
@@ -168,6 +169,10 @@ function applyPermissionResolvedUI(group, statusText) {
     if (actions) {
         actions.style.display = 'none';
     }
+    const approval = div.querySelector('.permission-approval-block');
+    if (approval) {
+        approval.style.display = 'none';
+    }
     let status = div.querySelector('.permission-status');
     if (!status) {
         status = document.createElement('div');
@@ -175,6 +180,120 @@ function applyPermissionResolvedUI(group, statusText) {
         div.appendChild(status);
     }
     status.textContent = statusText;
+}
+
+/** The modes the switch offers, in the order it shows them. */
+const APPROVAL_MODE_CHOICES: Array<Exclude<ApprovalMode, 'unknown'>> = ['manual', 'smart', 'off'];
+
+/** The last `approvalMode` message, and why a write did not take. */
+let approvalMode: ApprovalMode = 'unknown';
+
+let approvalModeError = '';
+
+function approvalModeLabel(mode) {
+    if (mode === 'manual') return locale.approvalModeManual || 'Manual';
+    if (mode === 'smart') return locale.approvalModeSmart || 'Smart';
+    return locale.approvalModeOff || 'Off';
+}
+
+/**
+ * The switch: Manual · Smart · Off, for Hermes' approvals.mode.
+ *
+ * It is a setting, not an answer: it changes the whole profile and leaves the card in front of
+ * you untouched, which is why it sits above the buttons rather than among them.
+ */
+function buildApprovalBlock() {
+    const block = document.createElement('div');
+    block.className = 'permission-approval-block';
+    const tip = locale.approvalModeTooltip || '';
+    const row = document.createElement('div');
+    row.className = 'permission-approval';
+    row.setAttribute('role', 'group');
+    row.title = tip;
+    if (tip) {
+        row.setAttribute('aria-label', tip);
+    }
+    APPROVAL_MODE_CHOICES.forEach(function(mode) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'permission-approval-btn';
+        btn.dataset.approvalMode = mode;
+        btn.textContent = approvalModeLabel(mode);
+        btn.setAttribute('aria-pressed', 'false');
+        btn.title = tip;
+        btn.disabled = true;
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (btn.disabled) {
+                return;
+            }
+            post({ type: 'setApprovalMode', mode: mode });
+        });
+        row.appendChild(btn);
+    });
+    block.appendChild(row);
+    const error = document.createElement('div');
+    error.className = 'permission-approval-error';
+    error.hidden = true;
+    block.appendChild(error);
+    return block;
+}
+
+/**
+ * One card's switch follows the module state. `withError` is false for a card that is being
+ * mounted: a failure that happened before it existed is not its error to show.
+ */
+function syncApprovalRow(group, withError = true) {
+    const block = group.querySelector('.permission-approval-block');
+    if (!block) {
+        return;
+    }
+    const row = block.querySelector('.permission-approval');
+    // Anything the host could not read arrives as `unknown`: nothing is pressed then.
+    const known = approvalMode !== 'unknown';
+    if (row) {
+        row.dataset.mode = approvalMode;
+        row.querySelectorAll('.permission-approval-btn').forEach(function(btn) {
+            const selected = known && btn.dataset.approvalMode === approvalMode;
+            btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            btn.classList.toggle('is-selected', selected);
+            btn.disabled = !known;
+        });
+    }
+    const error = block.querySelector('.permission-approval-error');
+    if (error) {
+        error.hidden = !(withError && approvalModeError);
+        error.textContent = approvalModeError;
+    }
+}
+
+/** A locale change: the switch's words are ours, so they move with the rest. */
+export function refreshApprovalModeLabels(group) {
+    const block = group.querySelector('.permission-approval-block');
+    if (!block) {
+        return;
+    }
+    const tip = locale.approvalModeTooltip || '';
+    const row = block.querySelector('.permission-approval');
+    if (row) {
+        row.title = tip;
+        if (tip) {
+            row.setAttribute('aria-label', tip);
+        }
+    }
+    block.querySelectorAll('.permission-approval-btn').forEach(function(btn) {
+        btn.textContent = approvalModeLabel(btn.dataset.approvalMode);
+        btn.title = tip;
+    });
+}
+
+/** An `approvalMode` message: every pending card follows it. */
+export function applyApprovalMode(mode: ApprovalMode, error?: string) {
+    approvalMode = mode || 'unknown';
+    approvalModeError = error || '';
+    pendingPermissions.forEach(function(group) {
+        syncApprovalRow(group);
+    });
 }
 
 function buildPermissionCard(id, msg, cardOptions) {
@@ -223,6 +342,10 @@ function buildPermissionCard(id, msg, cardOptions) {
     controls.appendChild(lessBtn);
     wrap.appendChild(controls);
     div.appendChild(wrap);
+
+    if (!readOnly && !msg.resolved) {
+        div.appendChild(buildApprovalBlock());
+    }
 
     const options = msg.options || [];
     div.appendChild(buildPermissionActions(id, options, readOnly));
@@ -278,6 +401,7 @@ function mountPermissionCard(id, msg, cardOptions?) {
     container.appendChild(stack);
     group.appendChild(container);
     updatePermissionContent(group, msg.title, msg.detail);
+    syncApprovalRow(group, false);
     if (readOnly || msg.resolved) {
         let statusText = locale.permissionCancelled || 'Cancelled';
         if (msg.outcome === 'selected' && (msg.selectedLabel || msg.selectedOptionId)) {

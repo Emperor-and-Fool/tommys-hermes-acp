@@ -290,6 +290,13 @@ export interface LocaleStrings {
     historyChipSummary: string;
     historyChipPending: string;
     historyChipClear: string;
+
+    // Permission card: approval mode
+    approvalModeManual: string;
+    approvalModeSmart: string;
+    approvalModeOff: string;
+    approvalModeTooltip: string;
+    approvalModeFailed: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

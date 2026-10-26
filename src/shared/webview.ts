@@ -54,6 +54,8 @@ export type HostToPane =
     // Permissions.
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
+    /** The approval mode the pending cards offer, and why a change did not take. */
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
@@ -76,6 +78,12 @@ export interface PaneImage {
     mimeType: string;
     data: string;
 }
+
+/**
+ * Hermes' `approvals.mode`, as a permission card offers it. `unknown` means the CLI could not be
+ * read (no executable, or a value this pane does not know): nothing is pressed then.
+ */
+export type ApprovalMode = 'manual' | 'smart' | 'off' | 'unknown';
 
 /** What "close" means for the tab strip: one tab, a group, or everything. */
 export type SessionCloseMode = 'self' | 'others' | 'left' | 'right' | 'all';
@@ -130,6 +138,9 @@ export type PaneToHost =
     // Turn-level answers and transcript surgery.
     | { type: 'permissionResponse'; id: string; optionId: string | null }
     | { type: 'deleteMessages'; indices: number[] }
+
+    /** The approval switch on a pending card: one value, written to Hermes' profile config. */
+    | { type: 'setApprovalMode'; mode: ApprovalMode }
 
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
