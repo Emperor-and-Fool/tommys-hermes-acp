@@ -3,14 +3,11 @@
  *
  * One list per direction, each a union keyed on `type`, so a reader can see every message the
  * extension speaks without opening either side. Derived from the code, not from a capture:
- * `media/chat.js` for what the pane actually sends, `webview/router.ts` for what the host
- * accepts. A capture only shows what happened while it ran.
+ * the `post()` calls in `pane/` for what the pane sends, `pane/router.ts` for what it accepts,
+ * `host/webview/router.ts` for what the host accepts. A capture only shows what happened while it ran.
  *
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
- *
- * LATER: `media/chat.js` can point at these shapes through JSDoc + `// @ts-check`, so the pane
- * side is checked as well without rewriting it in TypeScript.
  */
 import type { ChatMessage, ContextAttachOption, SessionInfo } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';

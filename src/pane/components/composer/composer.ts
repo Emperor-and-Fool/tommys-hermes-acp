@@ -13,7 +13,7 @@ import { clearReplyQuote, withReplyQuote } from './replyQuote';
 const inputAreaEl = byId('input-area');
 
 const inputCompositeEl = byId('inputComposite');
-/* chat.js:16 — the wrapper above #inputComposite. A lookup, so top level is fine. */
+/* The wrapper above #inputComposite. A lookup, so top level is fine. */
 const inputCompositeShellEl = inputCompositeEl ? inputCompositeEl.closest('.input-composite-shell') : null;
 
 const inputQuickPanel = byId('inputQuickPanel');

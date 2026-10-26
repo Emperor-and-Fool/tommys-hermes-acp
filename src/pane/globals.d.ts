@@ -19,7 +19,7 @@ interface Window {
     [key: string]: any;
 }
 
-/* chat.js is plain JS: element property access is unchecked until each component is typed. */
+/* Ported from plain JS: element property access stays unchecked until each component is typed. */
 interface Element { [key: string]: any; }
 interface EventTarget { [key: string]: any; }
 interface Node { [key: string]: any; }
