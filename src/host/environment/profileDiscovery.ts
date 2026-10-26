@@ -97,7 +97,9 @@ export function runHermesCommand(executable: string, args: string[]): Promise<st
             if (code === 0) {
                 resolve(stdout);
             } else {
-                reject(new Error(stderr.trim() || `hermes exited with code ${code}`));
+                // Hermes prints its refusals to stdout ("Error: …") and nothing to stderr,
+                // so both are consulted before falling back to the exit code.
+                reject(new Error(stderr.trim() || stdout.trim() || `hermes exited with code ${code}`));
             }
         });
     });

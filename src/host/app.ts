@@ -231,6 +231,8 @@ export class App implements vscode.WebviewViewProvider {
             msgPath: (id) => this._session.msgPath(id),
             postSessionList: () => this._session.postList(),
             postHistoryState: (tabId) => this._postHistoryState(tabId),
+            resolveHermesExecutable: () => this._resolveHermesExecutable(),
+            cliProfile: () => this._profiles.resolveTarget().cliProfile,
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             loadHistory: () => this._session.loadHistory(),
             activate: (id, options) => this._session.activate(id, options),

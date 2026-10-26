@@ -729,38 +729,6 @@ export class AcpClient {
     }
 
     /**
-     * Retitle one Hermes session.
-     *
-     * Hermes owns titles, so this writes the row and nothing else: the tab takes the new name
-     * from the next catalog read. A refusal (a name another session holds, or one past the
-     * agent's length limit) arrives as a rejected request, and its message is passed through
-     * rather than flattened, because it is the only explanation the user gets.
-     */
-    async setSessionTitle(sessionId: string, title: string): Promise<boolean> {
-        if (!this._conn) {
-            throw new Error('Not connected');
-        }
-        this._onLog(`session/setTitle ${sessionId}`);
-        try {
-            const response = await this._conn.agent.request(
-                '_session/setTitle' as any,
-                { sessionId, title } as any,
-            ) as any;
-            return response?.ok === true;
-        } catch (err) {
-            // The agent explains a refusal in the JSON-RPC error's `data`, not in its message
-            // ("Invalid params"), so the reason is lifted out here and reaches the log intact.
-            const data = (err as { data?: unknown })?.data;
-            const carried = typeof data === 'string'
-                ? data
-                : (data && typeof (data as { reason?: unknown }).reason === 'string'
-                    ? (data as { reason: string }).reason
-                    : '');
-            throw new Error(carried || (err instanceof Error ? err.message : String(err)));
-        }
-    }
-
-    /**
      * Resume an existing Hermes session on the live connection.
      *
      * ACP requires the agent to stream prior history as `session/update` before
