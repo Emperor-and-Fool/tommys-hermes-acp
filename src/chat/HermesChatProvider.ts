@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { AttachmentStore } from '../cache/attachments';
 import type { ChatMessage, SessionInfo, StoredImageRef } from '../types/chat';
 import * as path from 'path';
-import { AcpClient, CatalogSession, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
+import { AcpClient, PermissionRequest, ReplayMessage, TokenUsage } from '../acp/AcpClient';
 import { ModelState } from '../models/modelState';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../environment/hermesProfile';
@@ -27,12 +27,8 @@ import type { HostToPane, PaneToHost } from '../types/webview';
 import { handleWebviewMessage } from '../webview/router';
 import type { RouterHost } from '../webview/router';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
-import { SessionStore } from '../cache/sessionStore';
 import { Sessions } from '../cache/sessions';
-import { renameSession } from '../cache/catalog';
-import { hermesSessionIdFor } from '../tabs/tabs';
-import { buildReplayMessages } from '../cache/replay';
-import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
+import { TabLifecycle } from '../tabs/lifecycle';
 import { PromptRunner } from './promptRunner';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import {
@@ -48,9 +44,7 @@ import {
 /** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
 export { CHAT_PANEL_VIEW_TYPE } from '../webview/surfaces';
 
-
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
-
 
 interface HermesAgentConfig {
     name: string;
@@ -72,7 +66,6 @@ interface ConnectionTarget {
     configPath?: string;
     configCwd?: string;
 }
-
 
 export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
@@ -113,7 +106,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
     private get _scopeKey(): string { return this._session.scopeKey; }
-    private get _store(): SessionStore { return this._session.store; }
     private get _sessionMessages(): ChatMessage[] { return this._session.messages; }
     private set _sessionMessages(value: ChatMessage[]) { this._session.messages = value; }
     private get _sessionId(): string { return this._session.activeId; }
@@ -171,15 +163,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _connectPromise: Promise<void> | undefined;
     /** When true, suppress forwarding ACP `ready` until post-connect setup completes. */
     private _deferReadyUntilSessionSetup = false;
-    /**
-     * True only while a load the user asked for (tab switch, adopt, resume) is in
-     * flight; a load fired mid-send must not repaint over the pending turn.
-     */
-    private _renderReplayOnLoad = false;
+    /** A tab's life as Hermes knows it: resume/adopt, replay, switch, close, open, rename. */
+    private readonly _lifecycle: TabLifecycle;
     /** Chat session currently bound to the single ACP agent runtime context. */
     private _acpBoundSessionId: string = '';
-    /** Hermes session id this workspace last had open (workspaceState-backed). */
-    private _persistedHermesSessionId: string = '';
     /** This tab's own messages offered to the picker; not an earlier session. */
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
     private readonly _detection = new EnvironmentDetection({
@@ -207,7 +194,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     ) {
         const context = this._context;
         this._extensionId = context.extension.id;
-        this._persistedHermesSessionId = context.workspaceState.get<string>('hermesSessionId') || '';
         // The profile/agent last picked in the UI outlives the window: without this the
         // extension always reopened on the `tommys.profile` setting, not on the user's pick.
         this._persistedSelectionId = context.globalState.get<string>('activeSelectionId') || '';
@@ -231,6 +217,30 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             modelLabel: () => this._models.currentLabel,
         });
         this._session.init();
+        this._lifecycle = new TabLifecycle({
+            acp: () => this._acp,
+            session: this._session,
+            post: (msg) => this._postMessage(msg),
+            postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
+            log: (line) => this._log(line),
+            resolveCwd: () => this._files.resolveCwd(),
+            attachments: this._attachments,
+            offerContextAttach: (messages) => this._contextAttach.offer(messages),
+            promptSessionId: () => this._turn.promptSessionId,
+            detachActivePrompt: (id, options) => this._detachActivePrompt(id, options),
+            otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
+            syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
+            syncPromptUiIfReturningToOwner: () => this._syncPromptUiIfReturningToOwner(),
+            snapshotModelFromProfile: () => this._models.snapshotFromProfile(),
+            saveCatalog: () => this._saveCatalog(),
+            saveCurrent: () => this._saveCurrentSession(),
+            ensureRegistered: () => this._ensureSessionRegistered(),
+            msgPath: (id) => this._msgPath(id),
+            postSessionList: () => this._postSessionList(),
+            loadHistory: () => this._loadHistory(),
+            activate: (id, options) => this._activateSession(id, options),
+            workspaceState: context.workspaceState,
+        });
 
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
@@ -242,6 +252,27 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _msgPath(sid: string): string { return this._session.msgPath(sid); }
+
+    /** One-line delegates: the tab lifecycle moved to tabs/lifecycle.ts, the callers stayed. */
+    private _restoreMessages(target?: ChatSurface): void { this._lifecycle.restoreMessages(target); }
+    private _handleHistoryReplay(hermesSessionId: string, replay: ReplayMessage[]): void {
+        this._lifecycle.handleHistoryReplay(hermesSessionId, replay);
+    }
+    private async _resumeOrAdoptSession(cwd: string): Promise<void> { await this._lifecycle.resumeOrAdopt(cwd); }
+    private _bindHermesSessionId(hermesSessionId: string): void { this._lifecycle.bindHermesSessionId(hermesSessionId); }
+    private async _handleSwitchSession(
+        sessionId: string,
+        options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
+    ): Promise<void> {
+        await this._lifecycle.switchTo(sessionId, options);
+    }
+    private async _handleCloseSessions(sessionId: string, mode: unknown): Promise<void> {
+        await this._lifecycle.closeSessions(sessionId, mode);
+    }
+    private async _handleOpenTab(sessionId?: string): Promise<void> { await this._lifecycle.openTab(sessionId); }
+    private async _handleRenameSession(sessionId: unknown, rawTitle: unknown): Promise<void> {
+        await this._lifecycle.renameTab(sessionId, rawTitle);
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -354,7 +385,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return rec?.title || t('newChat');
     }
 
-
     private _log(msg: string, level?: LogLevel): void {
         const time = new Date().toISOString().slice(11, 19);
         const line = `[${time}] ${msg}`;
@@ -379,8 +409,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             && this._turn.promptSessionId !== this._sessionId;
     }
 
-
-
     private async _syncModelStateForCurrentSession(): Promise<void> {
         await this._models.sync();
         if (this._otherSessionIsPrompting()) {
@@ -390,7 +418,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             await this._models.applySessionPreference();
         }
     }
-
 
     private _syncPromptUiIfReturningToOwner(): void {
         if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._sessionId) {
@@ -434,117 +461,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * reconnect added a throwaway row. `session/list` is the real catalog; local
      * entries become a cache keyed by `hermesSessionId`.
      */
-    /**
-     * Rebuild the tab list from Hermes' catalog.
-     *
-     * A tab *is* an unhidden session, so the list is a projection of `sessions.hidden`
-     * rather than a second store: nothing here can drift from Hermes, a close is the same
-     * operation as an open with a different value, and a session created by the TUI or the
-     * dashboard appears without any adoption step.
-     */
-    private _applyCatalog(rows: CatalogSession[]): void { this._session.applyCatalog(rows); }
     /** Read the catalog; null when there is no connection to ask. */
-    private async _readCatalog(): Promise<CatalogSession[] | null> {
-        const acp = this._acp;
-        if (!acp) {
-            return null;
-        }
-        try {
-            return await acp.listSessionCatalog();
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._log(`session/catalog failed: ${msg}`);
-            return null;
-        }
-    }
-
-    private async _syncSessionsFromHermes(cwd: string): Promise<void> {
-        void cwd;
-        const rows = await this._readCatalog();
-        if (rows) {
-            this._applyCatalog(rows);
-        }
-    }
 
     /** Refresh the tab list from Hermes, then repaint it. */
-    private async _refreshSessionsFromHermes(): Promise<void> {
-        await this._syncSessionsFromHermes(this._files.resolveCwd());
-        this._postSessionList();
-    }
-
-    private async _resumeOrAdoptSession(cwd: string): Promise<void> {
-        const acp = this._acp;
-        if (!acp) {
-            return;
-        }
-        await this._syncSessionsFromHermes(cwd);
-        const tabBound = this._sessions.find(rec => rec.id === this._sessionId)?.hermesSessionId;
-        const target = tabBound || this._persistedHermesSessionId;
-        // First run / empty tab: open the most recent Hermes session rather than
-        // leaving the throwaway session `session/new` just created in front of the
-        // user. This is what makes existing conversations reappear as tabs.
-        if (!target && this._sessionMessages.length === 0) {
-            const newest = this._sessions.find(rec => !!rec.hermesSessionId);
-            if (newest?.hermesSessionId) {
-                this._sessionId = newest.id;
-                this._sessionMessages = [];
-                this._loadHistory();
-                this._postMessage({ type: 'newChat' });
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(newest.cwd || cwd, newest.hermesSessionId);
-                } finally {
-                    this._renderReplayOnLoad = false;
-                }
-                this._bindHermesSessionId(newest.hermesSessionId);
-                this._postSessionList();
-                this._log(`Adopted most recent Hermes session ${newest.hermesSessionId}`);
-                return;
-            }
-        }
-        if (target && target !== acp.activeSessionId) {
-            const targetCwd = this._sessions.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
-            try {
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(targetCwd, target);
-                } finally {
-                    this._renderReplayOnLoad = false;
-                }
-                this._bindHermesSessionId(target);
-                this._log(`Resumed Hermes session ${target}`);
-                return;
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._log(`Resume failed for ${target}: ${msg}`);
-            }
-        }
-        this._bindHermesSessionId(acp.activeSessionId);
-    }
 
     /** Resume one tab's Hermes session; false when the tab has nothing to resume. */
-    private async _resumeTabHermesSession(sessionId: string): Promise<boolean> {
-        const acp = this._acp;
-        const bound = this._sessions.find(rec => rec.id === sessionId)?.hermesSessionId;
-        if (!acp || !bound || bound === acp.activeSessionId) {
-            return false;
-        }
-        try {
-            const record = this._sessions.find(rec => rec.id === sessionId);
-            this._renderReplayOnLoad = true;
-            try {
-                await acp.loadSession(record?.cwd || this._files.resolveCwd(), bound);
-            } finally {
-                this._renderReplayOnLoad = false;
-            }
-            this._log(`Switched Hermes session to ${bound}`);
-            return true;
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._log(`Resume failed for ${bound}: ${msg}`);
-            return false;
-        }
-    }
 
     /**
      * Render the transcript Hermes replayed for a loaded session.
@@ -554,75 +475,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * tab's message file so the next switch renders from disk instead of
      * replaying, and only painted when that tab is still the open one.
      */
-    private _handleHistoryReplay(hermesSessionId: string, replay: ReplayMessage[]): void {
-        const record = this._sessions.find(
-            rec => rec.hermesSessionId === hermesSessionId || rec.id === hermesSessionId
-        );
-        const localId = record?.id || hermesSessionId;
-        const messages = buildReplayMessages(replay);
-        if (messages.length === 0) {
-            return;
-        }
-        // A send that died between the pane and the agent leaves a user message in the local
-        // mirror that Hermes never received. Read it before the replay overwrites the file.
-        const undelivered = findUndelivered(lastUserMessageText(this._store.readMessages(localId)), messages);
-        // The replay is text-only, so refs are restored from the attachment sidecar: the agent's
-        // sequence carries thought and tool records and rewrites this file, so neither position
-        // nor the file itself can be trusted to still hold them.
-        try {
-            const used = new Set<string>();
-            for (const msg of messages) {
-                if (msg.role !== 'user' || (msg.imageRefs && msg.imageRefs.length)) continue;
-                const refs = this._attachments.refsFromIndex(msg.text, used, true);
-                if (refs.length) {
-                    msg.imageRefs = refs;
-                }
-            }
-        } catch { /* the transcript still restores, without the pictures */ }
-        this._store.writeReplayedMessages(localId, messages);
-        if (record) {
-            record.messageCount = messages.length;
-            record.agentEngaged = true;
-            try {
-                this._saveCatalog();
-            } catch { /* non-critical */ }
-        }
-        this._log(`Replayed ${messages.length} messages for session ${localId}`);
-        if (!this._renderReplayOnLoad || this._sessionId !== localId) {
-            // Cached only: the user is either elsewhere or mid-send in this tab.
-            this._postSessionList();
-            return;
-        }
-        this._sessionMessages = messages;
-        this._postMessage({ type: 'newChat' });
-        this._postMessage({
-            type: 'restoreHistory',
-            messages: this._attachments.hydrateImages(this._sessionMessages),
-            localHistoryOnly: false,
-        });
-        this._contextAttach.offer(this._sessionMessages);
-        this._postSessionList();
-        if (undelivered) {
-            this._log(`Undelivered message offered back to the composer: ${localId}`);
-            this._postMessage({ type: 'undeliveredMessage', text: undelivered });
-        }
-    }
 
     /** Remember which Hermes session backs the current tab and this workspace. */
-    private _bindHermesSessionId(hermesSessionId: string): void {
-        if (!hermesSessionId) {
-            return;
-        }
-        this._persistedHermesSessionId = hermesSessionId;
-        const rec = this._sessions.find(item => item.id === this._sessionId);
-        if (rec && rec.hermesSessionId !== hermesSessionId) {
-            rec.hermesSessionId = hermesSessionId;
-            try {
-                this._saveCatalog();
-            } catch { /* non-critical */ }
-        }
-        void this._context.workspaceState.update('hermesSessionId', hermesSessionId);
-    }
 
     /** True when the current tab has a usable Hermes session. */
     private async _ensureAcpReadyForCurrentSession(): Promise<boolean> {
@@ -645,28 +499,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return this._turn.detachActivePrompt(fromSessionId, options);
     }
 
-    private _restoreMessages(target?: ChatSurface): void {
-        if (this._sessionMessages.length === 0) return;
-        this._log(`Restoring ${this._sessionMessages.length} messages`);
-        const msg: HostToPane = {
-            type: 'restoreHistory',
-            messages: this._attachments.hydrateImages(this._sessionMessages),
-            localHistoryOnly: true,
-        };
-        if (target) {
-            this._surfaces.postTo(target, msg);
-        } else {
-            this._postMessage(msg);
-        }
-        this._contextAttach.offer(this._sessionMessages);
-    }
-
-
-
-
-
-
-
     private _saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[]): void {
         this._session.saveMessage(role, text, toolCallId, imageRefs);
     }
@@ -683,8 +515,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * The replay is text-only and rewrites the transcript file, so refs stored on a record can
      * be lost. This sidecar is written on send and never rewritten by a replay.
      */
-
-
 
     /** Attachments for a message that carries no refs: exact key first, then by order. */
 
@@ -806,7 +636,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             label: this._profileLabelFor(p),
         }));
     }
-
 
     private async _connect(selectionId?: string): Promise<void> {
         if (this._acp) {
@@ -1095,21 +924,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._detection.configureEnvironment();
     }
 
-
     private _postProfileList(): void {
         void this._ensureDiscoveredProfiles().then(() => {
             this._postMessage({ type: 'profileList', profiles: this._getProfileEntries() });
         });
     }
 
-
-
     /** Point the *live* session at another model. No session/new: Hermes' set_session_model
      *  swaps the agent in place, and a fresh session here would silently drop the tab's
      *  conversation (and leave an empty row in the catalog). */
-
-
-
 
     private async _handleUserMessage(text: string, contextAttach?: ContextAttachOption, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         const epoch = this._turn.sendEpoch;
@@ -1171,70 +994,15 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         return this._turn.cancel();
     }
 
-
-
-
-
-
-
     private _handleDeleteMessages(indices: unknown): void { this._session.handleDeleteMessages(indices); }
-
-    private async _createBlankTab(): Promise<void> {
-        this._saveCurrentSession();
-        this._sessionMessages = [];
-        this._sessionId = Date.now().toString(36);
-        try { fs.unlinkSync(this._msgPath(this._sessionId)); } catch { /* ignore */ }
-        this._ensureSessionRegistered();
-        this._models.snapshotFromProfile();
-        this._postMessage({ type: 'newChat' });
-        this._postSessionList();
-    }
 
     /**
      * A prompt belongs to the tab it was started in, so switching away from a running one
      * has to end it first. Returns false when the switch must not happen at all.
      */
-    private async _endPromptBeforeSwitch(options?: { interrupt?: boolean }): Promise<boolean> {
-        if (this._currentSessionIsPrompting()) {
-            if (!options?.interrupt) {
-                return false;
-            }
-            await this._detachActivePrompt(this._sessionId, { savePartial: true });
-        } else if (this._otherSessionIsPrompting()) {
-            await this._detachActivePrompt(this._turn.promptSessionId!, { savePartial: true });
-        }
-        return true;
-    }
 
     private _activateSession(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
         this._session.activate(sessionId, options);
-    }
-
-    private async _handleSwitchSession(
-        sessionId: string,
-        options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
-    ): Promise<void> {
-        if (sessionId === this._sessionId) {
-            return;
-        }
-        if (!(await this._endPromptBeforeSwitch(options))) {
-            return;
-        }
-        this._activateSession(sessionId, options);
-        // Resumed history arrives as session/update; only fall back to the local
-        // render cache when this tab has no Hermes session to replay.
-        const resumed = await this._resumeTabHermesSession(sessionId);
-        if (!resumed) {
-            this._restoreMessages();
-        }
-        await this._syncModelStateForCurrentSession();
-        this._syncPromptUiIfReturningToOwner();
-    }
-
-    private _currentSessionIsPrompting(): boolean {
-        return this._acp?.status === 'prompting'
-            && !!this._turn.promptSessionId
-            && this._turn.promptSessionId === this._sessionId;
     }
 
     private _handleReorderSessions(sessionIds: unknown): void { this._session.handleReorderSessions(sessionIds); }
@@ -1245,91 +1013,11 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * Closing is not deletion: the transcript, the title and the cwd all stay in Hermes,
      * the row simply stops being an open tab, and `[+ Open Tab]` is where it comes back.
      */
-    private async _handleCloseSessions(sessionId: string, mode: unknown): Promise<void> {
-        if (typeof mode !== 'string' || !this._sessions.length) {
-            return;
-        }
-        const ids = this._sessions.map(s => s.id);
-        const idx = ids.indexOf(sessionId);
-        let toHide: string[] = [];
-        switch (mode) {
-            case 'self':
-                toHide = idx === -1 ? [] : [sessionId];
-                break;
-            case 'others':
-                toHide = idx === -1 ? [] : ids.filter(id => id !== sessionId);
-                break;
-            case 'left':
-                toHide = idx > 0 ? ids.slice(0, idx) : [];
-                break;
-            case 'right':
-                toHide = idx !== -1 && idx < ids.length - 1 ? ids.slice(idx + 1) : [];
-                break;
-            case 'all':
-                toHide = [...ids];
-                break;
-            default:
-                return;
-        }
-        if (!toHide.length) {
-            return;
-        }
-        await this._hideSessions(toHide, mode === 'all' ? undefined : sessionId);
-    }
 
     /** Hide the given tabs, move focus off a closed tab, then re-read the catalog. */
-    private async _hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
-        const acp = this._acp;
-        for (const id of toHide) {
-            if (acp) {
-                try {
-                    await acp.setSessionHidden(id, true);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    this._log(`Hide failed for ${id}: ${msg}`);
-                }
-            }
-        }
-        this._log(`Closed ${toHide.length} tab(s)`);
-        const hidingActive = toHide.includes(this._sessionId);
-        const remaining = this._sessions.filter(rec => !toHide.includes(rec.id));
-        if (hidingActive) {
-            const nextId = focusSessionId && remaining.some(rec => rec.id === focusSessionId)
-                ? focusSessionId
-                : remaining[0]?.id;
-            if (nextId) {
-                await this._handleSwitchSession(nextId, { skipSaveCurrent: true });
-            } else {
-                this._sessionMessages = [];
-                this._postMessage({ type: 'noActiveTab' });
-            }
-        }
-        await this._refreshSessionsFromHermes();
-    }
 
     /** Open a closed session as a tab; with nothing picked, open a blank tab instead of
      *  starting a session inside the tab the user is already reading. */
-    private async _handleOpenTab(sessionId?: string): Promise<void> {
-        if (!sessionId) {
-            await this._createBlankTab();
-            return;
-        }
-        if (!this._sessions.some(rec => rec.id === sessionId)) {
-            const acp = this._acp;
-            if (acp) {
-                try {
-                    await acp.setSessionHidden(sessionId, false);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    this._log(`Unhide failed for ${sessionId}: ${msg}`);
-                    return;
-                }
-            }
-            this._log(`Opened closed session ${sessionId}`);
-            await this._refreshSessionsFromHermes();
-        }
-        await this._handleSwitchSession(sessionId);
-    }
 
     /**
      * Retitle a tab through Hermes, then re-read the catalog.
@@ -1337,30 +1025,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
      * The rule lives in `session/catalog`; this supplies the wire call, the rescan and the log
      * line, so the handler goes away with the provider and the rule stays.
      */
-    private async _handleRenameSession(sessionId: unknown, rawTitle: unknown): Promise<void> {
-        if (typeof sessionId !== 'string' || !sessionId) {
-            return;
-        }
-        const acp = this._acp;
-        if (!acp) {
-            this._log(`Rename needs a live connection (${sessionId})`);
-            return;
-        }
-        // The strip's id is only the tab's: an adopted tab carries a local id, and Hermes would
-        // answer "unknown session" for it.
-        const hermesSessionId = hermesSessionIdFor(this._sessions, sessionId);
-        const outcome = await renameSession({
-            setTitle: (id, title) => acp.setSessionTitle(id, title),
-            refreshCatalog: () => this._refreshSessionsFromHermes(),
-            log: line => this._log(line),
-        }, hermesSessionId, rawTitle);
-        if (outcome.ok) {
-            this._log(`Renamed ${hermesSessionId} to "${outcome.title}"`);
-            return;
-        }
-        const detail = outcome.message ? ` — ${outcome.message}` : '';
-        this._log(`Rename refused for ${hermesSessionId}: ${outcome.reason}${detail}`);
-    }
 
     private _handleTogglePinSession(sessionId: string): void { this._session.handleTogglePinSession(sessionId); }
 
@@ -1660,7 +1324,6 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             locale: getWebviewLocale(),
         });
     }
-
 
     /** Check if path is within workspace folders. Allows absolute paths only if inside workspace. */
 }
