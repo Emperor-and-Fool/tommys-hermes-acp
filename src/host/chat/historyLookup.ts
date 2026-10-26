@@ -22,25 +22,30 @@ export interface MessageIdMatch {
     to?: number;
 }
 
-const EXPORT_TIMEOUT_MS = 15000;
-
-/** The export's content is a string or a list of parts; flatten it the way Hermes renders it. */
+/**
+ * The export's content is a string or a list of parts; flatten it exactly as Hermes' replay does
+ * (`_flatten_history_text`): parts trimmed, empty ones dropped, joined by newlines. The local copy
+ * holds the replayed text, so any other join would never match a message sent in several parts.
+ */
 export function flattenContent(content: unknown): string {
     if (typeof content === 'string') {
-        return content;
+        return content.trim();
     }
     if (Array.isArray(content)) {
-        return content
-            .map(part => {
-                if (typeof part === 'string') {
-                    return part;
+        const parts: string[] = [];
+        for (const part of content) {
+            if (typeof part === 'string') {
+                parts.push(part);
+            } else if (part && typeof part === 'object') {
+                const { text, type, content: inner } = part as { text?: unknown; type?: unknown; content?: unknown };
+                if (typeof text === 'string') {
+                    parts.push(text);
+                } else if (type === 'text' && typeof inner === 'string') {
+                    parts.push(inner);
                 }
-                if (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string') {
-                    return (part as { text: string }).text;
-                }
-                return '';
-            })
-            .join('');
+            }
+        }
+        return parts.map(part => part.trim()).filter(Boolean).join('\n').trim();
     }
     return '';
 }
@@ -118,10 +123,8 @@ export async function exportSessionMessages(
     const file = path.join(os.tmpdir(), `tommys-session-${process.pid}-${Date.now()}.jsonl`);
 
     try {
-        await Promise.race([
-            runHermesCommand(resolved, ['--profile', cliProfile, 'sessions', 'export', file, '--session-id', sessionId]),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('export timed out')), EXPORT_TIMEOUT_MS)),
-        ]);
+        // runHermesCommand stops the process itself after 15 s.
+        await runHermesCommand(resolved, ['--profile', cliProfile, 'sessions', 'export', file, '--session-id', sessionId]);
         const raw = await fs.promises.readFile(file, 'utf-8');
         const messages: ExportedMessage[] = [];
         for (const line of raw.split(/\r?\n/)) {

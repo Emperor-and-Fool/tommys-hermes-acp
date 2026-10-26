@@ -30,6 +30,20 @@ describe('matchMessageIds', () => {
         assert.deepStrictEqual(ids, [9]);
     });
 
+    it('joins parts by newline, as the replay does, and reads content-style parts', () => {
+        const { ids } = matchMessageIds([msg('user', 'first block\nmy question')], [
+            {
+                id: 11,
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'first block' },
+                    { type: 'text', content: 'my question' },
+                ],
+            },
+        ]);
+        assert.deepStrictEqual(ids, [11]);
+    });
+
     it('takes the occurrence closest to the end when the text repeats', () => {
         const exported = [
             { id: 1, role: 'user', content: 'same', timestamp: 1 },
