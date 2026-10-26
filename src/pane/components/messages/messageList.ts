@@ -3,7 +3,6 @@ import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { setInputMode, updateQuickActionBtns } from '../composer/composer';
-import { forceHideContextAttachPicker, hideContextAttachPreview, hideContextAttachTooltip, isInsideContextAttachPreview } from '../composer/contextAttach';
 import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
 import { clearChatSearch, scheduleChatSearch } from '../search';
@@ -18,16 +17,6 @@ import { buildHistoryCard } from './historyCard';
 
 
 const RESTORE_BATCH_SIZE = 30;
-
-export function initWindowScroll(): void {
-    window.addEventListener('scroll', function(e) {
-        hideContextAttachTooltip();
-        if (state.contextAttachPreviewOpen && isInsideContextAttachPreview(e.target)) {
-            return;
-        }
-        hideContextAttachPreview();
-    }, true);
-}
 
 const SCROLL_BOTTOM_THRESHOLD = 24;
 
@@ -365,7 +354,6 @@ function resetChatView() {
     cancelSessionMarkdownRender();
     clearChatSearch();
     exitMultiSelectMode();
-    forceHideContextAttachPicker();
     messagesEl.innerHTML = '<div class="placeholder" id="placeholder">' + escapeHtml(emptyStateText()) + '</div>';
     state.placeholder = byId('placeholder');
     state.streamingMessageId = null;

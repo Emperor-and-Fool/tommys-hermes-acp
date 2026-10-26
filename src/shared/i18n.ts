@@ -269,23 +269,6 @@ export interface LocaleStrings {
     switchSessionQueuedTitle: string;
     switchSessionStay: string;
 
-    contextAttachHeaderLead: string;
-    contextAttachHeaderRest: string;
-    contextAttachTooltip: string;
-    contextAttachPlaceholder: string;
-    contextAttachNone: string;
-    contextAttachLast2: string;
-    contextAttachLast10: string;
-    contextAttachAll: string;
-    contextAttachCustom: string;
-    contextAttachCustomNone: string;
-    contextAttachConfirm: string;
-    contextAttachSelected: string;
-    contextAttachPrefixHeader: string;
-    contextAttachSendPrompt: string;
-    contextAttachSendYes: string;
-    contextAttachSendNo: string;
-    contextAttachPreviewTitle: string;
 
     // History card
     historyCardHeader: string;

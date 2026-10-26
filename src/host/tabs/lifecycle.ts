@@ -19,7 +19,6 @@ import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
 import { hermesSessionIdFor } from './tabs';
-import type { ChatMessage } from '../../shared/chat';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
 
@@ -32,7 +31,6 @@ export interface TabLifecycleHost {
     log(line: string): void;
     resolveCwd(): string;
     attachments: AttachmentStore;
-    offerContextAttach(messages: ChatMessage[]): void;
     promptSessionId(): string | undefined;
     detachActivePrompt(id: string, options?: { savePartial?: boolean }): Promise<void>;
     otherSessionIsPrompting(): boolean;
@@ -208,7 +206,6 @@ export class TabLifecycle {
             messages: this._host.attachments.hydrateImages(this._host.session.messages),
             localHistoryOnly: false,
         });
-        this._host.offerContextAttach(this._host.session.messages);
         this._host.postSessionList();
         if (undelivered) {
             this._host.log(`Undelivered message offered back to the composer: ${localId}`);
@@ -244,7 +241,6 @@ export class TabLifecycle {
         } else {
             this._host.post(msg);
         }
-        this._host.offerContextAttach(this._host.session.messages);
     }
 
     async createBlankTab(): Promise<void> {

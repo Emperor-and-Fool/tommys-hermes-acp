@@ -1,4 +1,3 @@
-import { renderContextAttachOptions, updateContextAttachButtonLabel } from './components/composer/contextAttach';
 import { setConfigureEnvDetectDetailsTitle, updateConfigureEnvPathClearVisibility, updateConfigureEnvSystemHint } from './components/environment/configureModal';
 import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnvDetailsTitle } from './components/environment/detectPanel';
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
@@ -10,7 +9,7 @@ import { applyHistoryPickerLocale } from './components/composer/historyAttach';
 import { updateModelButtonDisplay } from './components/pickers/modelPicker';
 import { profileDisplayName } from './components/pickers/profilePicker';
 import { applyInputPlaceholder } from './components/status/statusBar';
-import { byId, cancelBtn, chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, closedPickerLabel, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, contextAttachHelp, contextAttachSendNoBtn, contextAttachSendYesBtn, contextAttachTooltipEl, copyLogBtn, copySessionBtn, detectEnvBtn, detectEnvToggle, faqModalBody, inputResizeHandle, messagesEl, modelBtn, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, profileBtn, quickToggleBtn, retryBtn, sendBtn, statusText, tokenUsageRing } from './dom';
+import { byId, cancelBtn, chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, closedPickerLabel, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, copyLogBtn, copySessionBtn, detectEnvBtn, detectEnvToggle, faqModalBody, inputResizeHandle, messagesEl, modelBtn, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, profileBtn, quickToggleBtn, retryBtn, sendBtn, statusText, tokenUsageRing } from './dom';
 import { state } from './state';
 
 
@@ -38,25 +37,6 @@ export function applyLocale() {
     const modelsHeader = byId('modelsHeader');
     if (modelsHeader) modelsHeader.textContent = locale.models;
     updateModelButtonDisplay(state.lastModelPayload);
-    if (contextAttachHeaderLead) contextAttachHeaderLead.textContent = locale.contextAttachHeaderLead || '';
-    if (contextAttachHeaderRest) contextAttachHeaderRest.textContent = locale.contextAttachHeaderRest || '';
-    if (contextAttachHelp) {
-        const tip = locale.contextAttachTooltip || '';
-        contextAttachHelp.title = tip;
-        contextAttachHelp.setAttribute('aria-label', tip);
-    }
-    if (contextAttachTooltipEl) {
-        contextAttachTooltipEl.textContent = locale.contextAttachTooltip || '';
-    }
-    const contextAttachSendTitle = byId('contextAttachSendModalTitle');
-    const contextAttachSendBody = byId('contextAttachSendModalBody');
-    const contextAttachSendYesBtn = byId('contextAttachSendYesBtn');
-    const contextAttachSendNoBtn = byId('contextAttachSendNoBtn');
-    if (contextAttachSendTitle) contextAttachSendTitle.textContent = locale.contextAttachCustom || '';
-    if (contextAttachSendBody) contextAttachSendBody.textContent = locale.contextAttachSendPrompt || '';
-    if (contextAttachSendYesBtn) contextAttachSendYesBtn.textContent = locale.contextAttachSendYes || '';
-    if (contextAttachSendNoBtn) contextAttachSendNoBtn.textContent = locale.contextAttachSendNo || '';
-    if (multiSelectAttachConfirmBtn) multiSelectAttachConfirmBtn.textContent = locale.contextAttachConfirm || '';
     applyHistoryPickerLocale();
     const openTabLabelFull = byId('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
@@ -234,10 +214,6 @@ export function refreshRoleLabels() {
         }
     });
 }
-
-const contextAttachHeaderLead = byId('contextAttachHeaderLead');
-
-const contextAttachHeaderRest = byId('contextAttachHeaderRest');
 
 export function initApplyLocale(): void {
     applyLocale();

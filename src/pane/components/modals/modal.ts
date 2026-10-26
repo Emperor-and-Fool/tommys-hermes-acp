@@ -1,6 +1,5 @@
 import { byId, closedPicker, configureEnvModal, contextAttachPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu } from '../../dom';
 import { state } from '../../state';
-import { hideContextAttachPreview, hideContextAttachTooltip } from '../composer/contextAttach';
 import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';
 import { setDetectEnvDetailsOpen } from '../environment/detectPanel';
@@ -76,16 +75,11 @@ export function closeAllDropdowns() {
     setMenuOpen(profilePicker, false);
     setMenuOpen(modelPicker, false);
     setMenuOpen(contextAttachPicker, false);
-    hideContextAttachTooltip();
-    hideContextAttachPreview();
 }
 
 export function initDocumentClickDocument(): void {
     document.addEventListener('click', function(e) {
         if (e.target.closest('.picker')) {
-            return;
-        }
-        if (e.target.closest('#contextAttachPreview')) {
             return;
         }
         if (!e.target.closest('#input-area')) {

@@ -4,7 +4,6 @@ import { state } from '../../state';
 import { appendMessage, resetAutoScrollFollow } from '../messages/messageList';
 import { requestSessionExport } from '../multiSelect';
 import { clearChatSearch, scheduleChatSearch } from '../search';
-import { buildContextAttachPayload, hasUnconfirmedCustomMemorySelection, openContextAttachSendModal } from './contextAttach';
 import { detectFileMention, hideFilePicker } from './fileMention';
 import { syncHistoryPickerShrink } from './historyAttach';
 import { renderPendingImagesBar } from './images';
@@ -145,7 +144,7 @@ export function maybeFocusInputAfterResponse() {
 
 export const pendingImages = [];
 
-export function executeSendMessage(text, attachOverride?) {
+export function executeSendMessage(text) {
     hideFilePicker();
     resetAutoScrollFollow();
     const outgoing = withReplyQuote(text);
@@ -164,13 +163,9 @@ export function executeSendMessage(text, attachOverride?) {
     // look dead until the turn ended. The next thing typed belongs in the composer.
     inputEl.focus();
 
-    const payload = attachOverride !== undefined
-        ? attachOverride
-        : buildContextAttachPayload(false);
     post({
         type: 'sendMessage',
         text: outgoing,
-        contextAttach: payload,
         images: imagesForBubble.length ? imagesForBubble : undefined,
     });
     pendingImages.length = 0;
@@ -293,11 +288,6 @@ export function sendMessage() {
     const hasImages = pendingImages.length > 0;
     // Allow sending with either text OR staged images.
     if ((!text && !hasImages) || !state.canSend) return;
-
-    if (hasUnconfirmedCustomMemorySelection()) {
-        openContextAttachSendModal(text);
-        return;
-    }
 
     executeSendMessage(text);
 }

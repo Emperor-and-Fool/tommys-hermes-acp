@@ -224,10 +224,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
             </ul>
             <p>You will see the <strong>"Prior session memory above — not carried into the new session"</strong> divider: messages above are restored from disk for <strong>viewing only</strong>; the agent does not remember them. New messages below the divider <strong>do not automatically include</strong> the conversation above as context.</p>
             <p>This is an architectural limitation of Hermes ACP, <strong>not a bug</strong>.</p>
-            <p><strong>How to continue a prior discussion?</strong> After a reset, the input area may show <strong>"Session reset? Attach prior session memory?"</strong> You can attach selected prior messages as reference text to your next send (uses more input tokens). Only <strong>user, assistant, and permission</strong> messages count as attachable memory; thought and tool messages are excluded.</p>
+            <p><strong>How to continue a prior discussion?</strong> Use the clock picker in the composer: it lists your other sessions. Pick one, tick up to 15 messages in the read-only viewer that opens, and press Attach. Only <strong>user and assistant</strong> messages can be ticked.</p>
             <ul>
-                <li>Default: shown once after reset, <strong>disappears after the first successful reply</strong></li>
-                <li>Adjust in Settings via <code>tommys.contextAttachVisibility</code>: <code>onNewSession</code> (default) / <code>always</code> / <code>never</code></li>
+                <li>The picker is always there; nothing is sent until you send your own message</li>
+                <li>The attached slice is shown above your message and goes to the agent with it</li>
             </ul>
             <p class="dim"><strong>Tip:</strong> stay in one tab for continuous context; use memory attach after switching; copy or export important conclusions.</p>
 
@@ -354,23 +354,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     switchSessionQueuedTitle: 'Switch queued',
     switchSessionStay: 'Stay',
 
-    contextAttachHeaderLead: 'Session reset?',
-    contextAttachHeaderRest: 'Attach prior session memory? Selecting memory uses more input tokens.',
-    contextAttachTooltip: 'Hermes resets the session when you switch models or sessions. The new session has no memory of the prior context. Use this option to continue with prior memory.\nMemory includes user, assistant, and permission messages only — thought and tool messages are excluded.\nNote: This option appears only once in a new session and disappears after the first successful reply.',
-    contextAttachPlaceholder: 'Select session memory',
-    contextAttachNone: 'Do not attach prior session memory',
-    contextAttachLast2: 'Attach last 2 conversation memories',
-    contextAttachLast10: 'Attach last 10 conversation memories',
-    contextAttachAll: 'Attach all conversation memories',
-    contextAttachCustom: 'Choose conversation memories',
-    contextAttachCustomNone: 'You have not selected any memories',
-    contextAttachConfirm: 'Attach selected',
-    contextAttachSelected: 'Attach {0} selected memories from prior session',
-    contextAttachPrefixHeader: 'Prior session memory for reference:',
-    contextAttachSendPrompt: 'You selected session memory. Attach it to this message?',
-    contextAttachSendYes: 'Attach',
-    contextAttachSendNo: 'Do not attach',
-    contextAttachPreviewTitle: 'Memory to attach ({0} selected / ~{1} input tokens)',
     historyCardHeader: 'From conversation: {0}',
     historyCardCount: '{0} messages',
     historyCardSpan: 'Span',

@@ -20,7 +20,7 @@ export interface RouterHost {
     ready(): void;
 
     enqueueChatOp(op: () => Promise<void>): void;
-    handleUserMessage(text: string, contextAttach: unknown, images: unknown): Promise<void>;
+    handleUserMessage(text: string, images: unknown): Promise<void>;
     handleCancel(): void;
     handleOpenFile(path: string): Promise<void>;
     handleListFiles(query: string, requestId: string): Promise<void>;
@@ -56,7 +56,7 @@ export interface RouterHost {
 export function handleWebviewMessage(message: PaneToHost, host: RouterHost): void {
     switch (message?.type) {
         case 'sendMessage':
-            host.enqueueChatOp(() => host.handleUserMessage(message.text, message.contextAttach, message.images));
+            host.enqueueChatOp(() => host.handleUserMessage(message.text, message.images));
             break;
         case 'cancel':
             // Cancel must not wait behind an in-flight sendMessage; AcpClient

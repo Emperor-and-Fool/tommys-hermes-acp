@@ -34,7 +34,6 @@ export interface PromptHost {
     isViewingPromptSession(): boolean;
     cancelPendingPermissions(): void;
     awaitSessionReady(): Promise<void>;
-    setContextAttachAwaitingReply(value: boolean): void;
 }
 
 /**
@@ -176,7 +175,6 @@ export class PromptRunner {
     async cancel(): Promise<void> {
         this.sendEpoch++;
         this.clearStallHint();
-        this.host.setContextAttachAwaitingReply(false);
         await this.host.awaitSessionReady();
         this.flushThought();
         this.clearText();

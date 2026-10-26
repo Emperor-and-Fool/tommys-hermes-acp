@@ -224,10 +224,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
             </ul>
             <p>因此会出现 <strong>「以上为历史会话记忆，不会带入新会话」</strong> 分隔线：上方消息从本地恢复，<strong>仅供浏览</strong>；Agent 并不记得这些内容。分隔线下方的新消息，<strong>不会自动带上方的对话</strong>作为上下文。</p>
             <p>这是 Hermes ACP 的架构限制，<strong>不是 bug</strong>。</p>
-            <p><strong>如何续上之前的讨论？</strong> 重置后，输入区可能出现 <strong>「会话被重置？是否附带上次会话记忆？」</strong> 选项，可将部分历史消息作为参考文本附带到下一条发送（会消耗更多输入 Token）。仅 <strong>用户、助手与权限</strong> 消息可附带，思考/工具消息不在范围内。</p>
+            <p><strong>如何续上之前的讨论？</strong> 使用输入区的时钟选择器，它会列出其他会话。选择一条会话，在打开的只读视图中最多勾选 15 条消息，然后点击「附带」。仅 <strong>用户与助手</strong> 消息可勾选。</p>
             <ul>
-                <li>默认：重置后出现一次，<strong>首次成功回复后消失</strong></li>
-                <li>可在 Settings 调整 <code>tommys.contextAttachVisibility</code>：<code>onNewSession</code>（默认）/ <code>always</code> / <code>never</code></li>
+                <li>选择器始终可用；在你发送自己的消息之前不会发送任何内容</li>
+                <li>附带的片段显示在你的消息上方，并随该消息一并发给 Agent</li>
             </ul>
             <p class="dim"><strong>建议：</strong>需连续上下文时尽量在同一 Tab 内完成；切换后若要延续话题，使用记忆附带；重要结论及时复制或导出会话。</p>
 
@@ -354,23 +354,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     switchSessionQueuedTitle: '切换已排队',
     switchSessionStay: '停留',
 
-    contextAttachHeaderLead: '会话被重置?',
-    contextAttachHeaderRest: '是否附带上次会话记忆？选择记忆会消耗更多输入Token。',
-    contextAttachTooltip: '由于Hermes限制，切换模型和切换会话都导致会话被重置，新会话没有上轮会话的记忆，可以通过此选项带记忆与Hermes沟通\n附带范围仅含用户、助手与权限消息，不含思考/工具消息\n注意：此选项只会在新会话时出现一次，第一次对话成功后会消失',
-    contextAttachPlaceholder: '选择会话记忆',
-    contextAttachNone: '不附带上轮记忆',
-    contextAttachLast2: '附带最近2条对话记忆',
-    contextAttachLast10: '附带最近10条对话记忆',
-    contextAttachAll: '附带全部对话记忆',
-    contextAttachCustom: '自选对话记忆',
-    contextAttachCustomNone: '您没有选择任何记忆',
-    contextAttachConfirm: '确定附带',
-    contextAttachSelected: '附带上轮已选{0}条记忆',
-    contextAttachPrefixHeader: '以下是之前的会话记忆，供参考：',
-    contextAttachSendPrompt: '您已选择了会话记忆，是否要附带？',
-    contextAttachSendYes: '附带',
-    contextAttachSendNo: '不附带',
-    contextAttachPreviewTitle: '将附带的记忆（已选{0}条/约{1}输入Token）',
     historyCardHeader: '来自对话：{0}',
     historyCardCount: '{0} 条消息',
     historyCardSpan: '范围',

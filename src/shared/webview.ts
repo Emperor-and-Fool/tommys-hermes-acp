@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, ContextAttachOption, HistoryRef, SessionInfo } from './chat';
+import type { ChatMessage, HistoryRef, SessionInfo } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -55,10 +55,6 @@ export type HostToPane =
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
 
-    // Context attach picker.
-    | { type: 'showContextAttach'; count: number }
-    | { type: 'hideContextAttach' }
-
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
     | { type: 'historyCleared' }
@@ -90,7 +86,7 @@ export type SessionExportAction = 'export' | 'copy';
 /** Host → pane is the other half; declared here next so the pair stays readable. */
 export type PaneToHost =
     /** A composer send. `images` were pasted, never uploaded. */
-    | { type: 'sendMessage'; text: string; contextAttach?: ContextAttachOption; images?: PaneImage[] }
+    | { type: 'sendMessage'; text: string; images?: PaneImage[] }
     | { type: 'cancel' }
     | { type: 'retry' }
 

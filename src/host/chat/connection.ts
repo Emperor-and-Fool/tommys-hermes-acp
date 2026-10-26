@@ -11,7 +11,6 @@ import type { EnvironmentDetection } from '../environment/detection';
 import type { WorkspaceFiles } from '../workspace/files';
 import type { Sessions } from '../cache/sessions';
 import type { ModelState } from '../models/modelState';
-import type { ContextAttachOffer } from './contextAttach';
 import type { PromptRunner } from './promptRunner';
 import type { TabLifecycle } from '../tabs/lifecycle';
 
@@ -26,7 +25,6 @@ export interface ConnectionHost {
     models: ModelState;
     detection: EnvironmentDetection;
     files: WorkspaceFiles;
-    contextAttach: ContextAttachOffer;
     lifecycle: TabLifecycle;
     post(msg: HostToPane): void;
     log(line: string): void;
@@ -196,9 +194,6 @@ export class Connection {
                     }
                     this._host.turn.clearText();
                     this._host.turn.promptSessionId = undefined;
-                    if (this._host.isViewingPromptSession()) {
-                        this._host.contextAttach.completeAfterReply();
-                    }
                 }
                 if (status === 'prompting') {
                     this._host.turn.clearText();

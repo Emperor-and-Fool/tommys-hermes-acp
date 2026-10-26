@@ -1,7 +1,6 @@
 /* The pane's assembly: every component's init, in the order chat.js ran them. */
 import { post } from './post';
 import * as composer from './components/composer/composer';
-import * as contextAttach from './components/composer/contextAttach';
 import * as historyAttach from './components/composer/historyAttach';
 import * as images from './components/composer/images';
 import * as replyQuote from './components/composer/replyQuote';
@@ -27,7 +26,6 @@ export function boot(): void {
     composer.initInitInputHeight();
     composer.initInputResizeHandlePointerdown();
     composer.initWindowResize();
-    messageList.initWindowScroll();
     images.initBindImagePasteOnce();
     images.initPasteLog();
     toolCards.initShowThoughtsFlag();
@@ -58,7 +56,6 @@ export function boot(): void {
     multiSelect.initMultiSelectCopyBtnClick();
     multiSelect.initMultiSelectExportBtnClick();
     multiSelect.initMultiSelectExitBtnClick();
-    multiSelect.initMultiSelectAttachConfirmBtnClick();
     viewer.initHistoryViewer();
     modal.initDocumentClick();
     modal.initDocumentKeydown();
@@ -96,11 +93,6 @@ export function boot(): void {
     switchSession.initSwitchSessionStayBtnClick();
     switchSession.initSwitchSessionConfirmBtnClick();
     switchSession.initSwitchSessionModalClick();
-    contextAttach.initBindContextAttachTooltip();
-    contextAttach.initBindContextAttachPreview();
-    contextAttach.initContextAttachSendYesBtnClick();
-    contextAttach.initContextAttachSendNoBtnClick();
-    contextAttach.initContextAttachSendModalClick();
     historyAttach.initHistoryAttach();
     router.init();
     i18n.initApplyLocale();

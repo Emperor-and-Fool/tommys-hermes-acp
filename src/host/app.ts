@@ -10,7 +10,6 @@ import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
 import { buildWebviewHtml } from './webview/html';
-import { ContextAttachOffer } from './chat/contextAttach';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
@@ -29,10 +28,6 @@ import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
-import {
-    ContextAttachOption,
-} from './chat/contextAttach';
-
 /**
  * `onNewSession` is a Rina-era name kept for settings compatibility. A tab no longer gets a new
  * session behind its back; the picker shows when a tab's transcript is restored, until the
@@ -65,12 +60,6 @@ export class App implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
     /** Every live renderer: the sidebar view and/or the single chat panel. */
     /** Where the conversation is rendered: the side bar or an editor tab. */
-    /** Context attach: the picker over this tab's own transcript, and the prompt it prepends. */
-    private readonly _contextAttach: ContextAttachOffer = new ContextAttachOffer({
-        post: (msg) => this._postMessage(msg),
-        messages: () => this._session.messages,
-    });
-
     /**
      * Turn-scoped state and session acquisition. The host literals are the whole coupling
      * between a turn and the provider: every member here stays private, and this is the one
@@ -89,7 +78,6 @@ export class App implements vscode.WebviewViewProvider {
         isViewingPromptSession: () => this._isViewingPromptSession(),
         cancelPendingPermissions: () => this._turn.cancelPendingPermissions(),
         awaitSessionReady: () => this._connection.awaitSessionReady(),
-        setContextAttachAwaitingReply: (value) => { this._contextAttach.setAwaitingReply(value); },
         detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._lifecycle.bindHermesSessionId(id),
         applySessionModelPreference: () => this._models.applySessionPreference(),
@@ -226,7 +214,6 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             resolveCwd: () => this._files.resolveCwd(),
             attachments: this._attachments,
-            offerContextAttach: (messages) => this._contextAttach.offer(messages),
             promptSessionId: () => this._turn.promptSessionId,
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -249,7 +236,6 @@ export class App implements vscode.WebviewViewProvider {
             models: this._models,
             detection: this._detection,
             files: this._files,
-            contextAttach: this._contextAttach,
             lifecycle: this._lifecycle,
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
@@ -355,7 +341,7 @@ export class App implements vscode.WebviewViewProvider {
      *  swaps the agent in place, and a fresh session here would silently drop the tab's
      *  conversation (and leave an empty row in the catalog). */
 
-    private async _handleUserMessage(text: string, contextAttach?: ContextAttachOption, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
+    private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         const epoch = this._turn.sendEpoch;
         await this._connection.awaitSessionReady();
         if (epoch !== this._turn.sendEpoch) {
@@ -410,10 +396,6 @@ export class App implements vscode.WebviewViewProvider {
         }
         this._session.saveMessage('user', text, undefined, imageRefs);
         this._session.markEngaged();
-        if (this._contextAttach.isActive()) {
-            this._contextAttach.setAwaitingReply(true);
-        }
-        const promptText = this._contextAttach.buildPromptText(text, contextAttach);
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -426,15 +408,15 @@ export class App implements vscode.WebviewViewProvider {
             if (historyBlock) {
                 blocks.push({ type: 'text', text: historyBlock });
             }
-            if (promptText.length > 0) {
-                blocks.push({ type: 'text', text: promptText });
+            if (text.length > 0) {
+                blocks.push({ type: 'text', text });
             }
             for (const img of images || []) {
                 blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
             }
             await this._connection.acp?.sendMessage(blocks as any);
         } else {
-            await this._connection.acp?.sendMessage(promptText);
+            await this._connection.acp?.sendMessage(text);
         }
         if (staged) {
             this._historyAttach.clear();
@@ -476,9 +458,6 @@ export class App implements vscode.WebviewViewProvider {
     private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
         if (e.affectsConfiguration('tommys.showThoughts') || e.affectsConfiguration('tommys.showToolCalls')) {
             this._postConfig();
-        }
-        if (e.affectsConfiguration('tommys.contextAttachVisibility')) {
-            this._contextAttach.applyVisibility();
         }
         if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
             if (!this._models.isRuntimeSource()) {
@@ -674,9 +653,8 @@ export class App implements vscode.WebviewViewProvider {
             },
             ready: () => this._onWebviewReady(surface),
             enqueueChatOp: (op) => this._enqueueChatOp(op),
-            handleUserMessage: (text, contextAttach, images) => this._handleUserMessage(
+            handleUserMessage: (text, images) => this._handleUserMessage(
                 text,
-                contextAttach as ContextAttachOption | undefined,
                 images as Array<{ mimeType: string; data: string }> | undefined,
             ),
             handleCancel: () => this._turn.cancel(),

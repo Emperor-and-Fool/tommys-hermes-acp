@@ -4,7 +4,6 @@ import { assistantRoleLabel } from '../i18n';
 import { post } from '../post';
 import { state } from '../state';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
-import { clearContextAttachSelectableTargets, confirmContextAttachSelection, hideContextAttachPreview, isAttachableMemoryGroup, isGroupInContextAttachRegion, updateContextAttachButtonLabel } from './composer/contextAttach';
 import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './composer/fileMention';
 import { getGroupMarkdownText } from './messages/markdown';
 import { reindexSessionIndices } from './messages/messageList';
@@ -79,12 +78,6 @@ function getSelectableGroups() {
         if (!selectableForPurpose(group)) {
             return false;
         }
-        if (state.multiSelectPurpose === 'contextAttach' && !isGroupInContextAttachRegion(group)) {
-            return false;
-        }
-        if (state.multiSelectPurpose === 'contextAttach' && !isAttachableMemoryGroup(group)) {
-            return false;
-        }
         return true;
     });
 }
@@ -142,7 +135,6 @@ function toggleGroupSelection(group) {
 export function updateMultiSelectToolbar() {
     const selected = getSelectedGroups();
     const count = selected.length;
-    const isAttachMode = state.multiSelectPurpose === 'contextAttach';
     const isHistoryPickMode = isHistoryPick();
     if (multiSelectCount) {
         // The history picker carries its count in the Attach button instead.
@@ -162,7 +154,7 @@ export function updateMultiSelectToolbar() {
     if (multiSelectCopyBtn) multiSelectCopyBtn.hidden = isHistoryPickMode;
     if (multiSelectExportBtn) multiSelectExportBtn.hidden = isHistoryPickMode;
     if (multiSelectAttachConfirmBtn) {
-        multiSelectAttachConfirmBtn.hidden = !isAttachMode && !isHistoryPickMode;
+        multiSelectAttachConfirmBtn.hidden = !isHistoryPickMode;
         multiSelectAttachConfirmBtn.disabled = !hasSelection;
         if (isHistoryPickMode) {
             multiSelectAttachConfirmBtn.textContent = (locale.historyAttachCount || 'Attach ({0}/{1})')
@@ -179,10 +171,6 @@ export function updateMultiSelectToolbar() {
             ? (locale.multiSelectDeselectAll || '取消全选')
             : (locale.multiSelectAll || '全选');
     }
-    if (isAttachMode) {
-        updateContextAttachButtonLabel();
-    }
-    hideContextAttachPreview();
 }
 
 export function enterMultiSelectMode(initialGroup, purpose?) {
@@ -211,31 +199,17 @@ export function exitMultiSelectMode() {
     if (!state.multiSelectMode) {
         return;
     }
-    const wasAttachMode = state.multiSelectPurpose === 'contextAttach';
-    if (wasAttachMode && state.contextAttachCustomPending && !state.contextAttachCustomConfirmed) {
-        const indices = getSelectedMessageIndices();
-        if (indices.length > 0) {
-            state.contextAttachUnconfirmedIndices = indices.slice();
-            state.contextAttachMode = 'custom';
-        } else {
-            state.contextAttachMode = 'none';
-            state.contextAttachCustomPending = false;
-            state.contextAttachUnconfirmedIndices = [];
-        }
-    }
     state.multiSelectMode = false;
     state.multiSelectPurpose = 'normal';
     messagesEl.classList.remove('multi-select-active');
     getSelectableGroups().forEach(function(group) {
         setGroupSelected(group, false);
     });
-    clearContextAttachSelectableTargets();
     if (multiSelectToolbar) {
         multiSelectToolbar.hidden = true;
         multiSelectToolbar.classList.remove('visible');
     }
     updateMultiSelectToolbar();
-    updateContextAttachButtonLabel();
 }
 
 export function wireSelectableGroup(group) {
@@ -243,9 +217,6 @@ export function wireSelectableGroup(group) {
     group.dataset.selectWired = '1';
     group.addEventListener('click', function(e) {
         if (!state.multiSelectMode) return;
-        if (state.multiSelectPurpose === 'contextAttach' && !isGroupInContextAttachRegion(group)) {
-            return;
-        }
         if (isHistoryPick() && !selectableForPurpose(group)) {
             return;
         }
@@ -393,17 +364,3 @@ export function initMultiSelectExitBtnClick(): void {
     }
 }
 
-export function initMultiSelectAttachConfirmBtnClick(): void {
-    if (multiSelectAttachConfirmBtn) {
-        multiSelectAttachConfirmBtn.addEventListener('click', function() {
-            if (multiSelectAttachConfirmBtn.disabled) {
-                return;
-            }
-            // In the history viewer the same button carries the pick; the viewer owns that post.
-            if (state.multiSelectPurpose !== 'contextAttach') {
-                return;
-            }
-            confirmContextAttachSelection();
-        });
-    }
-}
