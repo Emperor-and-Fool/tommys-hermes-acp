@@ -1,20 +1,21 @@
 import * as vscode from 'vscode';
-import { CHAT_PANEL_VIEW_TYPE, HermesChatProvider } from './chat/HermesChatProvider';
+import { CHAT_PANEL_VIEW_TYPE } from './webview/surfaces';
+import { App } from './app';
 import { initI18n, t } from './i18n';
 
-let chatProvider: HermesChatProvider | undefined;
+let app: App | undefined;
 
 function bindChatCommand(
     context: vscode.ExtensionContext,
     command: string,
-    run: (provider: HermesChatProvider) => void | Promise<void>
+    run: (provider: App) => void | Promise<void>
 ): void {
     context.subscriptions.push(
         vscode.commands.registerCommand(command, () => {
-            if (!chatProvider) {
+            if (!app) {
                 return;
             }
-            void run(chatProvider);
+            void run(app);
         })
     );
 }
@@ -24,16 +25,16 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Tommys Hermes ACP activating...');
 
     // Register the chat webview provider
-    chatProvider = new HermesChatProvider(context.extensionUri, context);
+    app = new App(context.extensionUri, context);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('tommysChat', chatProvider, {
+        vscode.window.registerWebviewViewProvider('tommysChat', app, {
             webviewOptions: { retainContextWhenHidden: true }
         })
     );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('tommys.toggleChatSurface', () => {
-            chatProvider?.toggleChatSurface();
+            app?.toggleChatSurface();
         })
     );
 
@@ -41,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewPanelSerializer(CHAT_PANEL_VIEW_TYPE, {
             deserializeWebviewPanel(panel: vscode.WebviewPanel) {
-                chatProvider?.restoreChatPanel(panel);
+                app?.restoreChatPanel(panel);
                 return Promise.resolve();
             },
         })
@@ -66,7 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
             const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
 
             vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');
-            chatProvider?.insertIntoInput(text);
+            app?.insertIntoInput(text);
         })
     );
 
@@ -86,5 +87,5 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    chatProvider?.dispose();
+    app?.dispose();
 }

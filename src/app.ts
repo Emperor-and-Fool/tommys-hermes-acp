@@ -40,7 +40,6 @@ import {
  */
 
 /** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
-export { CHAT_PANEL_VIEW_TYPE } from './webview/surfaces';
 
 /** The key an attachment is filed under: the message text, markers and spacing removed. */
 
