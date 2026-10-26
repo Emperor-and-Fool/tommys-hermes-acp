@@ -324,7 +324,7 @@ export function init(): void {
                 break;
 
             case 'permissionDismiss':
-                dismissPermissionRequest(msg.id, msg.status || locale.permissionCancelled);
+                dismissPermissionRequest(msg.id, locale.permissionCancelled);
                 break;
 
             case 'showContextAttach':
