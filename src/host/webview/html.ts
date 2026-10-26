@@ -49,7 +49,7 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
         .replace('{{HIGHLIGHT_CSS_URI}}', uri('vendor/' + highlightSheetFor(input.themeKind)))
         .replace('{{PURIFY_URI}}', uri('vendor/purify.min.js'))
         .replace('{{CHAT_CSS_URI}}', uri('chat.css'))
-        .replace('{{CHAT_JS_URI}}', uri('chat.js'))
+        .replace('{{CHAT_JS_URI}}', uri('pane.js'))
         .replace('{{LOCALE_JSON}}', JSON.stringify(input.locale).replace(/</g, '\\u003c'))
         .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
 }

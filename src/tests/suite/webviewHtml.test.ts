@@ -24,7 +24,7 @@ describe('webviewHtml', () => {
             assert.strictEqual(html.includes('{{' + slot + '}}'), false, slot + ' was not replaced');
         }
         assert.ok(html.includes('file:///media/vendor/highlight.min.js'));
-        assert.ok(html.includes('file:///media/chat.js'));
+        assert.ok(html.includes('file:///media/pane.js'));
     });
 
     it('escapes "<" in the locale payload so it cannot close the script tag', () => {

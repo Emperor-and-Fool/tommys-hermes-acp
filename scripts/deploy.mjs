@@ -35,6 +35,14 @@ if (build.status !== 0) {
     process.exit(1);
 }
 
+// The webview bundle: src/pane/*.ts becomes the single file the pane loads.
+const pane = spawnSync('npx', ['esbuild', 'src/pane/main.ts', '--bundle', '--format=iife', '--target=es2020',
+    '--outfile=media/pane.js'], { cwd: repo, stdio: 'inherit' });
+if (pane.status !== 0) {
+    console.error('deploy: pane build failed, nothing copied');
+    process.exit(1);
+}
+
 const dryRun = process.argv.includes('--dry-run');
 
 if (!existsSync(target)) {
@@ -55,6 +63,7 @@ const files = [
     'media/chat.html',
     'media/chat.css',
     'media/chat.js',
+    'media/pane.js',
 ];
 
 function walk(rel, out = []) {
