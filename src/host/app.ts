@@ -379,18 +379,9 @@ export class App implements vscode.WebviewViewProvider {
                 return;
             }
         }
-        let staged = this._historyStages.current(tabId);
-        const ownHermesId = this._session.tabs.find(rec => rec.id === tabId)?.hermesSessionId;
-        if (staged && (staged.ref.sessionId === tabId || (!!ownHermesId && staged.ref.sessionId === ownHermesId))) {
-            // The dropdown leaves the current session out; this is the host-side net. A tab that
-            // quotes itself would send its own conversation back as context for its own question.
-            this._log(`History pick ignored: ${staged.ref.sessionId} is this tab's own session`);
-            this._historyStages.clear(tabId);
-            if (this._session.activeId === tabId) {
-                this._postMessage({ type: 'historyCleared' });
-            }
-            staged = null;
-        }
+        // This tab's own session is a legal source: a reset leaves the agent with no memory of
+        // the very messages the user wants back.
+        const staged = this._historyStages.current(tabId);
         this._models.snapshotFromProfile();
         this._turn.promptSessionId = tabId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;

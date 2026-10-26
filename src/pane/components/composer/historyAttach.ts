@@ -21,26 +21,21 @@ let staged: HistoryRef | null = null;
 
 let pending = false;
 
-function currentSessionIds(): Set<string> {
-    const ids = new Set<string>();
-    if (state.lastActiveSessionId) {
-        ids.add(state.lastActiveSessionId);
-    }
-    return ids;
-}
-
-/** Open tabs first, then what Hermes flagged hidden; the current session is never offered. */
+/**
+ * Open tabs first, then what Hermes flagged hidden. The current session is offered like any
+ * other: after a model or session switch the agent has lost its context, and this tab's own
+ * earlier messages are exactly the memory worth re-attaching.
+ */
 function sessionRows(): PickerRow[] {
     const rows: PickerRow[] = [];
     const seen = new Set<string>();
-    const excluded = currentSessionIds();
 
     (state.lastSessions || []).forEach(function(session) {
         if (!session || !session.id) {
             return;
         }
         const hermesId = session.hermesSessionId || session.id;
-        if (excluded.has(session.id) || excluded.has(hermesId) || seen.has(hermesId)) {
+        if (seen.has(hermesId)) {
             return;
         }
         seen.add(hermesId);
@@ -49,7 +44,7 @@ function sessionRows(): PickerRow[] {
 
     (state.closedSessions || []).forEach(function(session) {
         const id = session && session.sessionId;
-        if (!id || excluded.has(id) || seen.has(id)) {
+        if (!id || seen.has(id)) {
             return;
         }
         seen.add(id);

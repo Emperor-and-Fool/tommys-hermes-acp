@@ -224,7 +224,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             </ul>
             <p>You will see the <strong>"Prior session memory above — not carried into the new session"</strong> divider: messages above are restored from disk for <strong>viewing only</strong>; the agent does not remember them. New messages below the divider <strong>do not automatically include</strong> the conversation above as context.</p>
             <p>This is an architectural limitation of Hermes ACP, <strong>not a bug</strong>.</p>
-            <p><strong>How to continue a prior discussion?</strong> Use the clock picker in the composer: it lists your other sessions. Pick one, tick up to 15 messages in the read-only viewer that opens, and press Attach. Only <strong>user and assistant</strong> messages can be ticked.</p>
+            <p><strong>How to continue a prior discussion?</strong> Use the clock picker in the composer: it lists every session, this one included. Pick one, tick up to 15 messages in the read-only viewer that opens, and press Attach. Only <strong>user and assistant</strong> messages can be ticked.</p>
             <ul>
                 <li>The picker is always there; nothing is sent until you send your own message</li>
                 <li>The attached slice is shown above your message and goes to the agent with it</li>
