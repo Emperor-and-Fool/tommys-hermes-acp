@@ -286,6 +286,8 @@ export interface LocaleStrings {
     historyRoleAssistant: string;
     historyRoleThought: string;
     historyRoleTool: string;
+    /** Re-render the viewer so the role filter applies. */
+    historyRoleReload: string;
 
     // Session memory: the picker, the staged chip, the viewer
     historyPickerPlaceholder: string;

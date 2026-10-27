@@ -115,6 +115,11 @@ export class HistoryViewer {
             case 'historyViewerCancel':
                 this._close();
                 break;
+            case 'reloadHistoryViewer':
+                // The pane rebuilds the transcript from scratch, which is what applies a changed
+                // role filter to cards that were created before it changed.
+                this._restore();
+                break;
             case 'webviewLog':
                 this._host.log(msg.line);
                 break;

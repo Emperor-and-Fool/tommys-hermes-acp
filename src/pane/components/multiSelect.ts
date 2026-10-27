@@ -6,7 +6,7 @@ import { state } from '../state';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
 import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './composer/fileMention';
 import { getGroupMarkdownText } from './messages/markdown';
-import { refreshSelectableGroups, reindexSessionIndices } from './messages/messageList';
+import { reindexSessionIndices } from './messages/messageList';
 import { auxiliaryRoleLabel } from './messages/toolCards';
 
 
@@ -55,7 +55,14 @@ export function setHistoryPickRole(role: string, enabled: boolean) {
     } else {
         historyPickRoles.delete(role);
     }
-    refreshSelectableGroups();
+    if (!enabled) {
+        // A tick the filter no longer allows cannot stay: the row it marks is not attachable.
+        getSelectedGroups().forEach(function(group) {
+            if (!selectableForPurpose(group)) {
+                setGroupSelected(group, false);
+            }
+        });
+    }
     updateMultiSelectToolbar();
 }
 

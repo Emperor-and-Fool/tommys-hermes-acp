@@ -181,39 +181,6 @@ function buildSelectWrap(group) {
     return selectWrap;
 }
 
-/**
- * Re-apply the role filter to the transcript already on screen: cards of a role that is no
- * longer offered lose their tick box (and any tick), cards of a role that is offered gain one.
- * The tick lives inside `.message-container` beside the message, so it goes in there.
- */
-export function refreshSelectableGroups() {
-    if (!messagesEl) {
-        return;
-    }
-    const groups: HTMLElement[] = Array.from(messagesEl.querySelectorAll('.message-group'));
-    groups.forEach(function(group) {
-        const role = (group.classList[1] || '') as string;
-        const offered = shouldOfferSelection(role);
-        group.classList.toggle('selectable', offered);
-        const existing = group.querySelector('.msg-select-wrap');
-        if (offered && !existing) {
-            const wrap = buildSelectWrap(group);
-            const container = group.querySelector('.message-container');
-            if (container) {
-                container.insertBefore(wrap, container.firstChild);
-            } else {
-                group.appendChild(wrap);
-            }
-            wireSelectableGroup(group);
-        } else if (!offered && existing) {
-            if (group.classList.contains('is-selected')) {
-                setGroupSelected(group, false);
-            }
-            existing.remove();
-        }
-    });
-}
-
 export function createGroup(role, id?) {
     const group = document.createElement('div');
     group.className = 'message-group ' + role;

@@ -148,6 +148,8 @@ export type PaneToHost =
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
     | { type: 'historyPicked'; sessionId: string; indices: number[] }
     | { type: 'historyViewerCancel' }
+    /** Re-send the transcript: the viewer's own re-render, after its role filter changed. */
+    | { type: 'reloadHistoryViewer' }
 
     // Session memory: open the viewer on one session, or drop the staged pick.
     | { type: 'openHistoryViewer'; sessionId: string; title: string }

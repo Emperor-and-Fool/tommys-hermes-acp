@@ -54,6 +54,7 @@ export const historyRoleUser = byId('historyRoleUser');
 export const historyRoleAssistant = byId('historyRoleAssistant');
 export const historyRoleThought = byId('historyRoleThought');
 export const historyRoleTool = byId('historyRoleTool');
+export const historyRoleReload = byId('historyRoleReload');
 export const multiSelectAttachConfirmBtn = byId('multiSelectAttachConfirmBtn');
 export const multiSelectCopyBtn = byId('multiSelectCopyBtn');
 export const multiSelectDeleteBtn = byId('multiSelectDeleteBtn');

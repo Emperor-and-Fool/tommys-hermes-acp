@@ -365,6 +365,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyRoleAssistant: 'Assistant',
     historyRoleThought: 'Thought',
     historyRoleTool: 'Tool',
+    historyRoleReload: 'Re-render',
     historyPickerPlaceholder: 'Select session memory',
     historyPickerHeader: 'Session memory',
     historyPickerEmpty: 'No other sessions yet',

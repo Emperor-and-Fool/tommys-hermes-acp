@@ -1,5 +1,5 @@
 /* The history viewer's half: a read-only transcript that can be ticked, and nothing else. */
-import { multiSelectAttachConfirmBtn, multiSelectExitBtn } from '../../dom';
+import { historyRoleReload, multiSelectAttachConfirmBtn, multiSelectExitBtn } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { enterMultiSelectMode, getSelectedMessageIndices } from '../multiSelect';
@@ -46,6 +46,17 @@ export function initHistoryViewer(): void {
                 return;
             }
             post({ type: 'historyPicked', sessionId: viewerSessionId, indices });
+        });
+    }
+    if (historyRoleReload) {
+        historyRoleReload.textContent = locale.historyRoleReload || 'Re-render';
+        historyRoleReload.addEventListener('click', function() {
+            if (!isViewer()) {
+                return;
+            }
+            // A fresh transcript is the only thing that re-applies the role filter to cards that
+            // were built before it changed, so this is an explicit action rather than a guess.
+            post({ type: 'reloadHistoryViewer' });
         });
     }
     if (multiSelectExitBtn) {

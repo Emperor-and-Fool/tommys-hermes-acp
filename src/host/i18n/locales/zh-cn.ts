@@ -365,6 +365,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     historyRoleAssistant: '助手',
     historyRoleThought: '思考',
     historyRoleTool: '工具',
+    historyRoleReload: '重新渲染',
     historyPickerPlaceholder: '选择会话记忆',
     historyPickerHeader: '会话记忆',
     historyPickerEmpty: '暂无其他会话',
