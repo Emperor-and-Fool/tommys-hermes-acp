@@ -19,7 +19,6 @@ import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
 import { hermesSessionIdFor } from './tabs';
-import { renameSessionViaCli } from '../environment/sessionTitle';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
 
@@ -43,10 +42,6 @@ export interface TabLifecycleHost {
     ensureRegistered(): void;
     msgPath(id: string): string;
     postSessionList(): void;
-    /** The Hermes executable, resolved the way a connection resolves it. */
-    resolveHermesExecutable(): Promise<string | undefined>;
-    /** The CLI profile the app is connected as: the one a rename writes to. */
-    cliProfile(): string;
     /** Restate the active tab's staged history pick in the pane (or that it has none). */
     postHistoryState(tabId: string): void;
     /** Forget one tab's staged pick: the tab is gone. */
@@ -406,18 +401,16 @@ export class TabLifecycle {
         if (typeof sessionId !== 'string' || !sessionId) {
             return;
         }
-        // The CLI is the whole interface, so a rename no longer needs the agent running.
-        const executable = await this._host.resolveHermesExecutable();
-        if (!executable) {
-            this._host.log(`Rename needs a Hermes executable (${sessionId})`);
+        const acp = this._host.acp();
+        if (!acp) {
+            this._host.log(`Rename needs a live connection (${sessionId})`);
             return;
         }
-        const profile = this._host.cliProfile();
         // The strip's id is only the tab's: an adopted tab carries a local id, and Hermes would
         // answer "unknown session" for it.
         const hermesSessionId = hermesSessionIdFor(this._host.session.tabs, sessionId);
         const outcome = await renameSession({
-            setTitle: (id, title) => renameSessionViaCli(executable, profile, id, title),
+            setTitle: (id, title) => acp.setSessionTitle(id, title),
             refreshCatalog: () => this.refreshFromHermes(),
             log: line => this._host.log(line),
         }, hermesSessionId, rawTitle);
