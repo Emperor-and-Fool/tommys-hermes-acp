@@ -27,10 +27,9 @@ realising it is heading the wrong way and getting it back on track.
 
 With a turn in flight, type into the composer and **Stop becomes Steer**. Your words go
 into the turn — not as a new question, not as cancel-and-retry — as guidance the agent
-folds into what it is already doing. The transcript marks it with an orange **Steer** tag
-that survives reload. The turn keeps its identity, its tool calls, its context.
+folds into what it is already doing. The transcript marks it with an orange **Steer** tag. The turn keeps its identity, its tool calls, its context.
 
-It is the one workflow difference you will feel every day.
+It is a workflow difference you will feel every day.
 
 > **Roadmap:** time-limited auto-approve while a steered turn runs, so you can say
 > "go ahead with the next three" without clicking a card for each one.
