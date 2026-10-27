@@ -81,11 +81,13 @@ export function init(): void {
                 if (msg.status === 'ready') {
                     state.isPrompting = false;
                     state.awaitingFirstChunk = false;
+                    // canSend first: finishStreaming derives the input mode from it, so setting
+                    // it afterwards left finishStreaming computing 'disabled' and needing a
+                    // second setInputMode('send') to correct it.
+                    state.canSend = true;
                     resetToolAggregation();
                     finishStreaming();
-                    state.canSend = true;
                     inputEl.disabled = false;
-                    setInputMode('send');
                     state.placeholder.style.display = 'none';
                     if (!window._hermesRendered) {
                         scheduleSessionMarkdownRender();
