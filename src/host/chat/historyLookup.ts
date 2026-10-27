@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { findHermesExecutable, runHermesCommand } from '../environment/profileDiscovery';
 import { normalizeHermesCliProfile } from '../environment/hermesProfile';
-import type { ChatMessage } from '../../shared/chat';
+import { unwrapSteer, type ChatMessage } from '../../shared/chat';
 
 /** One message as `hermes sessions export` writes it. */
 export interface ExportedMessage {
@@ -65,7 +65,9 @@ export function matchMessageIds(picked: ChatMessage[], exported: ExportedMessage
     const pool = exported.map((message, index) => ({
         index,
         role: message.role || '',
-        text: normalise(flattenContent(message.content)),
+        // The export keeps the steer's delivery wrapper; the local copy it is matched against
+        // does not, so both sides are unwrapped before their text is compared.
+        text: normalise(unwrapSteer(flattenContent(message.content)).text),
         id: typeof message.id === 'number' ? message.id : null,
         timestamp: typeof message.timestamp === 'number' ? message.timestamp : undefined,
     }));
@@ -77,7 +79,7 @@ export function matchMessageIds(picked: ChatMessage[], exported: ExportedMessage
 
     for (const message of picked) {
         const role = message.role;
-        const text = normalise(message.text || '');
+        const text = normalise(unwrapSteer(message.text || '').text);
         let hit: (typeof pool)[number] | null = null;
         for (let index = pool.length - 1; index >= 0; index -= 1) {
             const candidate = pool[index];

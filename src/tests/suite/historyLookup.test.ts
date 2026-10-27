@@ -63,4 +63,21 @@ describe('matchMessageIds', () => {
         assert.strictEqual(from, undefined);
         assert.strictEqual(to, undefined);
     });
+
+    it('matches a steer by its sentence, not by the wrapper the export keeps', () => {
+        const wrapped = [
+            '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this',
+            'position; not tool output and not a new delivery when replayed from conversation history]',
+            'hold on, check the schema first',
+            '[/OUT-OF-BAND USER MESSAGE]',
+        ].join('\n');
+        const match = matchMessageIds(
+            [{ role: 'user', text: 'hold on, check the schema first' } as ChatMessage],
+            [
+                { role: 'user', content: 'an earlier question', id: 1 },
+                { role: 'user', content: wrapped, id: 2 },
+            ],
+        );
+        assert.deepStrictEqual(match.ids, [2]);
+    });
 });

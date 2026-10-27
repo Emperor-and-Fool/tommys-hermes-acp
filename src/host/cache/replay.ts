@@ -1,20 +1,5 @@
-import type { ChatMessage } from '../../shared/chat';
+import { unwrapSteer, type ChatMessage } from '../../shared/chat';
 import { parseHistoryBlocks } from '../chat/historyAttach';
-
-const STEER_OPEN = /^\[OUT-OF-BAND USER MESSAGE[^\]]*\]\s*/;
-
-const STEER_CLOSE = /\s*\[\/OUT-OF-BAND USER MESSAGE\]\s*$/;
-
-/**
- * Text the agent stored for a steer carries the delivery wrapper it was sent with. That marker
- * says how the message arrived once; replaying it verbatim reads as if the user had typed it.
- */
-export function unwrapSteer(text: string): { text: string; steer: boolean } {
-    if (!text.startsWith('[OUT-OF-BAND USER MESSAGE')) {
-        return { text, steer: false };
-    }
-    return { text: text.replace(STEER_OPEN, '').replace(STEER_CLOSE, '').trim(), steer: true };
-}
 
 /** One record from the agent's replay, as ACP delivers it. */
 export interface ReplayItem {
