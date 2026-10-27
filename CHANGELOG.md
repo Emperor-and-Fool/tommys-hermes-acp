@@ -7,62 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-10-27
 
-What the live transcript does while the agent is working, and a filter on the
-messages a history attach carries.
+What the transcript does while the agent is working, and a filter on what a
+history attach may carry.
 
 ### Added
 
-- **Role filter on the history attach bar**: four boxes — User, Assistant, Thought, Tool — decide which messages offer a tick. User and Assistant start on; Thought and Tool are opt-in because they carry the most text for the least answer. Turning a role off drops the ticks it no longer allows
-- **Re-render** next to the filter: the filter is applied when a card is built, so an explicit re-render is what applies a change to the transcript already on screen
-- A steer replays as its sentence with a **Steer** tag, rather than as the delivery wrapper it was sent in
+- **Role filter on the history attach bar**: User, Assistant, Thought and Tool decide which messages offer a tick. User and Assistant start on; Thought and Tool are opt-in, because they carry the most text for the least answer. Turning a role off drops the ticks it no longer allows
+- **Re-render** beside the filter: the filter is applied when a card is built, so an explicit re-render is what applies a change to the transcript already on screen
+- A steer replays as its sentence with a **Steer** tag, instead of the delivery wrapper it was sent in
 
 ### Changed
 
-- **Thought and tool cards stay open while the agent writes** and squash to their five- and three-line caps when the run ends, instead of being capped from the first chunk. A card that grows or squashes no longer counts as the user scrolling away
-- A run now ends with the transcript at its bottom, after the final markdown pass and the collapsing cards have settled
+- **Thought and tool cards stay open while the agent writes** and squash to their five- and three-line caps when the run ends, rather than being capped from the first chunk
+- A run ends with the transcript at its bottom, after the final markdown pass and the collapsing cards have settled
 - The id lookup matches a steered message by its sentence, so history slices still point at exact messages
-- Every webview asset URL carries its file's mtime, so a rebuilt bundle can never be served from cache under an unchanged address
+- Every webview asset URL carries its file's mtime, so a rebuilt bundle cannot be served from cache under an unchanged address
 
 ### Fixed
 
 - The history card had no height cap: it rendered at full length and its toggles changed nothing. It now takes the thought card's five-line cap and only shows "Show more" when the body overflows
-- The input mode after a run was set twice — once from a stale flag, then corrected
+- The input mode after a run was set twice, once from a flag that had not been updated yet
+
+### Repository
+
+- The local ACP patch is tracked under `packaging/hermes-patches`
+- Dead code removed: the unused finished-tool glyph test, and a state write that went to the card instead of the pane
 
 ## [1.0.0] - 2026-10-27
 
-The fork's first structured release: `src/` is split by runtime, and the session-memory work
-sits on top of it.
+The baseline: `src/` split by runtime, session memory, approvals, steer.
 
 ### Added
 
-- **Session memory**: pick another conversation from the composer, read it in a temporary editor tab (read-only, one tab at a time), tick up to 15 messages, and attach them. The staged pick shows as a chip and travels with the tab it was staged in; on send it becomes a quoted block above your question, and session export writes it back as a quotation
-- **Approval mode on the permission card**: Manual · Smart · Off, written through `hermes config set approvals.mode` for the active profile, broadcast to every pending card
-- **Steer**: while a turn runs, text in the composer turns **Stop** into **Steer**; the text goes into the running turn after the current tool batch instead of ending it, and the transcript marks the message
-- **Model and session-memory pickers trade places** while the agent works, and the memory picker shrinks to its clock once the conversation has content
+- **Session memory**: pick another conversation from the composer, read it read-only in one temporary tab, tick up to fifteen messages, and send them as a quoted block above the question. The pick belongs to the tab it was staged in
+- **Approval mode** on every pending permission card: Manual · Smart · Off, written through `hermes config set approvals.mode` for the active profile
+- **Steer**: text in the composer turns Stop into Steer and goes into the running turn, and the steer's own reply line is kept out of the assistant's answer
 
 ### Changed
 
-- `src/` is divided by runtime — `host/` (VS Code API, filesystem, CLI, ACP), `pane/` (webview), `shared/` (the message contract) — and the webview is built by esbuild into `media/pane.js`
-- Both directions of the webview protocol are typed unions in `src/shared/webview.ts`; five dead message names were removed
-- The staged history pick is keyed by tab, so switching tabs no longer carries a pick across
-- The current session is a valid history source again
-
-### Fixed
-
-- **Cross-tab staging**: a pick staged in one tab could be sent from another, possibly into the very session it came from
-- **Steer never reached the running turn**: it was queued behind that turn's own send and always fell back to being a new message
-- **Steer's reply line** (`⏩ Steer queued…`) no longer leaks into the assistant's answer, and a reply that opens with a warning sign is no longer mistaken for one
-- `normalizeWindowsUserPath` split Windows PATH entries at the drive colon when running outside Windows
+- `src/` divided by runtime — `host/`, `pane/`, `shared/` — with the webview bundled by esbuild
+- Both directions of the webview protocol are typed unions in `src/shared/webview.ts`
+- The model and session-memory pickers trade places while the agent works
 
 ### Removed
 
-- The old current-tab context attach (`ContextAttachOffer`), its messages, its setting and its tests — replaced by session memory
+- The old current-tab context attach, its messages, its setting and its tests
 - Both pre-split monoliths, `chat.js.old` and `HermesChatProvider.ts.old`
 
 ## [0.4.0] - 2026-10-21
 
-First build of the fork under its own name; the tree was imported squashed, without an entry
-here.
+First build under the fork's own name, on top of upstream 0.3.2.
+
+### Added
+
+- Hermes sessions adopted as tabs, with their history replayed into the panel
+- An editor-panel surface beside the side bar
+- Image paste and image-only send; light-theme readability and the font-size pill
+- Activity-bar container entitled "Tommys Dev Chat", with the whale glyph
+
+### Changed
+
+- Re-identified as Tommys Hermes ACP: name, GPL-3.0-or-later, links, issue templates
+- The setting namespace corrected to `tommys.*`
+
+### Fixed
+
+- Tabs were being re-sessioned on every switch; the composer row and the card labels were repaired
 
 ## [0.3.2] - 2026-06-22
 
