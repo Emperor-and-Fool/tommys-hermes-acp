@@ -1,6 +1,21 @@
 import type { ChatMessage } from '../../shared/chat';
 import { parseHistoryBlocks } from '../chat/historyAttach';
 
+const STEER_OPEN = /^\[OUT-OF-BAND USER MESSAGE[^\]]*\]\s*/;
+
+const STEER_CLOSE = /\s*\[\/OUT-OF-BAND USER MESSAGE\]\s*$/;
+
+/**
+ * Text the agent stored for a steer carries the delivery wrapper it was sent with. That marker
+ * says how the message arrived once; replaying it verbatim reads as if the user had typed it.
+ */
+export function unwrapSteer(text: string): { text: string; steer: boolean } {
+    if (!text.startsWith('[OUT-OF-BAND USER MESSAGE')) {
+        return { text, steer: false };
+    }
+    return { text: text.replace(STEER_OPEN, '').replace(STEER_CLOSE, '').trim(), steer: true };
+}
+
 /** One record from the agent's replay, as ACP delivers it. */
 export interface ReplayItem {
     role: string;
@@ -25,8 +40,11 @@ export function buildReplayMessages(replay: ReplayItem[], base: number = Date.no
             continue;
         }
         if (item.role === 'user') {
+            // A steer is a user message that went into a running turn: keep the sentence, drop
+            // the wrapper, and let the transcript mark it as what it was.
+            const steer = unwrapSteer(text);
             // Attached history rides inside the user text; lift it back out as its own card.
-            const parsed = parseHistoryBlocks(text);
+            const parsed = parseHistoryBlocks(steer.text);
             if (parsed.blocks.length) {
                 for (const block of parsed.blocks) {
                     messages.push({
@@ -37,7 +55,12 @@ export function buildReplayMessages(replay: ReplayItem[], base: number = Date.no
                     });
                 }
                 if (parsed.rest) {
-                    messages.push({ role: 'user', text: parsed.rest, timestamp: base + messages.length });
+                    messages.push({
+                        role: 'user',
+                        text: parsed.rest,
+                        timestamp: base + messages.length,
+                        steer: steer.steer,
+                    });
                 }
                 continue;
             }
@@ -57,7 +80,13 @@ export function buildReplayMessages(replay: ReplayItem[], base: number = Date.no
             });
             continue;
         }
-        messages.push({ role: item.role, text: item.text as string, timestamp: base + messages.length });
+        const own = item.role === 'user' ? unwrapSteer(item.text as string) : { text: item.text as string, steer: false };
+        messages.push({
+            role: item.role,
+            text: own.text,
+            timestamp: base + messages.length,
+            steer: own.steer,
+        });
     }
 
     return messages;

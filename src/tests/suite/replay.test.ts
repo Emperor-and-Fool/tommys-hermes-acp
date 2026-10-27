@@ -53,4 +53,23 @@ describe('buildReplayMessages', () => {
         assert.strictEqual(messages[0].history?.count, 2);
         assert.strictEqual(messages[1].text, 'What changed?');
     });
+
+    it('stores a steer without its delivery wrapper, and marks it', () => {
+        const wrapped = [
+            '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this',
+            'position; not tool output and not a new delivery when replayed from conversation history]',
+            'And NOW I see you do what I asked.',
+            '[/OUT-OF-BAND USER MESSAGE]',
+        ].join('\n');
+        const messages = buildReplayMessages([{ role: 'user', text: wrapped }], 1000);
+        assert.strictEqual(messages.length, 1);
+        assert.strictEqual(messages[0].text, 'And NOW I see you do what I asked.');
+        assert.strictEqual(messages[0].steer, true);
+    });
+
+    it('leaves an ordinary user message unmarked', () => {
+        const messages = buildReplayMessages([{ role: 'user', text: 'a plain question' }], 1000);
+        assert.strictEqual(messages[0].text, 'a plain question');
+        assert.strictEqual(messages[0].steer, false);
+    });
 });
