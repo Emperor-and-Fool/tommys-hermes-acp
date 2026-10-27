@@ -279,14 +279,6 @@ export function auxiliaryRoleLabel(role, text?) {
     return profile + ' using Hermes' + (name ? ' ' + name : '');
 }
 
-/** Hermes marks a call's state with the first glyph of its text. */
-const TERMINAL_TOOL_GLYPHS = ['✅', '❌', '⏹'];
-
-export function isFinishedToolText(text) {
-    const first = String(text || '').trimStart();
-    return TERMINAL_TOOL_GLYPHS.some(function(glyph) { return first.startsWith(glyph); });
-}
-
 export function clearAllToolLive() {
     Object.keys(state.toolCallMap).forEach(function(key) {
         const group = document.getElementById(state.toolCallMap[key]);
