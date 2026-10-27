@@ -5,6 +5,7 @@ import { escapeHtml } from '../../util/html';
 import { setInputMode, updateQuickActionBtns } from '../composer/composer';
 import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
+
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
@@ -165,24 +166,61 @@ function newMessageId() {
     return 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 }
 
+function buildSelectWrap(group) {
+    const selectWrap = document.createElement('label');
+    selectWrap.className = 'msg-select-wrap';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+    checkbox.addEventListener('change', function() {
+        setGroupSelected(group, checkbox.checked);
+    });
+    selectWrap.appendChild(checkbox);
+    return selectWrap;
+}
+
+/**
+ * Re-apply the role filter to the transcript already on screen: cards of a role that is no
+ * longer offered lose their tick box (and any tick), cards of a role that is offered gain one.
+ * The tick lives inside `.message-container` beside the message, so it goes in there.
+ */
+export function refreshSelectableGroups() {
+    if (!messagesEl) {
+        return;
+    }
+    const groups: HTMLElement[] = Array.from(messagesEl.querySelectorAll('.message-group'));
+    groups.forEach(function(group) {
+        const role = (group.classList[1] || '') as string;
+        const offered = shouldOfferSelection(role);
+        group.classList.toggle('selectable', offered);
+        const existing = group.querySelector('.msg-select-wrap');
+        if (offered && !existing) {
+            const wrap = buildSelectWrap(group);
+            const container = group.querySelector('.message-container');
+            if (container) {
+                container.insertBefore(wrap, container.firstChild);
+            } else {
+                group.appendChild(wrap);
+            }
+            wireSelectableGroup(group);
+        } else if (!offered && existing) {
+            if (group.classList.contains('is-selected')) {
+                setGroupSelected(group, false);
+            }
+            existing.remove();
+        }
+    });
+}
+
 export function createGroup(role, id?) {
     const group = document.createElement('div');
     group.className = 'message-group ' + role;
     group.id = id || newMessageId();
     if (shouldOfferSelection(role)) {
         group.classList.add('selectable');
-        const selectWrap = document.createElement('label');
-        selectWrap.className = 'msg-select-wrap';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.addEventListener('click', function(e) {
-            e.stopPropagation();
-        });
-        checkbox.addEventListener('change', function() {
-            setGroupSelected(group, checkbox.checked);
-        });
-        selectWrap.appendChild(checkbox);
-        group.appendChild(selectWrap);
+        group.appendChild(buildSelectWrap(group));
         wireSelectableGroup(group);
     }
     assignSessionIndex(group);

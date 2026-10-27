@@ -1,12 +1,12 @@
 import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
-import { byId, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn } from '../dom';
+import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn } from '../dom';
 import { assistantRoleLabel } from '../i18n';
 import { post } from '../post';
 import { state } from '../state';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
 import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './composer/fileMention';
 import { getGroupMarkdownText } from './messages/markdown';
-import { reindexSessionIndices } from './messages/messageList';
+import { refreshSelectableGroups, reindexSessionIndices } from './messages/messageList';
 import { auxiliaryRoleLabel } from './messages/toolCards';
 
 
@@ -35,10 +35,29 @@ export function isSelectableRole(role) {
 }
 
 /**
- * The roles a history attach may carry. Which roles to allow is SKDJ's open decision, so it is
- * one list here and nothing else names a role for this purpose.
+ * The roles a history attach may carry. The viewer's four filter boxes own this set: it starts
+ * on user and assistant, and every path that offers a tick reads it here.
  */
-export const HISTORY_PICK_ROLES: string[] = ['user', 'assistant'];
+const historyPickRoles: Set<string> = new Set(['user', 'assistant']);
+
+/** Roles the picker currently offers, for the boxes and for anything that needs to ask. */
+export function historyPickRoleEnabled(role: string): boolean {
+    return historyPickRoles.has(role);
+}
+
+/**
+ * Turn one role on or off. Groups of a role that just went off lose their tick with it, and the
+ * whole transcript is re-evaluated so cards of a role that came on gain one.
+ */
+export function setHistoryPickRole(role: string, enabled: boolean) {
+    if (enabled) {
+        historyPickRoles.add(role);
+    } else {
+        historyPickRoles.delete(role);
+    }
+    refreshSelectableGroups();
+    updateMultiSelectToolbar();
+}
 
 function isHistoryPick(): boolean {
     return state.multiSelectPurpose === 'historyPick';
@@ -50,7 +69,7 @@ export function shouldOfferSelection(role: string): boolean {
         return false;
     }
     if (document.body.classList.contains('is-viewer')) {
-        return HISTORY_PICK_ROLES.indexOf(role) >= 0;
+        return historyPickRoles.has(role);
     }
     return true;
 }
@@ -64,7 +83,7 @@ function selectableForPurpose(group) {
     if (!isHistoryPick()) {
         return true;
     }
-    return HISTORY_PICK_ROLES.some(function(role) {
+    return Array.from(historyPickRoles).some(function(role) {
         return group.classList.contains(role);
     });
 }
@@ -144,6 +163,12 @@ export function updateMultiSelectToolbar() {
                 ? (locale.multiSelectCount || '{0} selected').replace('{0}', String(count))
                 : (locale.selectMessages || 'Select');
     }
+    if (historyRoleFilters) {
+        historyRoleFilters.hidden = !isHistoryPickMode;
+        if (isHistoryPickMode) {
+            syncHistoryRoleBoxes();
+        }
+    }
     const hasSelection = count > 0;
     if (multiSelectDeleteBtn) multiSelectDeleteBtn.disabled = !hasSelection;
     if (multiSelectCopyBtn) multiSelectCopyBtn.disabled = !hasSelection;
@@ -155,7 +180,8 @@ export function updateMultiSelectToolbar() {
     if (multiSelectExportBtn) multiSelectExportBtn.hidden = isHistoryPickMode;
     if (multiSelectAttachConfirmBtn) {
         multiSelectAttachConfirmBtn.hidden = !isHistoryPickMode;
-        multiSelectAttachConfirmBtn.disabled = !hasSelection;
+        // Nothing offered means nothing to pick, so Attach has nothing to do.
+        multiSelectAttachConfirmBtn.disabled = !hasSelection || historyPickRoles.size === 0;
         if (isHistoryPickMode) {
             multiSelectAttachConfirmBtn.textContent = (locale.historyAttachCount || 'Attach ({0}/{1})')
                 .replace('{0}', String(count))
@@ -170,6 +196,41 @@ export function updateMultiSelectToolbar() {
         multiSelectAllBtn.textContent = areAllSelectableGroupsSelected(selectableGroups)
             ? (locale.multiSelectDeselectAll || '取消全选')
             : (locale.multiSelectAll || '全选');
+    }
+}
+
+/**
+ * The filter boxes state what the set holds, and only speak up while the viewer is picking.
+ * Wired once, on first sight: nothing else owns them.
+ */
+let historyRoleBoxesWired = false;
+
+function syncHistoryRoleBoxes() {
+    const pairs = [
+        ['user', historyRoleUser],
+        ['assistant', historyRoleAssistant],
+        ['thought', historyRoleThought],
+        ['tool', historyRoleTool],
+    ];
+    for (const pair of pairs) {
+        const box = pair[1];
+        if (box) {
+            box.checked = historyPickRoles.has(pair[0]);
+        }
+    }
+    if (historyRoleBoxesWired) {
+        return;
+    }
+    historyRoleBoxesWired = true;
+    for (const pair of pairs) {
+        const role = pair[0];
+        const box = pair[1];
+        if (!box) {
+            continue;
+        }
+        box.addEventListener('change', function() {
+            setHistoryPickRole(role, box.checked);
+        });
     }
 }
 

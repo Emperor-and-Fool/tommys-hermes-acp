@@ -1890,6 +1890,28 @@ body.surface-notabs #tab-bar {
 .multi-select-toolbar button.ms-exit {
     margin-left: 0;
 }
+.multi-select-toolbar .ms-role-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.9;
+}
+.multi-select-toolbar .ms-role {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.multi-select-toolbar .ms-role input {
+    margin: 0;
+    width: 12px;
+    height: 12px;
+    cursor: pointer;
+}
 .multi-select-toolbar .ms-actions-end {
     display: flex;
     align-items: center;
