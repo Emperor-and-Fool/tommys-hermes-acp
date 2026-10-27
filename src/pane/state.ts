@@ -52,6 +52,9 @@ export const state: any = {
     replyQuote: null,
     scrollIdleTimer: null,
     scrollPinnedByUser: false,
+    /** Until this moment, a scroll event is ours (a card collapsing, an auto-scroll), not the
+     *  user leaving the bottom, and must not pin the view. */
+    suppressScrollPinUntil: 0,
     selectionQuoteTimer: null,
     sessionMarkdownPending: false,
     sessionMsgCounter: 0,

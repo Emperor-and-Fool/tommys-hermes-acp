@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
 import type { LocaleStrings } from '../../shared/i18n';
 
@@ -43,13 +44,26 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
             .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
     }
 
+    // A rebuilt file must get a new URL: the webview caches what it loads, and a stable
+    // `pane.js` address is how a freshly built bundle keeps running as the old one.
+    const mediaDir = path.dirname(input.htmlPath);
+    const versioned = (relativeToMedia: string): string => {
+        const uriBase = uri(relativeToMedia);
+        try {
+            const stamp = fs.statSync(path.join(mediaDir, relativeToMedia)).mtimeMs;
+            return uriBase + (uriBase.includes('?') ? '&' : '?') + 'v=' + Math.round(stamp);
+        } catch {
+            return uriBase;
+        }
+    };
+
     return html
-        .replace('{{MARKED_URI}}', uri('vendor/marked.min.js'))
-        .replace('{{HIGHLIGHT_URI}}', uri('vendor/highlight.min.js'))
-        .replace('{{HIGHLIGHT_CSS_URI}}', uri('vendor/' + highlightSheetFor(input.themeKind)))
-        .replace('{{PURIFY_URI}}', uri('vendor/purify.min.js'))
-        .replace('{{CHAT_CSS_URI}}', uri('chat.css'))
-        .replace('{{CHAT_JS_URI}}', uri('pane.js'))
+        .replace('{{MARKED_URI}}', versioned('vendor/marked.min.js'))
+        .replace('{{HIGHLIGHT_URI}}', versioned('vendor/highlight.min.js'))
+        .replace('{{HIGHLIGHT_CSS_URI}}', versioned('vendor/' + highlightSheetFor(input.themeKind)))
+        .replace('{{PURIFY_URI}}', versioned('vendor/purify.min.js'))
+        .replace('{{CHAT_CSS_URI}}', versioned('chat.css'))
+        .replace('{{CHAT_JS_URI}}', versioned('pane.js'))
         .replace('{{LOCALE_JSON}}', JSON.stringify(input.locale).replace(/</g, '\\u003c'))
         .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
 }

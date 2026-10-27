@@ -9,7 +9,7 @@ import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './compon
 import { insertIntoInput } from './components/messages/messageActions';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
 import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
-import { finalizeAssistantBubble, finishStreaming } from './components/messages/streaming';
+import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
 import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliaryContent } from './components/messages/toolCards';
 import { renderAboutContent } from './components/modals/info';
 import { renderLogContent } from './components/modals/logViewer';
@@ -46,18 +46,25 @@ export function init(): void {
                 } else if (msg.role === 'tool' && msg.toolCallId) {
                     handleToolMessage(msg.text, msg.toolCallId);
                 } else if (msg.role === 'thought') {
-                    // Update the current thought bubble while streaming the same segment
+                    // ACP interleaves tool traffic with thinking, so a thought chunk that
+                    // continues what is on screen updates the card; one that does not is a new
+                    // segment, and the old card is squashed rather than left streaming forever.
                     if (state.thoughtMsgId) {
                         const el = document.getElementById(state.thoughtMsgId);
-                        if (el) {
-                            setAuxiliaryContent(el, msg.text);
+                        const aux = el && el._auxState;
+                        const continues = !!aux && typeof msg.text === 'string'
+                            && msg.text.startsWith(aux.rawText || '');
+                        if (el && continues) {
                             setAuxMessageLive(el, true);
+                            setAuxiliaryContent(el, msg.text);
                             maybeScrollToBottom();
                             break;
                         }
+                        finalizeThoughtSegment();
                     }
                     const id = appendMessage('thought', msg.text);
                     state.thoughtMsgId = id;
+                    setAuxMessageLive(document.getElementById(id), true);
                 } else {
                     appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
@@ -84,6 +91,10 @@ export function init(): void {
                         scheduleSessionMarkdownRender();
                     }
                     maybeFocusInputAfterResponse();
+                    // Last action of a run: everything above the end has just shrunk (the final
+                    // markdown pass, a thought squashing), so without this the answer stops
+                    // short of the bottom by however much those cards lost.
+                    maybeScrollToBottom();
                 } else if (msg.status === 'prompting') {
                     state.isPrompting = true;
                     resetAutoScrollFollow();

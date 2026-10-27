@@ -35,6 +35,8 @@ export function maybeScrollToBottom(force?) {
         return;
     }
     if (force || !state.scrollPinnedByUser) {
+        // This scroll is ours; the event it fires is not the user leaving the bottom.
+        state.suppressScrollPinUntil = Date.now() + 200;
         messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 }
@@ -54,6 +56,9 @@ function scheduleScrollReenable() {
 
 function onMessagesScroll() {
     if (!isActivelyStreaming()) {
+        return;
+    }
+    if (Date.now() < state.suppressScrollPinUntil) {
         return;
     }
     if (!isMessagesAtBottom()) {

@@ -41,20 +41,32 @@ function auxDetailOverflows(scrollEl, text, maxLines) {
 }
 
 export function syncAuxiliaryDetailView(group) {
-    const state = group._auxState;
-    if (!state || !state.scrollEl) return;
-    const maxLines = getAuxCollapsedLines(state.role);
-    state.scrollEl.classList.toggle('is-collapsed', !state.detailExpanded);
-    state.scrollEl.classList.toggle('is-expanded', state.detailExpanded);
-    if (!state.detailExpanded) {
-        state.scrollEl.style.maxHeight = getAuxCollapsedMaxHeight(state.role);
-        state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
-    } else {
-        state.scrollEl.style.maxHeight = '';
+    const aux = group._auxState;
+    if (!aux || !aux.scrollEl) return;
+    const maxLines = getAuxCollapsedLines(aux.role);
+    aux.scrollEl.classList.toggle('is-collapsed', !aux.detailExpanded);
+    aux.scrollEl.classList.toggle('is-expanded', aux.detailExpanded);
+    // Growing or squashing a card changes the height above the viewport, and the scroll event
+    // that follows is ours — it must not be read as the user leaving the bottom.
+    state.suppressScrollPinUntil = Date.now() + 200;
+    if (aux.isLive) {
+        // Still being written: the card grows with its text so the whole thing can be read
+        // as it arrives, and there is nothing to expand or collapse yet.
+        aux.scrollEl.style.maxHeight = '';
+        aux.scrollEl.scrollTop = aux.scrollEl.scrollHeight;
+        aux.moreBtn.hidden = true;
+        aux.lessBtn.hidden = true;
+        return;
     }
-    const overflow = auxDetailOverflows(state.scrollEl, state.rawText, maxLines);
-    state.moreBtn.hidden = state.detailExpanded || !overflow;
-    state.lessBtn.hidden = !state.detailExpanded || !overflow;
+    if (!aux.detailExpanded) {
+        aux.scrollEl.style.maxHeight = getAuxCollapsedMaxHeight(aux.role);
+        aux.scrollEl.scrollTop = aux.scrollEl.scrollHeight;
+    } else {
+        aux.scrollEl.style.maxHeight = '';
+    }
+    const overflow = auxDetailOverflows(aux.scrollEl, aux.rawText, maxLines);
+    aux.moreBtn.hidden = aux.detailExpanded || !overflow;
+    aux.lessBtn.hidden = !aux.detailExpanded || !overflow;
 }
 
 function countNonemptyLines(text) {
@@ -117,6 +129,7 @@ export function handleToolMessage(text, toolCallId) {
     if (state.toolCallMap[toolCallId]) {
         const group = document.getElementById(state.toolCallMap[toolCallId]);
         if (group && group._auxState) {
+            setAuxMessageLive(group, true);
             if (group._auxState.aggregatedTools && group._auxState.aggregatedTools.length) {
                 const entry = group._auxState.aggregatedTools.find(function(t) {
                     return t.toolCallId === toolCallId;
@@ -128,7 +141,6 @@ export function handleToolMessage(text, toolCallId) {
             } else {
                 setAuxiliaryContent(group, text);
             }
-            setAuxMessageLive(group, true);
             maybeScrollToBottom();
         }
         return;
@@ -143,7 +155,7 @@ export function handleToolMessage(text, toolCallId) {
             group._auxState.aggregatedTools.push({ toolCallId: toolCallId, text: text });
             rebuildAggregateToolContent(group);
             state.toolCallMap[toolCallId] = state.toolAggregateGroupId;
-            setAuxMessageLive(group, true);
+            setAuxMessageLive(group, true);  // already live from ensureAggregateEntries path
             enableStopAfterAgentOutput();
             maybeScrollToBottom();
             return;
@@ -153,6 +165,7 @@ export function handleToolMessage(text, toolCallId) {
     const id = appendMessage('tool', text);
     state.toolCallMap[toolCallId] = id;
     state.toolAggregateGroupId = id;
+    setAuxMessageLive(document.getElementById(id), true);
 }
 
 export function setAuxiliaryContent(group, text) {
@@ -266,16 +279,29 @@ export function auxiliaryRoleLabel(role, text?) {
     return profile + ' using Hermes' + (name ? ' ' + name : '');
 }
 
+/** Hermes marks a call's state with the first glyph of its text. */
+const TERMINAL_TOOL_GLYPHS = ['✅', '❌', '⏹'];
+
+export function isFinishedToolText(text) {
+    const first = String(text || '').trimStart();
+    return TERMINAL_TOOL_GLYPHS.some(function(glyph) { return first.startsWith(glyph); });
+}
+
 export function clearAllToolLive() {
     Object.keys(state.toolCallMap).forEach(function(key) {
         const group = document.getElementById(state.toolCallMap[key]);
-        const msg = group && group.querySelector('.message.tool');
-        if (msg) msg.classList.remove('is-live');
+        if (!group) return;
+        setAuxMessageLive(group, false);
     });
 }
 
 export function setAuxMessageLive(group, live) {
     if (!group) return;
+    const aux = group._auxState;
+    const changed = !!aux && aux.isLive !== live;
     const msg = group.querySelector('.message.thought, .message.tool');
     if (msg) msg.classList.toggle('is-live', live);
+    if (aux) aux.isLive = live;
+    // live → live happens on every tool update; only a real transition repaints the card.
+    if (changed) syncAuxiliaryDetailView(group);
 }

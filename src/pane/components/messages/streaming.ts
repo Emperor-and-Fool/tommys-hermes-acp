@@ -10,13 +10,23 @@ export function isActivelyStreaming() {
     return !!(state.streamingMessageId || state.isPrompting);
 }
 
-export function finalizeAssistantBubble() {
-    if (state.thoughtMsgId) {
-        const thoughtGroup = document.getElementById(state.thoughtMsgId);
-        setAuxMessageLive(thoughtGroup, false);
-        finalizeAuxiliaryBubble(thoughtGroup);
-        state.thoughtMsgId = null;
+/**
+ * The thought segment is over — squash it back to its cap. Called when the agent moves on to
+ * something else (a tool, the answer) as well as when the turn ends, so a card nobody is
+ * writing to any more stops taking up the transcript.
+ */
+export function finalizeThoughtSegment() {
+    if (!state.thoughtMsgId) {
+        return;
     }
+    const thoughtGroup = document.getElementById(state.thoughtMsgId);
+    setAuxMessageLive(thoughtGroup, false);
+    finalizeAuxiliaryBubble(thoughtGroup);
+    state.thoughtMsgId = null;
+}
+
+export function finalizeAssistantBubble() {
+    finalizeThoughtSegment();
     clearAllToolLive();
     if (state.streamingMessageId) {
         const group = document.getElementById(state.streamingMessageId);
