@@ -29,6 +29,8 @@ export interface ConnectionHost {
     post(msg: HostToPane): void;
     log(line: string): void;
     postWebviewLog(line: string, level: LogLevel): void;
+    /** Hermes' own answer to a steer: a note, never reply text. */
+    steerNotice(text: string): void;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): vscode.WebviewView | undefined;
@@ -261,6 +263,9 @@ export class Connection {
             if (level) {
                 this._host.postWebviewLog(line, level);
             }
+        };
+        this.acp!.onSteerNotice = (text: string) => {
+            this._host.steerNotice(text);
         };
         this.deferReadyUntilSessionSetup = true;
         try {

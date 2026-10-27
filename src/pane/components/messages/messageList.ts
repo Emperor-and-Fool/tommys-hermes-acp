@@ -217,6 +217,14 @@ function buildMessage(role, text, options) {
     if (role === 'user') {
         processFileRefs(content);
     }
+    if (options && options.steer) {
+        // A steer went into a run that was already going: say so where it lands.
+        card.classList.add('steer');
+        const tag = document.createElement('span');
+        tag.className = 'steer-tag';
+        tag.textContent = locale.steer || 'Steer';
+        label.appendChild(tag);
+    }
     return card;
 }
 
@@ -400,7 +408,13 @@ export function restoreHistory(messages, localHistoryOnly) {
             if (m.role === 'permission') {
                 restorePermissionMessage(m);
             } else {
-                appendMessage(m.role, m.text, { restore: true, deferMarkdown: true, images: m.images, history: m.history });
+                appendMessage(m.role, m.text, {
+                    restore: true,
+                    deferMarkdown: true,
+                    images: m.images,
+                    history: m.history,
+                    steer: m.steer === true,
+                });
             }
         }
         if (cursor < messages.length) {

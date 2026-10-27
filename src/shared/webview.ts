@@ -35,7 +35,7 @@ export type HostToPane =
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
-    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
     | { type: 'insertInput'; text: string }
@@ -96,6 +96,8 @@ export type PaneToHost =
     /** A composer send. `images` were pasted, never uploaded. */
     | { type: 'sendMessage'; text: string; images?: PaneImage[] }
     | { type: 'cancel' }
+    /** Guidance for the running turn: Hermes takes it as `/steer <text>`. */
+    | { type: 'steer'; text: string }
     | { type: 'retry' }
 
     // Files the pane can reach: @-mentions, previews, and opening one in the editor.

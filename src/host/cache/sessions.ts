@@ -257,6 +257,12 @@ export class Sessions {
         }
     }
 
+    /** A steer is a user message the run has already taken: kept for the transcript, marked. */
+    saveSteerMessage(text: string): void {
+        this.messages.push({ role: 'user', text, timestamp: Date.now(), steer: true });
+        this.persistMessages();
+    }
+
     saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[], history?: HistoryRef): void {
         const record: ChatMessage = { role, text, timestamp: Date.now(), toolCallId };
         if (imageRefs && imageRefs.length) {

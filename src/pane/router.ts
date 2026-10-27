@@ -59,7 +59,7 @@ export function init(): void {
                     const id = appendMessage('thought', msg.text);
                     state.thoughtMsgId = id;
                 } else {
-                    appendMessage(msg.role, msg.text);
+                    appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
                 break;
 

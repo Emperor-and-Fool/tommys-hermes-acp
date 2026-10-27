@@ -8,6 +8,9 @@
     --primary-hover: var(--vscode-button-hoverBackground, #1e8ad6);
     --primary-fg: var(--vscode-button-foreground, #ffffff);
     --error: var(--vscode-errorForeground, #f48771);
+    --steer: #d9822b;
+    --steer-hover: #c0701f;
+    --steer-fg: #1b1204;
     --text-block: var(--vscode-textBlockQuote-background, #2d2d2d);
     --dim: var(--vscode-descriptionForeground, #888888);
     --assistant-bg: color-mix(in srgb, var(--primary) 14%, var(--text-block));
@@ -3354,4 +3357,25 @@ body.is-viewer .multi-select-toolbar {
 }
 .history-chip-clear:hover {
     color: var(--fg);
+}
+
+/* Steer: with text in the composer, Stop offers to talk into the running turn. */
+#cancelBtn.stop-btn.steer {
+    background: var(--steer);
+    border-color: var(--steer);
+    color: var(--steer-fg);
+}
+#cancelBtn.stop-btn.steer:hover {
+    background: var(--steer-hover);
+    border-color: var(--steer-hover);
+}
+.message .steer-tag {
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--steer) 55%, var(--border));
+    color: color-mix(in srgb, var(--steer) 80%, var(--fg));
+    font-size: 9px;
+    line-height: 14px;
+    vertical-align: 1px;
 }

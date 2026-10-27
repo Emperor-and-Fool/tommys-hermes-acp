@@ -28,6 +28,7 @@ import {
     parseToolCallSessionUpdate,
 } from './toolCallUpdate';
 import type { CatalogSession, PermissionOption } from '../../shared/acp';
+import { isSteerNotice } from './steerNotice';
 export type { CatalogSession, PermissionOption } from '../../shared/acp';
 
 export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
@@ -132,6 +133,9 @@ export interface ReplayMessage {
 
 export type HistoryReplayHandler = (sessionId: string, messages: ReplayMessage[]) => void;
 
+/** A steer's own reply line, lifted out of the running turn's stream. */
+export type SteerNoticeHandler = (text: string) => void;
+
 export class AcpClient {
     private _process: ChildProcess | null = null;
     private _app: ReturnType<typeof client> | null = null;
@@ -151,6 +155,7 @@ export class AcpClient {
     private _onFileSystem: FileSystemHandler;
     private _onTerminal: TerminalHandler;
     private _onLog: LogHandler;
+    private _onSteerNotice: SteerNoticeHandler = () => {};
     private _terminals: Map<string, TerminalInstance> = new Map();
     private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
@@ -224,6 +229,9 @@ export class AcpClient {
     }
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
+
+    /** Told about the chunk Hermes answers a steer with; it is not part of the reply. */
+    set onSteerNotice(handler: SteerNoticeHandler) { this._onSteerNotice = handler; }
 
     getModelListState(): ModelListState | null {
         return this._modelListState ?? buildModelListState(this._configOptions);
@@ -513,6 +521,31 @@ export class AcpClient {
             if (promptId === this._activePromptId) {
                 this._acceptStreamOutput = false;
             }
+        }
+    }
+
+    /**
+     * Send guidance into the running turn.
+     *
+     * Hermes treats `/steer <text>` sent as a prompt during a run as a slash command: the text
+     * is delivered after the current tool batch and the run continues. The raw request is used
+     * on purpose — `sendMessage` would bump `_activePromptId`, wipe the buffers and end the
+     * turn's stream. False means the turn is not running (or the agent refused), and the caller
+     * should send the text as an ordinary message instead.
+     */
+    async steer(text: string): Promise<boolean> {
+        const body = (text || '').trim();
+        if (!body || this._status !== 'prompting' || !this._activeSessionId) {
+            return false;
+        }
+        this._onLog(`steer ${body.slice(0, 80)}`);
+        try {
+            await this._promptActiveSession(`/steer ${body}`);
+            return true;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._onLog(`steer failed: ${msg}`);
+            return false;
         }
     }
 
@@ -1004,6 +1037,11 @@ export class AcpClient {
                 // If an agent sends the FULL text each time instead, this will
                 // double-append. The SDK's readText() uses the same += pattern.
                 const text = extractTextFromContentBlock(update.content);
+                if (text && isSteerNotice(text)) {
+                    // The steer's own answer rides the same stream; it is not reply text.
+                    this._onSteerNotice(text.trim());
+                    break;
+                }
                 if (text) {
                     this._responseBuffer += text;
                     this._onMessage('assistant', this._responseBuffer);

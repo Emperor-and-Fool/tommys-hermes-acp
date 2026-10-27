@@ -297,6 +297,10 @@ export interface LocaleStrings {
     approvalModeOff: string;
     approvalModeTooltip: string;
     approvalModeFailed: string;
+
+    // Steer
+    steer: string;
+    steerHint: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

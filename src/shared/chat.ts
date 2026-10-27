@@ -74,6 +74,8 @@ export interface ChatMessage {
     imageRefs?: StoredImageRef[];
     /** Set on role 'history': which conversation the slice came from. */
     history?: HistoryRef;
+    /** Set on a user message that went into a *running* turn rather than starting one. */
+    steer?: boolean;
 }
 
 /** One tab: the session row as Hermes reports it, plus the view flags Hermes cannot know. */

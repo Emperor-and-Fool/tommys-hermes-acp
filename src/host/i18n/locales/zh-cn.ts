@@ -373,4 +373,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeOff: '关闭',
     approvalModeTooltip: '该审批模式作用于整个 profile，包括命令行中的 Hermes。关闭会完全跳过智能审批。',
     approvalModeFailed: '无法更改审批模式。',
+    steer: '引导',
+    steerHint: '作为引导发送到正在运行的一轮中',
 };

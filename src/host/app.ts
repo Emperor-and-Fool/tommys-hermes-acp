@@ -247,6 +247,7 @@ export class App implements vscode.WebviewViewProvider {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
+            steerNotice: (text) => this._log(text),
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -439,6 +440,43 @@ export class App implements vscode.WebviewViewProvider {
     }
 
 
+
+    /**
+     * Text aimed at the running turn.
+     *
+     * Hermes takes `/steer <text>` during a run and delivers it after the current tool batch.
+     * If the turn ended between typing and pressing, the same text goes out as a normal message —
+     * which is why the pane shows nothing itself: the row arrives here, marked or not.
+     */
+    private _handleSteer(text: string): void {
+        const body = (text || '').trim();
+        if (!body) {
+            return;
+        }
+        const acp = this._connection.acp;
+        if (!acp || acp.status !== 'prompting') {
+            this._log('Steer: no turn in flight, sending as a message');
+            this._postMessage({ type: 'addMessage', role: 'user', text: body, sessionId: this._session.activeId });
+            this._enqueueChatOp(() => this._handleUserMessage(body));
+            return;
+        }
+        this._enqueueChatOp(async () => {
+            if (await acp.steer(body)) {
+                this._session.saveSteerMessage(body);
+                this._postMessage({
+                    type: 'addMessage',
+                    role: 'user',
+                    text: body,
+                    steer: true,
+                    sessionId: this._session.activeId,
+                });
+                return;
+            }
+            this._log('Steer refused by the agent, sending as a message');
+            this._postMessage({ type: 'addMessage', role: 'user', text: body, sessionId: this._session.activeId });
+            await this._handleUserMessage(body);
+        });
+    }
 
     public async sendText(text: string): Promise<void> {
         await this._connection.awaitSessionReady();
@@ -694,6 +732,7 @@ export class App implements vscode.WebviewViewProvider {
                 images as Array<{ mimeType: string; data: string }> | undefined,
             ),
             handleCancel: () => this._turn.cancel(),
+            handleSteer: (text) => this._handleSteer(text),
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),

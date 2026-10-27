@@ -373,4 +373,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeOff: 'Off',
     approvalModeTooltip: 'Approval mode for this whole profile, Hermes CLI included. Off skips Smart approval entirely.',
     approvalModeFailed: 'Could not change the approval mode.',
+    steer: 'Steer',
+    steerHint: 'Send this as guidance into the running turn',
 };

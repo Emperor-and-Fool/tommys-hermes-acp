@@ -22,6 +22,8 @@ export interface RouterHost {
     enqueueChatOp(op: () => Promise<void>): void;
     handleUserMessage(text: string, images: unknown): Promise<void>;
     handleCancel(): void;
+    /** Text aimed at the running turn instead of at a new one. */
+    handleSteer(text: string): void;
     handleOpenFile(path: string): Promise<void>;
     handleListFiles(query: string, requestId: string): Promise<void>;
     handlePreviewFile(path: string, requestId: string): Promise<void>;
@@ -64,6 +66,9 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             // Cancel must not wait behind an in-flight sendMessage; AcpClient
             // handles send/cancel races via _activePromptId.
             host.handleCancel();
+            break;
+        case 'steer':
+            host.handleSteer(message.text || '');
             break;
         case 'openFile':
             void host.handleOpenFile(message.path);

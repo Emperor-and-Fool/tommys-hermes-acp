@@ -5,6 +5,7 @@ import { appendMessage, resetAutoScrollFollow } from '../messages/messageList';
 import { requestSessionExport } from '../multiSelect';
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { detectFileMention, hideFilePicker } from './fileMention';
+import { stopButtonIntent } from '../../../shared/steer';
 import { renderPendingImagesBar } from './images';
 import { clearReplyQuote, withReplyQuote } from './replyQuote';
 
@@ -152,6 +153,7 @@ export function executeSendMessage(text) {
     inputEl.value = '';
     syncInputHeightFromContent();
     updateQuickActionBtns();
+    updateStopButtonState();
     // The composer stays enabled for the whole turn, so the caret never leaves it
     // and the next message can be typed while Hermes works. Sending is blocked by
     // canSend (see sendMessage), and the Send button by setInputMode('waiting');
@@ -170,6 +172,23 @@ export function executeSendMessage(text) {
     pendingImages.length = 0;
     renderPendingImagesBar();
     clearReplyQuote();
+}
+
+/**
+ * Stop, or Steer: the same button. With text in the composer while a turn runs, pressing it
+ * sends that text into the turn instead of ending it.
+ */
+function updateStopButtonState(): void {
+    if (!cancelBtn) {
+        return;
+    }
+    const steering = state.isPrompting && stopButtonIntent(inputEl.value) === 'steer';
+    cancelBtn.classList.toggle('steer', steering);
+    const stopLabel = byId('stopBtnLabel');
+    if (stopLabel) {
+        stopLabel.textContent = steering ? (locale.steer || 'Steer') : (locale.stop || 'Stop');
+    }
+    cancelBtn.title = steering ? (locale.steerHint || '') : (locale.cancelResponse || '');
 }
 
 export function setInputMode(mode) {
@@ -197,6 +216,7 @@ export function setInputMode(mode) {
         sendBtn.classList.remove('hidden');
         sendBtn.disabled = true;
     }
+    updateStopButtonState();
 }
 
 function setQuickPanelOpen(open) {
@@ -283,10 +303,35 @@ function wirePickerRowReserve() {
 export function sendMessage() {
     const text = inputEl.value.trim();
     const hasImages = pendingImages.length > 0;
+    if (!state.canSend) {
+        // A turn is running: Enter carries the text into it, exactly like the button does.
+        if (state.isPrompting && text) {
+            steerMessage(text);
+        }
+        return;
+    }
     // Allow sending with either text OR staged images.
-    if ((!text && !hasImages) || !state.canSend) return;
+    if (!text && !hasImages) return;
 
     executeSendMessage(text);
+}
+
+/**
+ * Send the composer's text into the running turn.
+ *
+ * Nothing is added to the transcript here: the host answers with the user row, marked as a
+ * steer, because only it knows whether the steer was taken or had to go out as a message.
+ */
+function steerMessage(text) {
+    const body = (text || '').trim();
+    if (!body) {
+        return;
+    }
+    inputEl.value = '';
+    syncInputHeightFromContent();
+    updateQuickActionBtns();
+    updateStopButtonState();
+    post({ type: 'steer', text: body });
 }
 
 export function initInputElInput(): void {
@@ -294,6 +339,7 @@ export function initInputElInput(): void {
         syncInputHeightFromContent();
         detectFileMention();
         updateQuickActionBtns();
+        updateStopButtonState();
     });
 }
 
@@ -314,6 +360,7 @@ export function initClearInputBtnClick(): void {
             inputEl.value = '';
             syncInputHeightFromContent();
             updateQuickActionBtns();
+            updateStopButtonState();
             inputEl.focus();
         });
     }
@@ -331,6 +378,10 @@ export function initCopySessionBtnClick(): void {
 
 export function initCancelBtnClick(): void {
     cancelBtn.addEventListener('click', function() {
+        if (state.isPrompting && stopButtonIntent(inputEl.value) === 'steer') {
+            steerMessage(inputEl.value);
+            return;
+        }
         post({ type: 'cancel' });
     });
 }
