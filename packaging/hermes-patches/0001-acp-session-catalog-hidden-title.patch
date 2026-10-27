@@ -1,0 +1,149 @@
+diff --git a/acp_adapter/server.py b/acp_adapter/server.py
+index 6421b21525b..e06489c9120 100644
+--- a/acp_adapter/server.py
++++ b/acp_adapter/server.py
+@@ -24,6 +24,8 @@ from acp.schema import (
+     SetSessionModeResponse, SetSessionModelResponse, TextContentBlock, Usage, UsageUpdate, UserMessageChunk,
+ )
+ 
++from acp.exceptions import RequestError
++
+ from acp_adapter.auth import TERMINAL_SETUP_AUTH_METHOD_ID, build_auth_methods, detect_provider
+ from acp_adapter.commands import SlashCommandsMixin, _estimate_tokens
+ from acp_adapter.content import PromptBlock, _content_blocks_to_openai_user_content, _extract_text
+@@ -576,6 +578,62 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+             if not await self._send(state.session_id, update, fail_msg="Failed to replay ACP history for session %s"):
+                 return
+ 
++    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
++        """Handle ``_``-prefixed ACP extension requests (the sidebar's session visibility).
++
++        A sidebar whose tabs are a projection of ``sessions.hidden`` needs the full catalog
++        including hidden rows, and a way to flip the flag. Neither belongs on
++        ``session/list``: that is the visible catalog every other ACP client sees, and its
++        meaning ("what may I show") must not change.
++        """
++        handlers = {
++            "session/catalog": self._ext_session_catalog,
++            "session/setHidden": self._ext_session_set_hidden,
++            "session/setTitle": self._ext_session_set_title,
++        }
++        handler = handlers.get(method)
++        if handler is None:
++            raise RequestError.method_not_found(f"_{method}")
++        return await handler(params or {})
++
++    async def _ext_session_catalog(self, params: dict[str, Any]) -> dict[str, Any]:
++        raw_cwd = params.get("cwd")
++        cwd = raw_cwd if isinstance(raw_cwd, str) and raw_cwd.strip() else None
++        sessions = await asyncio.to_thread(self.session_manager.session_catalog, cwd)
++        return {"sessions": sessions}
++
++    async def _ext_session_set_hidden(self, params: dict[str, Any]) -> dict[str, Any]:
++        session_id = str(params.get("sessionId") or "").strip()
++        hidden = params.get("hidden")
++        if not session_id or not isinstance(hidden, bool):
++            raise RequestError.invalid_params("session/setHidden needs {sessionId: string, hidden: boolean}")
++        ok = await asyncio.to_thread(self.session_manager.set_session_hidden, session_id, hidden)
++        if not ok:
++            raise RequestError.invalid_params(f"unknown session {session_id}")
++        logger.info("Session %s hidden=%s", session_id, hidden)
++        return {"ok": True, "sessionId": session_id, "hidden": hidden}
++
++    async def _ext_session_set_title(self, params: dict[str, Any]) -> dict[str, Any]:
++        """Retitle a session on the client's behalf.
++
++        The sidebar owns no titles: the write lands on the ``sessions`` row as a ``user`` title
++        (so the agent's auto-titler can never overwrite it) and the client reads the new name
++        back from the catalog. A refusal — a name another session holds, or one past the
++        length limit — is passed through, because that text is all the user sees.
++        """
++        session_id = str(params.get("sessionId") or "").strip()
++        title = params.get("title")
++        if not session_id or not isinstance(title, str):
++            raise RequestError.invalid_params({"reason": "session/setTitle needs {sessionId: string, title: string}"})
++        try:
++            ok = await asyncio.to_thread(self.session_manager.set_session_title, session_id, title)
++        except ValueError as exc:
++            raise RequestError.invalid_params({"reason": str(exc)}) from exc
++        if not ok:
++            raise RequestError.invalid_params({"reason": f"unknown session {session_id}"})
++        logger.info("Session %s retitled", session_id)
++        return {"ok": True, "sessionId": session_id, "title": title}
++
+     async def _session_response_fields(self, state: SessionState, replay_verb: str | None = None) -> dict[str, Any]:
+         """``models``/``modes``/``field_meta`` for session responses, after an optional history replay;
+         schedules command advertisement + usage refresh.
+diff --git a/acp_adapter/session.py b/acp_adapter/session.py
+index 1f6b2813bd5..f04cb4094ae 100644
+--- a/acp_adapter/session.py
++++ b/acp_adapter/session.py
+@@ -207,6 +207,68 @@ class SessionManager:
+         logger.info("Forked ACP session %s -> %s", session_id, new_id)
+         return state
+ 
++    def session_catalog(self, cwd: str | None = None, *, include_hidden: bool = True) -> list[dict[str, Any]]:
++        """Every persisted ACP session with its ``hidden`` flag, newest activity first.
++
++        ``list_sessions`` answers "what may this client show", so hidden rows never appear
++        there. A sidebar whose tabs are the inverse projection (a tab is an *unhidden*
++        session) needs both halves plus the flag, which is why this reads the store rather
++        than the in-memory set: a hidden session that is currently loaded is still hidden.
++        """
++        db = self._get_db()
++        if db is None:
++            return []
++        normalized_cwd = _normalize_cwd_for_compare(cwd) if cwd else None
++        try:
++            rows = db.list_sessions_rich(source="acp", limit=500, include_hidden=include_hidden,
++                                         compact_rows=True)
++        except Exception:
++            logger.debug("Failed to load the ACP session catalog", exc_info=True)
++            return []
++        catalog: list[dict[str, Any]] = []
++        for row in rows:
++            message_count = int(row.get("message_count") or 0)
++            if message_count <= 0:
++                continue
++            session_cwd = row.get("cwd") or _parse_model_config(row.get("model_config")).get("cwd", ".")
++            if normalized_cwd and _normalize_cwd_for_compare(session_cwd) != normalized_cwd:
++                continue
++            session_id = str(row.get("id") or "")
++            if not session_id:
++                continue
++            catalog.append({
++                "session_id": session_id,
++                "cwd": session_cwd,
++                "title": row.get("title") or "",
++                "hidden": bool(int(row.get("hidden") or 0)),
++                "message_count": message_count,
++                "updated_at": float(row.get("last_active") or row.get("started_at") or 0.0),
++            })
++        catalog.sort(key=lambda item: item["updated_at"], reverse=True)
++        return catalog
++
++    def set_session_hidden(self, session_id: str, hidden: bool) -> bool:
++        """Hide/unhide one session (and its compression lineage); still resumable."""
++        db = self._get_db()
++        if db is None:
++            return False
++        try:
++            return bool(db.set_session_hidden(session_id, bool(hidden)))
++        except Exception:
++            logger.debug("Failed to set hidden=%s on session %s", hidden, session_id, exc_info=True)
++            return False
++
++    def set_session_title(self, session_id: str, title: str) -> bool:
++        """Rename one session as the user (``title_source='user'``), so auto-titling cannot undo it.
++
++        Raises ValueError when Hermes refuses the name — empty, past the length limit, or already
++        held by another session; that text is what the client shows. False means no such session.
++        """
++        db = self._get_db()
++        if db is None:
++            return False
++        return bool(db.set_session_title(session_id, title))
++
+     def list_sessions(self, cwd: str | None = None) -> list[dict[str, Any]]:
+         """Return lightweight info dicts for all sessions (memory + database)."""
+         normalized_cwd = _normalize_cwd_for_compare(cwd) if cwd else None
