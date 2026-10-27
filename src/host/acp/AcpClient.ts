@@ -159,6 +159,8 @@ export class AcpClient {
     private _terminals: Map<string, TerminalInstance> = new Map();
     private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
+    /** Steers awaiting Hermes' answer; only then can a chunk be a steer notice. */
+    private _steersInFlight: number = 0;
     private _thoughtBuffer: string = '';
     private _configOptions: unknown[] = [];
     private _modelListState: ModelListState | null = null;
@@ -539,6 +541,7 @@ export class AcpClient {
             return false;
         }
         this._onLog(`steer ${body.slice(0, 80)}`);
+        this._steersInFlight += 1;
         try {
             await this._promptActiveSession(`/steer ${body}`);
             return true;
@@ -546,6 +549,8 @@ export class AcpClient {
             const msg = err instanceof Error ? err.message : String(err);
             this._onLog(`steer failed: ${msg}`);
             return false;
+        } finally {
+            this._steersInFlight -= 1;
         }
     }
 
@@ -1037,7 +1042,7 @@ export class AcpClient {
                 // If an agent sends the FULL text each time instead, this will
                 // double-append. The SDK's readText() uses the same += pattern.
                 const text = extractTextFromContentBlock(update.content);
-                if (text && isSteerNotice(text)) {
+                if (text && this._steersInFlight > 0 && isSteerNotice(text)) {
                     // The steer's own answer rides the same stream; it is not reply text.
                     this._onSteerNotice(text.trim());
                     break;

@@ -460,22 +460,19 @@ export class App implements vscode.WebviewViewProvider {
             this._enqueueChatOp(() => this._handleUserMessage(body));
             return;
         }
-        this._enqueueChatOp(async () => {
+        // Not through the chat-op chain: the running turn's own send holds it until the turn
+        // ends, so a queued steer would only ever arrive after there is nothing left to steer.
+        void (async () => {
+            const sessionId = this._session.activeId;
             if (await acp.steer(body)) {
                 this._session.saveSteerMessage(body);
-                this._postMessage({
-                    type: 'addMessage',
-                    role: 'user',
-                    text: body,
-                    steer: true,
-                    sessionId: this._session.activeId,
-                });
+                this._postMessage({ type: 'addMessage', role: 'user', text: body, steer: true, sessionId });
                 return;
             }
             this._log('Steer refused by the agent, sending as a message');
-            this._postMessage({ type: 'addMessage', role: 'user', text: body, sessionId: this._session.activeId });
-            await this._handleUserMessage(body);
-        });
+            this._postMessage({ type: 'addMessage', role: 'user', text: body, sessionId });
+            this._enqueueChatOp(() => this._handleUserMessage(body));
+        })();
     }
 
     public async sendText(text: string): Promise<void> {

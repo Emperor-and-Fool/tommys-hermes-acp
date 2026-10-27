@@ -5,17 +5,15 @@
  * the steer, not to the assistant's reply: "⏩ Steer queued for the active turn: …" when it was
  * accepted, "⚠️ Steer failed: …" when it was not. The chunk is diverted before it reaches the
  * response buffer, so the reply reads as if no steer had happened.
+ *
+ * Only Hermes' exact openings count: reply text arrives as deltas, and a delta that merely
+ * starts with a warning sign is still the model's text.
  */
 
-const QUEUED_PREFIX = '⏩';
+const NOTICE_PREFIXES = ['⏩ Steer queued', '⚠️ Steer failed', '⚠ Steer failed'];
 
-const FAILED_PREFIX = '⚠';
-
-/** True for the steer's own reply line: the four-point arrow, or the warning sign. */
+/** True for the steer's own reply line. */
 export function isSteerNotice(text: string): boolean {
     const trimmed = (text || '').trim();
-    if (!trimmed) {
-        return false;
-    }
-    return trimmed.startsWith(QUEUED_PREFIX) || trimmed.startsWith(FAILED_PREFIX);
+    return NOTICE_PREFIXES.some(prefix => trimmed.startsWith(prefix));
 }

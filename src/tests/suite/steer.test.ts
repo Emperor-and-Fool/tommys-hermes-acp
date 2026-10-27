@@ -17,18 +17,17 @@ describe('steer', () => {
     it('recognises the agent acknowledging a steer', () => {
         assert.strictEqual(isSteerNotice('⏩ Steer queued for the active turn: go left'), true);
         assert.strictEqual(isSteerNotice('  ⏩ Steer queued'), true);
-        // The arrow is the whole test: Hermes owns the wording, and a reply never starts with it.
-        assert.strictEqual(isSteerNotice('⏩ anything at all'), true);
     });
 
     it('recognises a failed steer', () => {
         assert.strictEqual(isSteerNotice('⚠️ Steer failed: nothing running'), true);
-        assert.strictEqual(isSteerNotice('⚠ plain warning sign'), true);
     });
 
-    it('leaves ordinary reply text alone', () => {
+    it('leaves ordinary reply text alone, warning signs included', () => {
         assert.strictEqual(isSteerNotice('Here is the answer'), false);
         assert.strictEqual(isSteerNotice(''), false);
-        assert.strictEqual(isSteerNotice('⚠'), true);
+        assert.strictEqual(isSteerNotice('⚠'), false);
+        assert.strictEqual(isSteerNotice('⚠️ This deletes the folder'), false);
+        assert.strictEqual(isSteerNotice('⏩ next step'), false);
     });
 });
