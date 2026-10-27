@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-27
+
+What the live transcript does while the agent is working, and a filter on the
+messages a history attach carries.
+
+### Added
+
+- **Role filter on the history attach bar**: four boxes — User, Assistant, Thought, Tool — decide which messages offer a tick. User and Assistant start on; Thought and Tool are opt-in because they carry the most text for the least answer. Turning a role off drops the ticks it no longer allows
+- **Re-render** next to the filter: the filter is applied when a card is built, so an explicit re-render is what applies a change to the transcript already on screen
+- A steer replays as its sentence with a **Steer** tag, rather than as the delivery wrapper it was sent in
+
+### Changed
+
+- **Thought and tool cards stay open while the agent writes** and squash to their five- and three-line caps when the run ends, instead of being capped from the first chunk. A card that grows or squashes no longer counts as the user scrolling away
+- A run now ends with the transcript at its bottom, after the final markdown pass and the collapsing cards have settled
+- The id lookup matches a steered message by its sentence, so history slices still point at exact messages
+- Every webview asset URL carries its file's mtime, so a rebuilt bundle can never be served from cache under an unchanged address
+
+### Fixed
+
+- The history card had no height cap: it rendered at full length and its toggles changed nothing. It now takes the thought card's five-line cap and only shows "Show more" when the body overflows
+- The input mode after a run was set twice — once from a stale flag, then corrected
+
 ## [1.0.0] - 2026-10-27
 
 The fork's first structured release: `src/` is split by runtime, and the session-memory work
@@ -116,6 +139,7 @@ here.
 - After approval or tool calls, subsequent assistant replies no longer incorrectly append to old bubbles but start a new message segment
 - `allow_session` option no longer incorrectly displays as "Always allow" (`optionId` takes priority over `kind` mapping)
 
+[1.1.0]: https://github.com/Emperor-and-Fool/tommys-hermes-acp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Emperor-and-Fool/tommys-hermes-acp/releases/tag/v1.0.0
 [0.4.0]: https://github.com/Emperor-and-Fool/tommys-hermes-acp/commits/main
 [0.3.2]: https://github.com/jove-rina/rina-hermes-acp/compare/v0.3.1...v0.3.2
