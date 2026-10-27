@@ -1,0 +1,3381 @@
+:root {
+    --bg: var(--vscode-sideBar-background, #1e1e1e);
+    --fg: var(--vscode-sideBar-foreground, #cccccc);
+    --input-bg: var(--vscode-input-background, #3c3c3c);
+    --input-fg: var(--vscode-input-foreground, #cccccc);
+    --border: var(--vscode-panel-border, #333333);
+    --primary: var(--vscode-button-background, #0078d4);
+    --primary-hover: var(--vscode-button-hoverBackground, #1e8ad6);
+    --primary-fg: var(--vscode-button-foreground, #ffffff);
+    --error: var(--vscode-errorForeground, #f48771);
+    --steer: #d9822b;
+    --steer-hover: #c0701f;
+    --steer-fg: #1b1204;
+    --text-block: var(--vscode-textBlockQuote-background, #2d2d2d);
+    --dim: var(--vscode-descriptionForeground, #888888);
+    --assistant-bg: color-mix(in srgb, var(--primary) 14%, var(--text-block));
+    --assistant-border: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+/* Light-theme readability: sideBar-foreground is dim on light themes and
+   the 14%-primary blend collapses onto the editor background. Rebind under
+   the VS Code light-theme body classes; dark themes are unaffected. */
+body.vscode-light,
+body.vscode-high-contrast-light {
+    --fg: var(--vscode-editor-foreground, #1e1e1e);
+    --dim: var(--vscode-descriptionForeground, #555);
+    --assistant-bg: color-mix(in srgb, var(--primary) 8%, var(--vscode-editor-background, #ffffff));
+    --assistant-border: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+/* --- Buttons: one base, one modifier per difference -------------------
+   Send, Stop and Open Tab. The box is set once here; the modifiers carry
+   only the colour. Width follows the content through padding plus one
+   min-width that fits the widest case (Stop: spinner + word). */
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+.button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.button.hidden {
+    display: none;
+}
+
+/* Send and Open Tab */
+.button--primary {
+    background: var(--primary);
+    color: var(--primary-fg);
+}
+.button--primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+/* Stop */
+.button--danger {
+    background: var(--error);
+    color: #fff;
+}
+.button--danger:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+/* The reject action of a permission card: outline and text turn red on hover. */
+.button--reject:hover:not(:disabled) {
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px var(--error);
+}
+
+/* Open Tab sits flush against the closed-chat picker. */
+/* LEGACY: the picker and Open are separate controls, so neither loses its radius.
+#closedPicker + .button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+*/
+
+/* The trigger of a menu: one look for profile, choose chat, model and
+   session memory. Only the empty state and the composer's width differ. */
+.menu__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 140px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.menu__trigger:hover:not(:disabled) {
+    border-color: var(--primary);
+}
+/* Nothing picked yet: dashed, so the empty state names itself. */
+.is-empty > .menu__trigger {
+    border-style: dashed;
+}
+.menu[data-open="true"] > .menu__trigger {
+    border-color: var(--primary);
+}
+
+/* --- Menus: one wrapper owns its trigger and its panel ----------------
+   Open state lives on the wrapper as data-open, so no inline styles and no
+   per-menu JavaScript. The panel carries only the shell; rows keep their
+   .dropdown-* names. */
+.menu {
+    position: relative;
+    display: inline-flex;
+}
+.menu__panel {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 100;
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 200px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.menu[data-open="true"] > .menu__panel {
+    display: block;
+}
+
+/* ============================ Card ============================
+   The box a message is painted on: one base, one variant per role.
+   Nothing about placement or identity lives here. */
+.message {
+    padding: 6px 10px;
+    border-radius: 6px;
+    line-height: 1.35;
+    word-break: break-word;
+    white-space: pre-wrap;
+    min-width: 96px;
+}
+/* The reader's own turn reads as a quoted document: graphite edge, warm grey card.
+   Distinct from the assistant card (blue left bar) and from the bare thinking/tool cards. */
+/* "You" = the editor background, the lightest surface in the pane. The block-quote wash
+   (--text-block, #8080801a in VS Code's default registry) is 10% alpha, so it just
+   tracked the pane/composer instead of being a colour of its own. */
+.message.user {
+    background: var(--vscode-editor-background, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
+    border-left: 4px solid color-mix(in srgb, var(--fg) 75%, transparent);
+    border-radius: 6px;
+}
+.message.assistant {
+    background: var(--assistant-bg);
+    border: 1px solid var(--assistant-border);
+    border-left: 3px solid var(--primary);
+    padding-left: 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.message.assistant.streaming {
+    border-left-color: var(--primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent),
+                0 1px 4px rgba(0, 0, 0, 0.12);
+}
+/* Thinking/tool cards are the grey ones: they sit behind the conversation, so they get
+   the tinted grey card instead of the pane colour. "You" keeps the white card. */
+.message.thought,
+.message.tool {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--fg) 14%, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--border));
+    white-space: normal;
+}
+.message.thought {
+    border-left: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
+}
+.message.tool {
+    color: var(--dim);
+    border-left: 3px solid color-mix(in srgb, var(--dim) 55%, transparent);
+}
+.message.permission {
+    background: color-mix(in srgb, #f0ad4e 12%, var(--text-block));
+    border: 1px solid color-mix(in srgb, #f0ad4e 55%, var(--border));
+    border-left: 3px solid #f0ad4e;
+    padding: 10px 12px;
+    white-space: normal;
+}
+
+/* ========================= Auxiliary ==========================
+   The collapsible header/body that thinking and tool cards share.
+   Written once; :is(.thought, .tool) keeps the specificity the
+   old per-role pairs had. */
+.message:is(.thought, .tool) .aux-header {
+    margin-bottom: 4px;
+}
+.message:is(.thought, .tool) .aux-body-scroll {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--fg);
+    word-break: break-word;
+}
+.message:is(.thought, .tool) .aux-body-scroll.is-collapsed {
+    overflow: auto;
+    scrollbar-width: thin;
+}
+.message:is(.thought, .tool) .aux-body-content > :first-child {
+    margin-top: 0;
+}
+.message:is(.thought, .tool) .aux-body-content > :last-child {
+    margin-bottom: 0;
+}
+.message:is(.thought, .tool) .aux-body-content p {
+    margin: 0 0 4px;
+}
+.message:is(.thought, .tool) .aux-body-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.message:is(.thought, .tool) .aux-body-toggle {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+.message:is(.thought, .tool) .aux-body-toggle:hover {
+    text-decoration: underline;
+}
+.message:is(.thought, .tool) .aux-body-toggle[hidden] {
+    display: none;
+}
+
+/* ====================== Card specifics ========================
+   What a particular card carries inside: role labels, permission
+   insides, the live markers, and the markdown that paints content. */
+/* Inline images in the sent user bubble. */
+.message-image-gallery {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.message-image {
+    max-width: 100%; max-height: 320px;
+    border: 1px solid var(--border); border-radius: 4px; display: block;
+}
+.message.permission .permission-label {
+    color: #f0ad4e;
+    font-weight: 600;
+    margin-bottom: 0;
+    flex: 1;
+}
+.message.permission .permission-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.message.permission .permission-card-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--dim);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.message.permission .permission-card-toggle:hover {
+    border-color: var(--border);
+    color: var(--fg);
+}
+.message.permission .permission-card-toggle .permission-card-arrow {
+    display: inline-block;
+    transition: transform 0.15s;
+}
+.message.permission .permission-detail-wrap {
+    margin-bottom: 10px;
+}
+.message.permission .permission-detail-scroll {
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+.message.permission .permission-detail-scroll.is-collapsed {
+    overflow: auto;
+    scrollbar-width: thin;
+}
+.message.permission .permission-detail-text {
+    display: block;
+}
+.message.permission .permission-detail-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.message.permission .permission-detail-toggle {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+.message.permission .permission-detail-toggle:hover {
+    text-decoration: underline;
+}
+.message.permission .permission-detail-toggle[hidden] {
+    display: none;
+}
+.message.permission .permission-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+/* LEGACY: the look is .button / .button--primary / .button--reject at the top.
+.message.permission .permission-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 5px 10px;
+}
+.message.permission .permission-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+}
+.message.permission .permission-btn.allow {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-fg);
+}
+.message.permission .permission-btn.allow:hover:not(:disabled) {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+.message.permission .permission-btn.reject:hover:not(:disabled) {
+    border-color: var(--error);
+    color: var(--error);
+}
+*/
+.message.permission.resolved {
+    opacity: 0.72;
+}
+.message.permission.resolved .permission-actions {
+    display: none;
+}
+.message.permission .permission-status {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 4px;
+}
+/* Permission card: approval mode. A setting, not an answer: it sits above the buttons. */
+.message.permission .permission-approval-block {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-self: flex-start;
+    margin: 2px 0 8px;
+}
+.message.permission .permission-approval {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.message.permission .permission-approval-btn {
+    background: var(--input-bg);
+    border: 0;
+    border-right: 1px solid var(--border);
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 3px 10px;
+}
+.message.permission .permission-approval-btn:last-of-type {
+    border-right: 0;
+}
+.message.permission .permission-approval-btn:hover:not(:disabled) {
+    background: var(--text-block);
+}
+.message.permission .permission-approval-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.message.permission .permission-approval-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--primary) 20%, var(--input-bg));
+    color: var(--primary);
+    font-weight: 700;
+}
+.message.permission .permission-approval[data-mode="off"] .permission-approval-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--error) 18%, var(--input-bg));
+    color: var(--error);
+}
+.message.permission .permission-approval-error {
+    font-size: 10px;
+    color: var(--error);
+}
+.message.permission .permission-approval-error[hidden] {
+    display: none;
+}
+.message.user .label {
+    color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+.message.assistant .label {
+    color: var(--primary);
+    opacity: 1;
+    letter-spacing: 0.02em;
+}
+.message .label {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 1px;
+    opacity: 0.7;
+}
+/* Code blocks */
+.message pre {
+    background: var(--vscode-textCodeBlock-background, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 0;
+}
+.message pre code {
+    background: none;
+    padding: 0;
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
+    user-select: text;
+}
+.message code {
+    background: var(--vscode-textCodeBlock-background, #2d2d2d);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
+}
+.message p { margin: 2px 0; }
+.message ul, .message ol { padding-left: 18px; margin: 2px 0; }
+.message li { margin: 1px 0; }
+.message li > p { margin: 0; }
+.message h1, .message h2, .message h3, .message h4 {
+    margin: 4px 0 2px;
+    line-height: 1.3;
+}
+.message a { color: var(--primary); }
+.message blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 10px;
+    margin: 3px 0;
+    opacity: 0.8;
+}
+.message .block-actions-wrap:has(table) {
+    background: var(--input-bg);
+    border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    overflow-x: auto;
+}
+.message table {
+    border-collapse: collapse;
+    margin: 0;
+    font-size: 12px;
+    width: 100%;
+}
+.message th, .message td {
+    border: 1px solid color-mix(in srgb, var(--border) 70%, var(--fg));
+    padding: 5px 10px;
+    text-align: left;
+}
+.message th {
+    background: color-mix(in srgb, var(--primary) 18%, var(--input-bg));
+    font-weight: 600;
+    color: var(--fg);
+}
+.message td {
+    background: color-mix(in srgb, var(--fg) 3%, var(--input-bg));
+}
+.message tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--fg) 7%, var(--input-bg));
+}
+/* File reference links */
+.message .file-ref {
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+    border-bottom: 1px dashed var(--primary);
+    padding: 0 1px;
+}
+.message .file-ref:hover {
+    opacity: 0.8;
+}
+/* Block actions on code blocks and tables */
+.message .block-actions-wrap {
+    margin: 4px 0;
+}
+.message .block-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 4px;
+}
+.message .block-actions .block-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 2px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.message .block-actions .block-btn:hover {
+    border-color: var(--primary);
+}
+.message .block-actions .block-btn.copied {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.message .block-actions .block-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+.message .insert-dropdown {
+    position: relative;
+}
+.message .insert-dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 4px);
+    min-width: 140px;
+    background: var(--vscode-dropdown-background, var(--input-bg));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 40;
+    overflow: hidden;
+}
+.message .insert-dropdown.is-open .insert-dropdown-menu {
+    display: block;
+}
+.message .insert-dropdown-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 6px 10px;
+}
+.message .insert-dropdown-menu button:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+/* Streaming cursor */
+.message.assistant.streaming::after {
+    content: '▎';
+    animation: blink 0.8s step-end infinite;
+    margin-left: 2px;
+}
+/* Image-paste preview bar (staged images pending send). */
+.image-paste-bar {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 6px 8px 4px;
+}
+.image-paste-thumb { position: relative; display: inline-flex; }
+.image-paste-thumb img {
+    max-height: 56px; max-width: 96px;
+    border: 1px solid var(--border); border-radius: 3px; display: block;
+}
+.image-paste-remove {
+    position: absolute; top: -6px; right: -6px;
+    width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 12px;
+    border-radius: 50%; border: 1px solid var(--border);
+    background: var(--vscode-input-background, #3c3c3c); color: var(--fg);
+    cursor: pointer;
+}
+.image-paste-remove:hover { background: var(--error, #c33); color: #fff; }
+
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: var(--chat-fs, 16px);
+    background: var(--bg);
+    color: var(--fg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    container-type: inline-size;
+    container-name: app;
+}
+
+/* Toolbar */
+#toolbar {
+    padding: 6px 8px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    min-height: 34px;
+    position: relative;
+    z-index: 20;
+    overflow: visible;
+}
+.toolbar-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 0;
+    flex-shrink: 0;
+}
+.toolbar-status #statusText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.toolbar-status .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.toolbar-status .dot.idle { background: #888; }
+.toolbar-status .dot.connecting { background: #f0ad4e; animation: pulse 1s infinite; }
+.toolbar-status .dot.ready { background: #5cb85c; }
+.toolbar-status .dot.prompting { background: #5bc0de; animation: pulse 1s infinite; }
+.toolbar-status .dot.error { background: #d9534f; }
+.retry-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 1px 6px;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+.retry-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.retry-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.retry-btn[hidden] {
+    display: none;
+}
+.detect-env-btn {
+    font-size: 11px;
+    max-width: 88px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* A row of its own: the toolbar wraps, and this takes the full width only while it is shown. */
+.detect-env-bar {
+    position: relative;
+    order: 1;
+    flex: 0 0 100%;
+    display: flex;
+    justify-content: center;
+}
+.detect-env-bar[hidden] {
+    display: none !important;
+}
+.detect-env-bar-panel {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 80%, transparent);
+}
+.detect-env-main {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 10px;
+    text-align: left;
+    min-height: 22px;
+    line-height: 1.35;
+}
+.detect-env-main:hover {
+    color: var(--primary);
+}
+.detect-env-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.detect-env-hint {
+    color: var(--dim);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+}
+.detect-env-chevron {
+    width: 10px;
+    height: 10px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.15s ease;
+}
+.detect-env-hint.is-open .detect-env-chevron {
+    transform: rotate(180deg);
+}
+.detect-env-close {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.detect-env-close:hover {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--border) 50%, transparent);
+}
+.detect-env-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    position: relative;
+    display: inline-block;
+}
+.detect-env-icon.running {
+    border: 2px solid color-mix(in srgb, #f0ad4e 55%, transparent);
+    border-top-color: #f0ad4e;
+    border-radius: 50%;
+    animation: detect-spin 0.75s linear infinite;
+}
+.detect-env-icon.ok::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 0;
+    width: 4px;
+    height: 7px;
+    border: solid #5cb85c;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.detect-env-icon.fail::before,
+.detect-env-icon.fail::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 2px;
+    height: 8px;
+    background: #d9534f;
+    border-radius: 1px;
+}
+.detect-env-icon.fail::before {
+    transform: rotate(45deg);
+}
+.detect-env-icon.fail::after {
+    transform: rotate(-45deg);
+}
+.detect-env-icon.skip::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 5px;
+    width: 8px;
+    height: 2px;
+    background: #888;
+    border-radius: 1px;
+}
+@keyframes detect-spin {
+    to { transform: rotate(360deg); }
+}
+.detect-env-details {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(520px, calc(100vw - 24px));
+    z-index: 150;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 8px 10px;
+}
+.detect-env-details[hidden] {
+    display: none !important;
+}
+.detect-env-details-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 6px;
+    text-align: center;
+}
+.detect-env-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.detect-env-step {
+    display: flex;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    align-items: flex-start;
+}
+.detect-env-step:last-child {
+    border-bottom: none;
+}
+.detect-env-step-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    position: relative;
+}
+.detect-env-step-body {
+    flex: 1;
+    min-width: 0;
+}
+.detect-env-step-label {
+    font-weight: 500;
+    color: var(--fg);
+    line-height: 1.5;
+}
+.detect-env-step-detail {
+    color: var(--dim);
+    font-size: 10px;
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin-top: 2px;
+    line-height: 1.45;
+}
+.connection-error-actions .retry-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+.toolbar-pickers {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: visible;
+}
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* The picker takes the free space on both sides, so it sits centred between the
+   profile switcher and Open while Open keeps the right edge. */
+.toolbar-actions #closedPicker {
+    margin-left: auto;
+    margin-right: auto;
+}
+.picker {
+    position: relative;
+    flex-shrink: 1;
+    min-width: 0;
+}
+.picker.is-open {
+    z-index: 120;
+}
+/* LEGACY: the look and the hover now live in .menu__trigger at the top. */
+.picker-btn {
+    max-width: 140px;
+}
+.picker-btn .picker-label {
+    color: var(--dim);
+    margin-right: 3px;
+}
+/* The closed-session picker carries the chosen title, so it needs more room than the
+   bare caret it replaced; .picker-btn already ellipsises. */
+#closedPicker .picker-btn {
+    max-width: 190px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+/* Empty state is handled by .is-empty > .menu__trigger at the top. */
+#closedPicker .picker-caret {
+    color: var(--dim);
+    font-size: 9px;
+    line-height: 1;
+    margin-left: auto;
+}
+/* LEGACY: the picker and Open are separate controls; the negative margin made them one block.
+.toolbar-actions #closedPicker {
+    margin-right: -4px;
+}
+*/
+/* LEGACY: see above; the picker keeps its own radius.
+#closedPicker .picker-btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#closedPicker + .toolbar-btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+*/
+/* Right-aligned control: the menu must not run off the sidebar. */
+#closedPicker .menu__panel {
+    left: auto;
+    right: 0;
+}
+/* LEGACY: the shell now lives in .menu__panel at the top of this file.
+.dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 100;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 200px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+*/
+.menu__panel .dropdown-header {
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+}
+.dropdown.menu-dropdown {
+    right: 0;
+    left: auto;
+    min-width: 168px;
+}
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+.dropdown-item .item-badge {
+    font-size: 10px;
+    background: var(--primary);
+    color: var(--primary-fg);
+    border-radius: 8px;
+    padding: 0 5px;
+    min-width: 16px;
+    text-align: center;
+    line-height: 16px;
+    flex-shrink: 0;
+}
+.toolbar-btn.menu-btn {
+    padding: 2px 8px;
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: 0;
+    font-weight: 700;
+    position: relative;
+}
+.new-label-short { display: none; }
+.info-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.info-modal-body h3 {
+    font-size: 13px;
+    margin: 0 0 8px;
+    color: var(--fg);
+}
+.info-modal-body p {
+    margin: 0 0 10px;
+    color: var(--fg);
+}
+.info-modal-body ul {
+    margin: 0 0 10px;
+    padding-left: 18px;
+}
+.info-modal-body li {
+    margin-bottom: 4px;
+}
+.info-modal-body pre {
+    background: var(--vscode-textCodeBlock-background, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 6px 0 10px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.info-modal-body code {
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
+    font-size: 11px;
+}
+.info-modal-body a {
+    color: var(--primary);
+}
+.info-modal-body .dim {
+    color: var(--dim);
+    font-size: 11px;
+}
+.about-brand {
+    text-align: center;
+    margin: 0 0 12px;
+}
+.about-brand img {
+    width: 72px;
+    height: 72px;
+    border-radius: 14px;
+    display: inline-block;
+}
+/* FAQ accordion */
+.faq-modal-body {
+    padding: 10px 12px;
+}
+.faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.faq-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--fg) 3%, transparent);
+    overflow: hidden;
+}
+.faq-item[open] {
+    border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.faq-summary {
+    cursor: pointer;
+    padding: 10px 12px 10px 28px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--fg);
+    list-style: none;
+    position: relative;
+    user-select: none;
+}
+.faq-summary::-webkit-details-marker,
+.faq-summary::marker {
+    display: none;
+    content: '';
+}
+.faq-summary::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-left: 5px solid var(--dim);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transform: translateY(-50%);
+    transition: transform 0.15s ease;
+}
+.faq-item[open] > .faq-summary {
+    color: var(--primary);
+}
+.faq-item[open] > .faq-summary::before {
+    transform: translateY(-50%) rotate(90deg);
+    border-left-color: var(--primary);
+}
+.faq-body {
+    padding: 2px 12px 12px;
+    border-top: 1px solid var(--border);
+    color: var(--dim);
+}
+.faq-body p {
+    margin: 0 0 8px;
+    color: var(--dim);
+}
+.faq-body ul {
+    margin: 0 0 8px;
+    padding-left: 18px;
+}
+.faq-body li {
+    margin-bottom: 4px;
+    color: var(--dim);
+}
+.faq-body strong {
+    color: color-mix(in srgb, var(--fg) 80%, var(--dim));
+    font-weight: 600;
+}
+.faq-body a {
+    color: var(--primary);
+}
+.faq-body code {
+    color: color-mix(in srgb, var(--fg) 65%, var(--dim));
+}
+.faq-body .dim {
+    color: color-mix(in srgb, var(--dim) 90%, transparent);
+}
+.faq-body pre {
+    background: var(--vscode-textCodeBlock-background, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 6px 0 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.dropdown-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+.dropdown-item:last-child { border-bottom: none; }
+.dropdown-item:hover { background: var(--text-block); }
+.dropdown-item.active { color: var(--primary); }
+.dropdown-item .meta {
+    font-size: 10px;
+    color: var(--dim);
+    white-space: nowrap;
+}
+.dropdown-item.disabled {
+    color: var(--dim);
+    cursor: default;
+    font-style: italic;
+}
+.dropdown-group-label {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+}
+.icon-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    position: relative;
+    line-height: 1.4;
+    min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-btn:hover {
+    color: var(--fg);
+    border-color: var(--primary);
+}
+.toolbar-btn {
+    background: var(--input-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    min-height: 26px;
+    line-height: 1.4;
+}
+.toolbar-btn:hover {
+    border-color: var(--primary);
+    color: var(--fg);
+}
+.toolbar-btn.primary {
+    background: var(--primary);
+    color: var(--primary-fg);
+    border-color: var(--primary);
+    font-weight: 600;
+}
+.toolbar-btn.primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+.delete-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.delete-btn:hover { color: var(--error); }
+
+/* Session tabs */
+#tab-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    min-height: 32px;
+    background: var(--bg);
+}
+#tab-bar::-webkit-scrollbar {
+    height: 4px;
+}
+/* Editor-tab mode: this webview is the chat rail. No transcript, no composer —
+   just the open chats, stacked, under the profile / Choose Chat toolbar. */
+body.surface-rail #chat-body,
+body.surface-rail #input-area {
+    display: none !important;
+}
+body.surface-rail #tab-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-bottom: none;
+}
+body.surface-rail #tab-bar::-webkit-scrollbar {
+    width: 4px;
+    height: auto;
+}
+body.surface-rail .session-tab {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-radius: 4px;
+}
+body.surface-rail .session-tab .tab-close {
+    margin-left: auto;
+}
+/* Editor panel: the conversation only, the rail carries the tabs. */
+body.surface-notabs #tab-bar {
+    display: none !important;
+}
+.session-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--dim);
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 160px;
+    flex-shrink: 0;
+    background: transparent;
+    border-top: 2px solid transparent;
+    user-select: none;
+}
+.session-tab[draggable="true"] {
+    cursor: grab;
+}
+.session-tab.dragging {
+    opacity: 0.45;
+    cursor: grabbing;
+}
+.session-tab.drag-over {
+    box-shadow: inset 0 -2px 0 var(--primary);
+}
+.session-tab:hover {
+    color: var(--fg);
+    background: var(--text-block);
+}
+.session-tab.active {
+    color: var(--fg);
+    background: var(--text-block);
+    border-top-color: var(--primary);
+}
+.session-tab .tab-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+/* Inline rename: the field replaces the label in place, so the strip keeps its height. */
+.session-tab.editing {
+    cursor: text;
+    background: var(--text-block);
+}
+.session-tab .tab-rename-input {
+    font: inherit;
+    color: var(--input-fg);
+    background: var(--input-bg);
+    border: 1px solid var(--primary);
+    border-radius: 3px;
+    padding: 0 3px;
+    width: 12ch;
+    max-width: 140px;
+    min-width: 0;
+    outline: none;
+}
+.session-tab .tab-close {
+    opacity: 0.5;
+    font-size: 12px;
+    padding: 0 2px;
+    line-height: 1;
+}
+.session-tab .tab-close:hover {
+    opacity: 1;
+    color: var(--error);
+}
+.session-tab .tab-pin-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    opacity: 0.85;
+    line-height: 1;
+}
+.session-tab .tab-pin-icon svg {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+    display: block;
+}
+#tab-bar .tab-pin-separator {
+    align-self: stretch;
+    width: 1px;
+    background: color-mix(in srgb, var(--primary) 35%, var(--border));
+    flex-shrink: 0;
+    margin: 4px 0;
+}
+.tab-context-menu {
+    position: fixed;
+    z-index: 300;
+    min-width: 220px;
+    max-width: 320px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    padding: 4px 0;
+    font-size: 12px;
+}
+.tab-context-menu[hidden] {
+    display: none !important;
+}
+.tab-context-menu .tab-ctx-sid {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    color: var(--dim);
+    font-size: 11px;
+    user-select: text;
+}
+.tab-context-menu .tab-ctx-sid-label {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--fg);
+}
+.tab-context-menu .tab-ctx-sid-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.tab-context-menu .tab-ctx-sid-copy {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    line-height: 1;
+}
+.tab-context-menu .tab-ctx-sid-copy:hover {
+    color: var(--primary);
+    background: var(--text-block);
+}
+.tab-context-menu .tab-ctx-sid-copy svg {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+}
+.tab-context-menu .tab-ctx-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 6px 12px;
+    line-height: 1.3;
+}
+.tab-context-menu .tab-ctx-item:hover:not(:disabled) {
+    background: var(--text-block);
+}
+.tab-context-menu .tab-ctx-item:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.tab-context-menu .tab-ctx-divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border);
+}
+.log-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--dim);
+    cursor: pointer;
+    user-select: none;
+}
+.log-filter input {
+    margin: 0;
+    cursor: pointer;
+}
+.log-line-error {
+    color: #f48771;
+}
+.log-line-warning {
+    color: #cca700;
+}
+#copyLogBtn.copied {
+    color: var(--primary);
+    border-color: var(--primary);
+    animation: log-copy-flash 0.35s ease;
+}
+@keyframes log-copy-flash {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+/* Messages */
+.chat-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+}
+#messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+}
+.session-render-banner {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 18px 9px 14px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg) 90%, var(--primary));
+    backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, var(--primary) 50%, var(--border));
+    box-shadow:
+        0 8px 28px color-mix(in srgb, var(--primary) 28%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--fg);
+    pointer-events: none;
+    transform: translateX(-50%);
+    animation:
+        session-render-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both,
+        session-render-glow 1.8s ease-in-out 0.45s infinite;
+}
+.session-render-banner.is-hiding {
+    animation: session-render-exit 0.3s ease-in forwards;
+}
+.session-render-banner[hidden] {
+    display: none !important;
+}
+.session-render-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2.5px solid color-mix(in srgb, var(--primary) 20%, transparent);
+    border-top-color: var(--primary);
+    border-right-color: color-mix(in srgb, var(--primary) 55%, transparent);
+    border-radius: 50%;
+    animation: session-render-spin 0.75s linear infinite;
+    flex-shrink: 0;
+}
+.session-render-text {
+    white-space: nowrap;
+    animation: session-render-text-pulse 1.5s ease-in-out infinite;
+}
+@keyframes session-render-enter {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-16px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
+@keyframes session-render-exit {
+    from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px) scale(0.94);
+    }
+}
+@keyframes session-render-glow {
+    0%, 100% {
+        box-shadow:
+            0 8px 28px color-mix(in srgb, var(--primary) 22%, transparent),
+            0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent);
+    }
+    50% {
+        box-shadow:
+            0 10px 36px color-mix(in srgb, var(--primary) 38%, transparent),
+            0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+    }
+}
+@keyframes session-render-text-pulse {
+    0%, 100% { opacity: 0.72; }
+    50% { opacity: 1; }
+}
+@keyframes session-render-spin {
+    to { transform: rotate(360deg); }
+}
+.chat-area-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: var(--bg);
+    flex-direction: column;
+    min-height: 0;
+}
+.chat-area-overlay.is-open {
+    display: flex;
+}
+.chat-area-overlay .modal-panel {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+}
+/* The record: identity and attributes only. No box, so layout cannot leak into it. */
+.message-group {
+    display: contents;
+}
+
+/* The container: one box per message, and the only thing that places it. */
+.message-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    max-width: 95%;
+}
+.message-group.user > .message-container {
+    align-self: flex-end;
+}
+.message-group.assistant > .message-container {
+    align-self: flex-start;
+    max-width: 98%;
+}
+.message-group.thought > .message-container {
+    align-self: flex-start;
+}
+.message-group.tool > .message-container {
+    align-self: flex-start;
+    max-width: 100%;
+}
+.message-group.permission > .message-container {
+    align-self: stretch;
+    max-width: 100%;
+}
+
+/* The stack: card above its action bar, in every mode. */
+.message-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+
+.message.permission.is-card-collapsed .permission-card-toggle .permission-card-arrow {
+    transform: rotate(-90deg);
+}
+
+
+.message.thought .aux-label {
+    color: var(--primary);
+    opacity: 0.85;
+}
+.message.tool .aux-label {
+    opacity: 0.7;
+}
+
+
+/* Live activity labels — unified breathing pulse */
+.message.assistant.streaming .label,
+.message.thought.is-live .aux-label,
+.message.tool.is-live .aux-label {
+    opacity: 1;
+    font-weight: 700;
+    animation: live-label-breathe 1.6s ease-in-out infinite;
+}
+@keyframes live-label-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.42; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .message.assistant.streaming .label,
+    .message.thought.is-live .aux-label,
+    .message.tool.is-live .aux-label {
+        animation: none !important;
+    }
+}
+
+
+/* Copy action below each bubble (outside bubble body) */
+.message-actions {
+    display: flex;
+    margin-top: 2px;
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+.message-group:hover .message-actions {
+    opacity: 1;
+}
+.message-group.user .message-actions {
+    justify-content: flex-end;
+}
+.message-group.assistant .message-actions,
+.message-group.tool .message-actions,
+.message-group.thought .message-actions {
+    justify-content: flex-start;
+}
+.copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    line-height: 1;
+}
+.copy-btn:hover {
+    color: var(--fg);
+    background: var(--text-block);
+}
+.copy-btn.copied {
+    color: var(--primary);
+}
+.copy-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+.message-actions .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    line-height: 1;
+}
+.message-actions .action-btn:hover {
+    color: var(--fg);
+    background: var(--text-block);
+}
+.message-actions .action-btn.copied {
+    color: var(--primary);
+}
+.message-actions .action-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+.message-actions .select-btn.action-btn {
+    color: color-mix(in srgb, var(--primary) 75%, var(--dim));
+}
+.message-actions .select-btn.action-btn:hover {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--text-block));
+}
+
+/* Multi-select mode */
+#messages.multi-select-active .message-container {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: 100%;
+}
+#messages.multi-select-active .message-group.user > .message-container {
+    align-self: stretch;
+}
+#messages.multi-select-active .message-container .msg-select-wrap {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 8px;
+    flex-shrink: 0;
+}
+.msg-select-wrap {
+    display: none;
+}
+#messages.multi-select-active .msg-select-wrap {
+    display: flex;
+}
+.msg-select-wrap input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+.message-group.selectable.is-selected .message {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+/* LEGACY: the container and the stack carry these now. */
+
+#messages.multi-select-active .message-group.user > .message-container > .message-stack {
+    align-items: flex-end;
+}
+.multi-select-toolbar {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 8px;
+    flex-wrap: wrap;
+}
+.multi-select-toolbar.visible {
+    display: flex;
+}
+.multi-select-toolbar .ms-count {
+    font-size: 11px;
+    color: var(--dim);
+    margin-right: auto;
+    white-space: nowrap;
+}
+.multi-select-toolbar button {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 4px 10px;
+}
+.multi-select-toolbar button:hover:not(:disabled) {
+    border-color: var(--primary);
+}
+.multi-select-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.multi-select-toolbar button.ms-exit {
+    margin-left: 0;
+}
+.multi-select-toolbar .ms-actions-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+.multi-select-toolbar button.ms-attach-confirm {
+    background: var(--primary);
+    color: var(--primary-fg);
+    border-color: var(--primary);
+    font-weight: 700;
+    padding: 5px 14px;
+    animation: ms-attach-pulse 1.2s ease-in-out infinite;
+}
+.multi-select-toolbar button.ms-attach-confirm:hover:not(:disabled) {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+.multi-select-toolbar button.ms-attach-confirm:disabled {
+    opacity: 0.55;
+    animation: ms-attach-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ms-attach-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 50%, transparent);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 14px 3px color-mix(in srgb, var(--primary) 65%, transparent);
+        transform: scale(1.04);
+    }
+}
+
+
+/* File mention picker (@ in input) */
+.file-picker {
+    display: none;
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: calc(100% - 4px);
+    max-height: 180px;
+    overflow-y: auto;
+    background: var(--vscode-dropdown-background, var(--input-bg));
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 30;
+}
+.file-picker.visible {
+    display: block;
+}
+.file-picker-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--fg);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-picker-item:hover,
+.file-picker-item.active {
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+.file-picker-empty {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--dim);
+}
+
+/* File reference hover preview */
+.file-preview-tooltip {
+    position: fixed;
+    z-index: 100;
+    max-width: min(420px, 90vw);
+    max-height: 240px;
+    overflow: auto;
+    background: var(--vscode-editor-background, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+.file-preview-tooltip .fp-header {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.file-preview-tooltip pre {
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--vscode-editor-font-family, monospace);
+    background: transparent;
+    border: none;
+    cursor: default;
+    user-select: text;
+}
+.file-preview-tooltip .fp-error {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--error);
+}
+
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* Placeholder */
+.placeholder {
+    text-align: center;
+    color: var(--dim);
+    padding: 30px 20px;
+    font-style: italic;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+/* Input area */
+#input-area {
+    --input-max-height: 120px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+}
+.input-resize-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: ns-resize;
+    z-index: 5;
+    touch-action: none;
+}
+.input-resize-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    opacity: 0.55;
+    transition: background 0.15s, opacity 0.15s;
+}
+.input-resize-handle:hover::after,
+.input-resize-handle.dragging::after {
+    background: var(--primary);
+    opacity: 1;
+}
+.input-stack {
+    position: relative;
+    overflow: visible;
+}
+.input-composite-wrap {
+    position: relative;
+    margin-top: 6px;
+}
+/* One notice line in the composer: it reports a state and offers the two ways out.
+   No fill of its own — it sits on the shell like the picker row does. */
+.composer-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--dim);
+}
+.composer-notice[hidden] { display: none; }
+.composer-notice-text { flex: 1; min-width: 0; }
+.composer-notice-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.composer-notice .button { font-size: 11px; padding: 3px 8px; }
+
+/* A quote lifted out of the transcript: content the user assembled, so it sits on the
+   composer shell with its own border, not inside the input box. */
+.reply-quote {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 4px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 4px;
+    background: var(--text-block);
+}
+.reply-quote[hidden] { display: none; }
+.reply-quote-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: var(--dim);
+}
+.reply-quote-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-quote-toggle, .reply-quote-clear {
+    background: none; border: none; padding: 0 4px;
+    color: var(--dim); cursor: pointer; font-size: 11px; line-height: 1;
+}
+.reply-quote-toggle:hover, .reply-quote-clear:hover { color: var(--fg); }
+.reply-quote-body {
+    max-height: 120px;
+    overflow-y: auto;
+    padding: 0 8px 6px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--fg);
+    white-space: pre-wrap;
+}
+.reply-quote.is-collapsed .reply-quote-body { display: none; }
+.reply-quote-segment { margin: 0 0 4px; }
+.reply-quote-role { color: var(--dim); font-weight: 600; }
+.reply-quote-more { color: var(--dim); font-style: italic; }
+.composer-hint {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    padding: 4px 8px 0;
+    font-size: 11px;
+    color: var(--dim);
+}
+.composer-hint[hidden] { display: none; }
+/* The Reply action floats at the end of the selection. */
+.quote-action {
+    position: fixed;
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--fg);
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.quote-action[hidden] { display: none; }
+/* An attachment that only exists as a marker: the bytes never left this machine. */
+.image-missing {
+    color: var(--error);
+    font-weight: 600;
+}
+
+/* A switch waiting for the run to end: the tab it will land on, and the button that makes it
+   happen now. Both pulse, because a queued action that looks idle reads as a dead click. */
+@keyframes switch-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+.session-tab.switch-pending {
+    animation: switch-pulse 1s ease-in-out infinite;
+    box-shadow: inset 0 0 0 1px var(--error);
+}
+/* The queued switch's action ends the run, so it wears the stop colour and pulses like the
+   tab it will open. */
+.toolbar-btn.switch-queued-btn {
+    background: var(--error);
+    color: #fff;
+    animation: switch-pulse 1s ease-in-out infinite;
+}
+.toolbar-btn.switch-queued-btn:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.input-composite-shell {
+    position: relative;
+    overflow: visible;
+}
+.input-picker-row {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 5px;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    /* No overflow:hidden here: both picker dropdowns open upward, outside this box, and
+       clipping the row hid them completely. The children below shrink instead. */
+    /* the ring + Send cluster is ~96px; the row must stop before it at any width */
+    max-width: calc(100% - 104px);
+}
+.input-picker-row > * {
+    min-width: 0;
+    flex-shrink: 1;
+}
+/* Injected font-size pill: clip its own content rather than push over the buttons. */
+.input-picker-row .fs-ctl {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+.input-model-picker,
+.input-history-picker {
+    min-width: 0;
+    max-width: min(160px, 36vw);
+    flex-shrink: 1;
+}
+.input-history-picker[hidden] {
+    display: none !important;
+}
+.input-history-picker.is-entering {
+    animation: history-picker-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.input-history-picker.is-attention .input-history-btn {
+    animation: history-picker-attention-pulse 0.75s ease-in-out 3 both;
+}
+.input-model-picker .input-model-btn.is-placeholder,
+.input-history-picker .input-history-btn.is-placeholder {
+    color: color-mix(in srgb, var(--dim) 88%, transparent);
+}
+@keyframes history-picker-enter {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.94);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+@keyframes history-picker-attention-pulse {
+    0%, 100% {
+        color: var(--dim);
+        background: transparent;
+        box-shadow: none;
+    }
+    50% {
+        color: color-mix(in srgb, var(--primary) 90%, var(--fg));
+        background: color-mix(in srgb, var(--primary) 22%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent),
+            0 0 14px 2px color-mix(in srgb, var(--primary) 35%, transparent);
+    }
+}
+/* Specifics only: the look is .menu__trigger at the top of this file. */
+.input-model-picker .input-model-btn,
+.input-history-picker .input-history-btn {
+    max-width: min(160px, 36vw);
+    min-width: 0;
+    width: 100%;
+}
+.input-picker-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    opacity: 0.82;
+}
+.input-picker-icon svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+    display: block;
+}
+.input-picker-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.input-model-picker .input-model-btn:hover,
+.input-history-picker .input-history-btn:hover {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.input-composite-shell:focus-within .input-model-btn,
+.input-composite-shell:focus-within .input-history-btn,
+.input-model-picker.is-open .input-model-btn,
+.input-history-picker.is-open .input-history-btn {
+    color: var(--fg);
+}
+.input-model-picker .menu__panel,
+.input-history-picker .menu__panel {
+    top: auto;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 260px;
+    max-width: min(320px, 92vw);
+}
+.multi-select-toolbar button.ms-danger:hover:not(:disabled) {
+    border-color: var(--error);
+    color: var(--error);
+}
+.switch-session-body {
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fg);
+}
+.switch-session-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.configure-env-body {
+    padding: clamp(10px, 2.5vw, 14px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--fg);
+    min-height: 0;
+    overflow-y: auto;
+    max-height: min(calc(85vh - 44px), 100%);
+}
+.configure-env-modal-panel {
+    width: 100%;
+    max-width: min(560px, 100%);
+}
+.configure-env-field-label {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.configure-env-path-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: stretch;
+}
+.configure-env-path-input-wrap {
+    position: relative;
+    flex: 1 1 180px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+.configure-env-path-input-wrap input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    background: var(--input-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 28px 6px 8px;
+    font-size: 12px;
+    font-family: var(--vscode-font-family, monospace);
+}
+.configure-env-path-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.configure-env-path-clear:hover:not(:disabled) {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--border) 45%, transparent);
+}
+.configure-env-path-clear:disabled,
+.configure-env-path-clear[hidden] {
+    display: none;
+}
+.configure-env-path-row button {
+    flex: 0 1 auto;
+    min-width: 0;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.configure-env-path-row button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.configure-env-path-row button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.configure-env-detect-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+}
+.configure-env-detect-panel[hidden] {
+    display: none !important;
+}
+.configure-env-detect-bar {
+    width: 100%;
+    max-width: 100%;
+}
+.configure-env-detect-bar .detect-env-main {
+    flex: 1;
+    min-width: 0;
+}
+.configure-env-candidate-open svg path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.configure-env-candidate-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    opacity: 0;
+    transform: translateY(10px);
+    animation: configure-candidate-in 0.38s ease forwards;
+    transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.configure-env-candidate-row.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--input-bg));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.configure-env-candidate-row:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.configure-env-candidate-open {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 1px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+.configure-env-candidate-open svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.configure-env-candidate-open:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--input-bg));
+}
+.configure-env-candidate-actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 1px;
+}
+.configure-env-candidate-select {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    padding: 0;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    color: transparent;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.configure-env-candidate-select:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.configure-env-candidate-row.is-selected .configure-env-candidate-select {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--vscode-button-foreground, #fff);
+    transform: scale(1.05);
+}
+.configure-env-candidate-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+@keyframes configure-candidate-in {
+    to { opacity: 1; transform: translateY(0); }
+}
+.configure-env-candidate-icon {
+    margin-top: 2px;
+}
+.configure-env-detect-details {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    margin-top: 0;
+    box-shadow: none;
+    max-height: min(280px, 36vh);
+}
+.configure-env-detect-bar .detect-env-text {
+    max-width: none;
+    flex: 1;
+}
+.configure-env-detect-details[hidden] {
+    display: none !important;
+}
+.configure-env-candidates-section {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+}
+.configure-env-candidates-section.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+.configure-env-candidates-title {
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--fg);
+    margin-bottom: 8px;
+}
+.configure-env-candidates {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: min(280px, 40vh);
+    overflow: auto;
+}
+.configure-env-candidate-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.configure-env-candidate-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.configure-env-candidate-name {
+    font-weight: 600;
+    font-size: 12px;
+}
+.configure-env-candidate-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+}
+.configure-env-candidate-badge.is-verified {
+    color: #5cb85c;
+    border-color: color-mix(in srgb, #5cb85c 45%, var(--border));
+    background: color-mix(in srgb, #5cb85c 12%, transparent);
+}
+.configure-env-candidate-badge.is-unverified {
+    color: var(--dim);
+}
+.configure-env-candidate-tag {
+    font-size: 10px;
+    color: var(--dim);
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+.configure-env-candidate-path {
+    font-family: var(--vscode-font-family, monospace);
+    font-size: 11px;
+    word-break: break-all;
+    line-height: 1.45;
+    color: var(--fg);
+}
+.configure-env-candidate-version {
+    font-size: 10px;
+    color: var(--dim);
+}
+.configure-env-empty {
+    font-size: 11px;
+    color: var(--dim);
+    padding: 10px 0;
+    text-align: center;
+}
+.configure-env-system-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+}
+.configure-env-system-hint {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.45;
+    margin: 0;
+}
+.configure-env-system-hint code {
+    font-family: var(--vscode-font-family, monospace);
+    font-size: 10px;
+    color: var(--fg);
+}
+.configure-env-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+.configure-env-actions .toolbar-btn {
+    min-width: 0;
+}
+.configure-env-actions .toolbar-btn.primary {
+    background: var(--accent);
+    color: var(--vscode-button-foreground, #fff);
+    border-color: var(--accent);
+}
+@container app (max-width: 420px) {
+    .configure-env-path-input-wrap {
+        flex: 1 1 100%;
+    }
+    .configure-env-path-row button {
+        flex: 1 1 calc(50% - 3px);
+    }
+    .configure-env-actions {
+        flex-direction: column-reverse;
+    }
+    .configure-env-actions .toolbar-btn {
+        width: 100%;
+    }
+    .configure-env-system-block .toolbar-btn {
+        width: 100%;
+    }
+}
+@media (max-width: 420px) {
+    .configure-env-path-input-wrap {
+        flex: 1 1 100%;
+    }
+    .configure-env-path-row button {
+        flex: 1 1 calc(50% - 3px);
+    }
+    .configure-env-actions {
+        flex-direction: column-reverse;
+    }
+    .configure-env-actions .toolbar-btn,
+    .configure-env-system-block .toolbar-btn {
+        width: 100%;
+    }
+}
+.input-model-picker {
+    max-width: min(160px, 36vw);
+}
+.input-model-picker .input-model-btn {
+    max-width: min(160px, 36vw);
+}
+.input-composite {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-composite:focus-within {
+    border-color: var(--primary);
+}
+.input-composite-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    /* measured from the picker row itself (syncPickerReserve), not a fixed 350px guess:
+       that guess pushed the ring over the Send button in a narrow sidebar. */
+    padding: 0 3px 3px calc(var(--picker-reserve, 120px) + 8px);
+    border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+.input-composite-shell.waiting .input-composite {
+    animation: input-border-glow 1.8s ease-in-out infinite;
+}
+.input-composite-shell.waiting .input-model-btn,
+.input-composite-shell.waiting .input-history-btn {
+    animation: input-model-text-glow 1.8s ease-in-out infinite;
+}
+@keyframes input-border-glow {
+    0%, 100% {
+        border-color: var(--border);
+        box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+        border-color: var(--primary);
+        box-shadow: 0 0 10px 2px color-mix(in srgb, var(--primary) 50%, transparent);
+    }
+}
+@keyframes input-model-text-glow {
+    0%, 100% { color: var(--dim); }
+    50% { color: var(--primary); }
+}
+.input-composite textarea {
+    flex: 0 0 auto;
+    width: 100%;
+    background: transparent;
+    color: var(--input-fg);
+    border: none;
+    padding: 8px 10px 6px;
+    resize: none;
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+    min-height: 36px;
+    max-height: var(--input-max-height, 120px);
+    line-height: 1.4;
+    overflow-y: auto;
+}
+.input-composite textarea:disabled {
+    opacity: 0.5;
+}
+.input-action {
+    flex-shrink: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.token-usage-ring {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    cursor: default;
+}
+.token-usage-ring[hidden] {
+    display: none !important;
+}
+.token-usage-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+.token-usage-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--fg);
+    pointer-events: none;
+    user-select: none;
+}
+.token-usage-ring[data-level="medium"] .token-usage-label {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+.token-usage-ring[data-level="high"] .token-usage-label {
+    color: var(--error);
+}
+.token-ring-bg {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 2.5;
+}
+.token-ring-fg {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.3s ease, stroke 0.3s ease;
+}
+.token-usage-ring[data-level="medium"] .token-ring-fg {
+    stroke: var(--vscode-editorWarning-foreground, #cca700);
+}
+.token-usage-ring[data-level="high"] .token-ring-fg {
+    stroke: var(--error);
+}
+.input-quick-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+    transition: grid-template-rows 0.28s ease, opacity 0.22s ease, margin-bottom 0.28s ease;
+}
+.input-quick-panel.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-bottom: 6px;
+}
+.input-quick-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+.input-quick-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+.chat-search {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: border-color 0.15s;
+}
+.chat-search:focus-within {
+    border-color: var(--primary);
+}
+.chat-search-icon {
+    width: 14px;
+    height: 14px;
+    fill: var(--dim);
+    flex-shrink: 0;
+}
+.chat-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--input-fg);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+    padding: 4px 0;
+}
+.chat-search input::placeholder {
+    color: var(--dim);
+}
+.chat-search input:disabled {
+    opacity: 0.5;
+}
+.chat-search-meta {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+}
+.chat-search-count {
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 28px;
+    text-align: center;
+    white-space: nowrap;
+    padding: 0 1px;
+}
+.chat-search-count.no-match {
+    color: var(--error);
+}
+.chat-search-nav {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 0 1px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 10px;
+    line-height: 1;
+    min-width: 14px;
+    min-height: 18px;
+}
+.chat-search-nav:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--text-block);
+}
+.chat-search-nav:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.message-group.search-hit .message {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.message-group.search-hit-active .message {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+mark.search-mark {
+    background: color-mix(in srgb, var(--primary) 35%, transparent);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+mark.search-mark-active {
+    background: color-mix(in srgb, var(--primary) 55%, transparent);
+    outline: 1px solid var(--primary);
+}
+.input-quick-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.input-quick-actions .icon-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: normal;
+}
+.input-quick-actions .icon-btn:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--text-block);
+}
+.input-quick-actions .icon-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.input-quick-actions .icon-btn.copied {
+    color: var(--primary);
+}
+.input-quick-actions .icon-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+.quick-toggle-btn {
+    position: absolute;
+    top: 0;
+    right: 10px;
+    transform: translateY(-50%);
+    z-index: 7;
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 0;
+    cursor: pointer;
+    min-width: 16px;
+    min-height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, opacity 0.15s;
+}
+.quick-toggle-btn:hover {
+    color: var(--fg);
+}
+.quick-toggle-btn[aria-expanded="true"] {
+    color: var(--primary);
+}
+.quick-toggle-chevron {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+    transition: transform 0.28s ease;
+}
+.quick-toggle-btn[aria-expanded="true"] .quick-toggle-chevron {
+    transform: rotate(180deg);
+}
+.input-submit-slot {
+    position: relative;
+    flex-shrink: 0;
+    min-width: 52px;
+}
+@keyframes input-spin {
+    to { transform: rotate(360deg); }
+}
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+.input-action button {
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 48px;
+    line-height: 1.2;
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#sendBtn {
+    background: var(--primary);
+    color: var(--primary-fg);
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#sendBtn:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#sendBtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#sendBtn.hidden,
+#cancelBtn.hidden {
+    display: none !important;
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#cancelBtn.stop-btn:not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: var(--error);
+    color: #fff;
+    min-width: 58px;
+    padding: 6px 8px;
+}
+*/
+/* LEGACY: replaced by .button / .button--* at the top of this file.
+#cancelBtn.stop-btn:not(.hidden):hover {
+    opacity: 0.9;
+}
+*/
+.stop-btn-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: input-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* Modals — responsive shell */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    padding: clamp(8px, 3vw, 20px);
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.is-open {
+    display: flex;
+}
+.modal-panel {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 100%;
+    max-width: min(600px, 100%);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    max-height: min(85vh, 100%);
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 8px;
+    min-width: 0;
+}
+.modal-header-title {
+    font-weight: 600;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.modal-header-actions button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    cursor: pointer;
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.modal-close-btn {
+    background: none !important;
+    border: none !important;
+    color: var(--dim) !important;
+    font-size: 16px !important;
+    padding: 0 4px !important;
+}
+
+/* ---- Responsive (sidebar width) ---- */
+@container app (max-width: 420px) {
+    .picker-btn .picker-label { display: none; }
+    /* this one is the only content of its button — hide it and the chip is blank */
+    #closedPicker .picker-btn .picker-label { display: inline; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
+    .picker-btn { max-width: 96px; padding: 3px 6px; }
+    .toolbar-status #statusText { max-width: 64px; }
+    .session-tab { max-width: 120px; padding: 6px 8px; }
+    #messages { padding: 6px 8px; }
+    #input-area { padding: 6px 8px; }
+    .message { max-width: 100%; }
+    .fs-ctl .fs-ctl-control { display: none !important; }
+    .input-picker-label { display: none; }
+}
+
+@container app (max-width: 340px) {
+    #toolbar { padding: 4px 6px; gap: 4px; }
+    .toolbar-status #statusText { display: none; }
+    .picker-btn { max-width: 72px; font-size: 10px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
+    .toolbar-btn { padding: 4px 7px; font-size: 10px; min-height: 24px; }
+    .new-label-full { display: none; }
+    .new-label-short { display: inline; }
+    .session-tab { max-width: 96px; font-size: 10px; }
+    .input-action button { min-width: 48px; padding: 6px 10px; font-size: 11px; }
+    .placeholder { padding: 20px 12px; font-size: 11px; }
+}
+
+@container app (max-width: 260px) {
+    .toolbar-pickers { gap: 2px; }
+    .picker-btn { max-width: 56px; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
+    .toolbar-actions { gap: 2px; }
+    .input-composite textarea { padding: 6px 8px; min-height: 32px; }
+    .input-action { padding: 3px; }
+    .input-action button { min-width: 40px; padding: 5px 8px; }
+    .message .label { font-size: 10px; }
+    .message pre { font-size: 11px; padding: 8px; }
+}
+
+/* Fallback for hosts without container queries */
+@media (max-width: 420px) {
+    .picker-btn .picker-label { display: none; }
+    #closedPicker .picker-btn .picker-label { display: inline; }
+    #closedPicker .picker-btn { max-width: 130px; font-size: 12px; }
+    .picker-btn { max-width: 96px; }
+    .session-tab { max-width: 120px; }
+    .message { max-width: 100%; }
+    .fs-ctl .fs-ctl-control { display: none !important; }
+}
+@media (max-width: 340px) {
+    .toolbar-status #statusText { display: none; }
+    .new-label-full { display: none; }
+    .new-label-short { display: inline; }
+}
+
+/* History card — an attached slice of another conversation. */
+.message.history {
+    border-left: 2px solid var(--border);
+    padding-left: 6px;
+}
+.message.history .aux-label {
+    font-style: italic;
+}
+.history-meta {
+    padding: 0 8px 4px;
+    font-size: 10px;
+    color: var(--dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.message.history .aux-body-content {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    white-space: pre-wrap;
+}
+
+/* History viewer: another session read-only, ticked for a history attach.
+   The transcript and the multi-select toolbar are all this tab offers. */
+body.is-viewer #toolbar,
+body.is-viewer #tab-bar,
+body.is-viewer #input-area .input-resize-handle,
+body.is-viewer #input-area #filePicker,
+body.is-viewer #input-area .input-quick-panel,
+body.is-viewer #input-area .input-composite-wrap {
+    display: none;
+}
+body.is-viewer #input-area {
+    padding-top: 0;
+}
+body.is-viewer .multi-select-toolbar {
+    padding-top: 12px;
+}
+
+/* Session memory: the picker that lists other sessions, and the chip of the staged pick. */
+/* Model and session memory trade places. While the agent works (the composer's .waiting) the
+   model shows its name and the memory folds to its clock; when it is done they swap. Labels fold
+   rather than vanish, so the swap is seen. An unchosen model keeps its label: it asks for a pick. */
+.input-picker-row .input-picker-label {
+    max-width: 140px;
+    transition: max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+.input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder) .input-picker-label,
+.input-composite-shell.waiting .input-history-btn .input-picker-label {
+    max-width: 0;
+    opacity: 0;
+}
+.input-composite-shell:not(.waiting) .input-model-btn:not(.is-placeholder),
+.input-composite-shell.waiting .input-history-btn {
+    width: auto;
+    max-width: none;
+    padding: 4px 7px;
+    gap: 0;
+}
+.history-session-list {
+    max-height: min(320px, 45vh);
+    overflow-y: auto;
+    padding: 4px 0 2px;
+}
+.history-session-item {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg);
+    font: inherit;
+    text-align: left;
+}
+.history-session-item:last-child {
+    border-bottom: none;
+}
+.history-session-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.history-session-flag {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--dim);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 6px;
+    line-height: 15px;
+}
+.history-session-empty {
+    padding: 10px;
+    font-size: 11px;
+    color: var(--dim);
+}
+.history-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 6px;
+    padding: 4px 8px;
+    max-width: 100%;
+    border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--primary) 9%, var(--bg));
+    font-size: 11px;
+    color: var(--fg);
+}
+/* display:flex beats the [hidden] attribute's own rule, so say it again. */
+.history-chip[hidden],
+.history-chip-pending[hidden] {
+    display: none;
+}
+.history-chip-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    opacity: 0.82;
+}
+.history-chip-icon svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+    display: block;
+}
+.history-chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.history-chip-pending {
+    flex-shrink: 0;
+    color: var(--dim);
+    white-space: nowrap;
+}
+.history-chip-pending::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 5px;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--primary) 40%, transparent);
+    border-top-color: var(--primary);
+    animation: history-chip-spin 0.8s linear infinite;
+    vertical-align: -1px;
+}
+@keyframes history-chip-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.history-chip-clear {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 0 2px;
+    background: transparent;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+.history-chip-clear:hover {
+    color: var(--fg);
+}
+
+/* Steer: with text in the composer, Stop offers to talk into the running turn. */
+#cancelBtn.stop-btn.steer {
+    background: var(--steer);
+    border-color: var(--steer);
+    color: var(--steer-fg);
+}
+#cancelBtn.stop-btn.steer:hover {
+    background: var(--steer-hover);
+    border-color: var(--steer-hover);
+}
+.message .steer-tag {
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--steer) 55%, var(--border));
+    color: color-mix(in srgb, var(--steer) 80%, var(--fg));
+    font-size: 9px;
+    line-height: 14px;
+    vertical-align: 1px;
+}

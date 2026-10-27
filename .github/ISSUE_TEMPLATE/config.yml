@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Hermes Agent docs
+    url: https://hermes-agent.nousresearch.com/docs
+    about: Documentation for the agent this extension drives
+  - name: Issues in this fork
+    url: https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues
+    about: Report bugs or request features for Tommys Hermes ACP
