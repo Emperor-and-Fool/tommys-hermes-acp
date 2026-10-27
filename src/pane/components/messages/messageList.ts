@@ -235,7 +235,8 @@ function buildMessage(role, text, options) {
 
 function buildCard(role, text, options) {
     if (role === 'history') {
-        return { card: buildHistoryCard(text, options && options.history), auxParts: null };
+        const history = buildHistoryCard(text, options && options.history);
+        return { card: history.div, auxParts: null, historyParts: history };
     }
     if (role === 'tool' || role === 'thought') {
         const auxParts = buildAuxiliaryMessage(role, text);
@@ -268,6 +269,11 @@ function mountMessage(group, built, options) {
     container.appendChild(stack);
     group.appendChild(container);
     messagesEl.appendChild(group);
+    if (built.historyParts) {
+        // Only now does the card have a height to measure: a slice that fits shows no toggle.
+        const scrollEl = built.historyParts.scrollEl;
+        built.historyParts.moreBtn.hidden = scrollEl.scrollHeight <= scrollEl.clientHeight + 1;
+    }
     // Apply visibility filter for thought/tool messages
     if (role === 'thought' && !window._showThoughts) group.style.display = 'none';
     if (role === 'tool' && !window._showToolCalls) group.style.display = 'none';
