@@ -10,6 +10,8 @@ CODE_REVIEW*.md
 .sessions.json
 .chat-history.json
 out/tests/
+out/**/*.d.ts
+out/**/*.js.map
 docs/**
 media/icon.svg
 scripts/**

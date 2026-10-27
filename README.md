@@ -49,8 +49,8 @@ The image work is also proposed upstream as
 ```bash
 npm install
 npm run compile
-npx @vscode/vsce package --no-yarn -o tommys-hermes-acp-0.3.2.vsix
-codium --install-extension "$PWD/tommys-hermes-acp-0.3.2.vsix" --force
+npx @vscode/vsce package --no-yarn -o tommys-hermes-acp-1.0.0.vsix
+codium --install-extension "$PWD/tommys-hermes-acp-1.0.0.vsix" --force
 ```
 
 Extension id: `emperorandfool.tommys-hermes-acp` — distinct from upstream's

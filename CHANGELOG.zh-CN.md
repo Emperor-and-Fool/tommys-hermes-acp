@@ -6,6 +6,40 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.0] - 2026-10-27
+
+分叉后的第一个结构化版本：`src/` 按运行时拆分，会话记忆功能建立在其上。
+
+### 新增
+
+- **会话记忆**：在输入框选择另一段对话，在临时编辑器标签页中只读查看，最多勾选 15 条消息后附加。暂存的选择显示为标签，并归属于暂存它的标签页；发送时作为引用块放在问题之前，会话导出也会把它写成引用
+- **权限卡片上的审批模式**：手动 · 智能 · 关闭，通过 `hermes config set approvals.mode` 写入当前配置，并同步到所有待处理卡片
+- **引导（Steer）**：运行期间输入框有文字时，**停止**按钮变为**引导**；文字在本次工具调用结束后进入当前运行，而不结束它，消息在对话中带标记
+- **模型与会话记忆选择器互换位置**，会话记忆选择器在对话有内容后收为时钟图标
+
+### 变更
+
+- `src/` 按运行时划分 —— `host/`（VS Code API、文件系统、CLI、ACP）、`pane/`（webview）、`shared/`（消息契约）—— webview 由 esbuild 打包为 `media/pane.js`
+- webview 协议的两个方向都是 `src/shared/webview.ts` 中的强类型联合；删除了五个无用的消息名
+- 暂存的历史选择按标签页归属，切换标签页不再把它带走
+- 当前会话重新成为有效的历史来源
+
+### 修复
+
+- **跨标签页暂存**：一个标签页暂存的选择可能从另一个标签页发出，甚至发回它自己的来源会话
+- **引导没有进入运行中的回合**：它被排在本次回合自己的发送之后，总是退化成一条新消息
+- **引导的回复行**（`⏩ Steer queued…`）不再混入助手的回答，以警告符号开头的回答也不再被误认
+- `normalizeWindowsUserPath` 在非 Windows 平台上按盘符冒号切分 Windows PATH 条目
+
+### 移除
+
+- 旧的当前标签页上下文附加（`ContextAttachOffer`）及其消息、设置和测试 —— 由会话记忆取代
+- 拆分前的两个单体文件 `chat.js.old` 与 `HermesChatProvider.ts.old`
+
+## [0.4.0] - 2026-10-21
+
+分叉自建名称后的首个构建；代码树以压缩方式导入，此处无记录。
+
 ## [0.3.2] - 2026-06-22
 
 ### 新增
@@ -112,6 +146,8 @@
 - 面向市场的图标、README 与 VSIX 打包（bundle 中排除 icon.svg）。
 - 显示名称定为 **Rina Hermes ACP**（此前受 Marketplace 命名限制经历 **Hermes AI Chat** 等调整）。
 
+[1.0.0]: https://github.com/Emperor-and-Fool/tommys-hermes-acp/releases/tag/v1.0.0
+[0.4.0]: https://github.com/Emperor-and-Fool/tommys-hermes-acp/commits/main
 [0.3.2]: https://github.com/jove-rina/rina-hermes-acp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/jove-rina/rina-hermes-acp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jove-rina/rina-hermes-acp/compare/v0.2.6...v0.3.0

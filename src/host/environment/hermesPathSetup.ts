@@ -22,6 +22,15 @@ function pathsEqual(a: string, b: string): boolean {
 
 function splitPathEntries(pathValue: string): string[] {
     const separator = process.platform === 'win32' ? ';' : ':';
+    return splitOn(pathValue, separator);
+}
+
+/** A Windows PATH value is ';'-separated whoever is parsing it; a drive letter is not a delimiter. */
+function splitWindowsPathEntries(pathValue: string): string[] {
+    return splitOn(pathValue, ';');
+}
+
+function splitOn(pathValue: string, separator: string): string[] {
     return pathValue
         .split(separator)
         .map((entry) => entry.trim())
@@ -47,7 +56,7 @@ export function sanitizeWindowsPathEntry(entry: string): string {
 export function normalizeWindowsUserPath(pathValue: string): string {
     const seen = new Set<string>();
     const entries: string[] = [];
-    for (const raw of splitPathEntries(pathValue)) {
+    for (const raw of splitWindowsPathEntries(pathValue)) {
         const sanitized = sanitizeWindowsPathEntry(raw);
         const key = sanitized.toLowerCase();
         if (seen.has(key)) {
