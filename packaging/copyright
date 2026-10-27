@@ -1,0 +1,38 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Tommys Hermes ACP
+Source: https://github.com/Emperor-and-Fool/tommys-hermes-acp
+Comment: VS Code / VSCodium extension that runs Hermes Agent over the Agent Client
+ Protocol. This is a fork of Rina Hermes ACP; upstream is not affiliated with
+ this fork.
+Comment: The project as a whole is distributed under GPL-3.0-or-later. Files whose
+ copyright is held by jove-rina were received under the MIT licence and that
+ notice is retained in LICENSES/MIT-jove-rina.txt; they may still be obtained
+ from upstream under MIT. MIT is compatible with GPLv3, so including them here
+ under the GPL does not restrict any recipient.
+
+Files: *
+Copyright: 2026 Emperor & Fool
+License: GPL-3+
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+
+Files: src extension package.json media/chat.html media/icon.png media/activitybar.svg
+Copyright: 2026 jove-rina
+License: MIT
+ Retained in LICENSES/MIT-jove-rina.txt.
+
+Files: media/vendor/marked.min.js
+Copyright: 2011-2024 Christopher Jeffrey
+License: MIT
+
+Files: media/vendor/highlight.min.js media/vendor/github-dark.min.css
+Copyright: highlight.js contributors
+License: BSD-3-Clause
+
+Files: media/vendor/purify.min.js
+Copyright: DOMPurify contributors
+License: Apache-2.0
+
+Files: node_modules/@agentclientprotocol/** node_modules/zod/**
+Copyright: Agent Client Protocol contributors
+License: Apache-2.0

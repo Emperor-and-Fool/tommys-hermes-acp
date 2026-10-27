@@ -1,0 +1,334 @@
+{
+  "name": "tommys-hermes-acp",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
+  "version": "1.1.0",
+  "publisher": "EmperorAndFool",
+  "icon": "media/icon.png",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Chat",
+    "Other"
+  ],
+  "main": "./out/host/extension.js",
+  "activationEvents": [
+    "onView:tommysChat",
+    "onWebviewPanel:tommys.chatPanel"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tommys-sidebar",
+          "title": "%viewsContainers.activitybar.title%",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "tommys-sidebar": [
+        {
+          "type": "webview",
+          "id": "tommysChat",
+          "name": "%views.tommysChat.name%"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tommys.openChat",
+        "title": "%commands.tommys.openChat.title%"
+      },
+      {
+        "command": "tommys.toggleChatSurface",
+        "title": "%commands.tommys.toggleChatSurface.title%",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "tommys.sendSelection",
+        "title": "%commands.tommys.sendSelection.title%"
+      },
+      {
+        "command": "tommys.reloadExtension",
+        "title": "%commands.tommys.reloadExtension.title%",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "tommys.reloadSession",
+        "title": "%commands.tommys.reloadSession.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tommys.openSettings",
+        "title": "%commands.tommys.openSettings.title%",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "tommys.checkUpdate",
+        "title": "%commands.tommys.checkUpdate.title%",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "tommys.openAbout",
+        "title": "%commands.tommys.openAbout.title%",
+        "icon": "$(info)"
+      },
+      {
+        "command": "tommys.openHelp",
+        "title": "%commands.tommys.openHelp.title%",
+        "icon": "$(question)"
+      },
+      {
+        "command": "tommys.openFaq",
+        "title": "%commands.tommys.openFaq.title%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "tommys.openLogs",
+        "title": "%commands.tommys.openLogs.title%",
+        "icon": "$(output)"
+      },
+      {
+        "command": "tommys.detectEnvironment",
+        "title": "%commands.tommys.detectEnvironment.title%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "tommys.detectEnvironmentBusy",
+        "title": "%commands.tommys.detectEnvironmentBusy.title%",
+        "icon": "$(sync~spin)"
+      },
+      {
+        "command": "tommys.configureEnvironment",
+        "title": "%commands.tommys.configureEnvironment.title%",
+        "icon": "$(settings-gear)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "tommys.reloadMenu",
+        "label": "%submenus.tommys.reloadMenu.label%",
+        "icon": "$(refresh)"
+      },
+      {
+        "id": "tommys.envMenu",
+        "label": "%submenus.tommys.envMenu.label%",
+        "icon": "$(wrench)"
+      },
+      {
+        "id": "tommys.moreMenu",
+        "label": "%submenus.tommys.moreMenu.label%",
+        "icon": "$(ellipsis)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "submenu": "tommys.envMenu",
+          "when": "view == tommysChat",
+          "group": "navigation@0"
+        },
+        {
+          "submenu": "tommys.reloadMenu",
+          "when": "view == tommysChat",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "tommys.moreMenu",
+          "when": "view == tommysChat",
+          "group": "navigation@2"
+        }
+      ],
+      "tommys.envMenu": [
+        {
+          "command": "tommys.detectEnvironment",
+          "when": "!tommysDetectInProgress",
+          "group": "1@1"
+        },
+        {
+          "command": "tommys.detectEnvironmentBusy",
+          "when": "tommysDetectInProgress",
+          "group": "1@1"
+        },
+        {
+          "command": "tommys.configureEnvironment",
+          "when": "!tommysDetectInProgress",
+          "group": "1@2"
+        }
+      ],
+      "tommys.reloadMenu": [
+        {
+          "command": "tommys.reloadExtension",
+          "group": "1@1"
+        },
+        {
+          "command": "tommys.reloadSession",
+          "group": "1@2"
+        }
+      ],
+      "tommys.moreMenu": [
+        {
+          "command": "tommys.toggleChatSurface",
+          "group": "0@1"
+        },
+        {
+          "command": "tommys.openSettings",
+          "group": "1@1"
+        },
+        {
+          "command": "tommys.checkUpdate",
+          "group": "1@2"
+        },
+        {
+          "command": "tommys.openAbout",
+          "group": "2@1"
+        },
+        {
+          "command": "tommys.openHelp",
+          "group": "2@2"
+        },
+        {
+          "command": "tommys.openFaq",
+          "group": "2@3"
+        },
+        {
+          "command": "tommys.openLogs",
+          "group": "3@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "tommys.sendSelection",
+          "group": "1_modification"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "tommys.path": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.tommys.path.description%"
+        },
+        "tommys.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.tommys.cwd.description%"
+        },
+        "tommys.profile": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.tommys.profile.description%"
+        },
+        "tommys.showThoughts": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.tommys.showThoughts.description%"
+        },
+        "tommys.showToolCalls": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.tommys.showToolCalls.description%"
+        },
+        "tommys.models": {
+          "type": "array",
+          "default": [],
+          "description": "%configuration.tommys.models.description%",
+          "markdownDescription": "%configuration.tommys.models.markdownDescription%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          }
+        },
+        "tommys.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.tommys.defaultModel.description%"
+        },
+        "tommys.agents": {
+          "type": "array",
+          "default": [],
+          "description": "%configuration.tommys.agents.description%",
+          "markdownDescription": "%configuration.tommys.agents.markdownDescription%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "cwd": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "tommys.chatSurface": {
+          "type": "string",
+          "default": "sidebar",
+          "enum": [
+            "sidebar",
+            "editor"
+          ],
+          "enumDescriptions": [
+            "%configuration.tommys.chatSurface.sidebar.description%",
+            "%configuration.tommys.chatSurface.editor.description%"
+          ],
+          "description": "%configuration.tommys.chatSurface.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile && npm run build:pane",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc -p ./ --noEmit --noUnusedLocals --noUnusedParameters",
+    "check:pane": "tsc -p src/pane --noEmit",
+    "build:pane": "esbuild src/pane/main.ts --bundle --format=iife --target=es2020 --outfile=media/pane.js",
+    "deploy": "node scripts/deploy.mjs",
+    "package": "npx --no-install @vscode/vsce package",
+    "test": "node ./out/tests/runTest.js"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^26.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "mocha": "^11.7.6",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.28.0",
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Emperor-and-Fool/tommys-hermes-acp"
+  }
+}

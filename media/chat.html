@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="{{HIGHLIGHT_CSS_URI}}">
+<script src="{{MARKED_URI}}"></script>
+<script src="{{PURIFY_URI}}"></script>
+<script src="{{HIGHLIGHT_URI}}"></script>
+<link rel="stylesheet" href="{{CHAT_CSS_URI}}">
+</head>
+<body>
+<div id="toolbar">
+    <div class="toolbar-status" id="toolbarStatus">
+        <span class="dot idle" id="statusDot"></span>
+        <span id="statusText"></span>
+        <button class="retry-btn" id="retryBtn" hidden>↻</button>
+        <button class="retry-btn detect-env-btn" id="detectEnvBtn" hidden></button>
+    </div>
+    <div class="toolbar-pickers">
+        <div class="picker menu" id="profilePicker" data-open="false">
+            <button class="picker-btn menu__trigger" id="profileBtn">
+                <span class="picker-label" id="profileLabelText"></span><span id="profileLabel"></span>
+            </button>
+            <div class="menu__panel" id="profileDropdown">
+                <div class="dropdown-header" id="profilesHeader"></div>
+                <div id="profileList"></div>
+            </div>
+        </div>
+    </div>
+    <div id="detectEnvBar" class="detect-env-bar" hidden>
+        <div class="detect-env-bar-panel">
+            <button type="button" class="detect-env-main" id="detectEnvToggle" aria-expanded="false">
+                <span class="detect-env-icon running" id="detectEnvCompactIcon" aria-hidden="true"></span>
+                <span class="detect-env-text" id="detectEnvCompactText"></span>
+                <span class="detect-env-hint" id="detectEnvCompactHint" aria-hidden="true">
+                    <svg class="detect-env-chevron" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 6l4 4 4-4"/>
+                    </svg>
+                </span>
+            </button>
+            <button type="button" class="detect-env-close" id="detectEnvClose" aria-label="✕">✕</button>
+        </div>
+        <div class="detect-env-details" id="detectEnvDetails" hidden>
+            <div class="detect-env-details-title" id="detectEnvDetailsTitle"></div>
+            <ul class="detect-env-steps" id="detectEnvSteps"></ul>
+        </div>
+    </div>
+    <div class="toolbar-actions">
+        <div class="picker is-empty menu" id="closedPicker" data-open="false">
+            <button class="picker-btn menu__trigger" id="closedPickerBtn" aria-haspopup="true">
+                <span class="picker-label" id="closedPickerLabel"></span><span class="picker-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="menu__panel" id="closedDropdown">
+                <div class="dropdown-header" id="closedHeader"></div>
+                <div id="closedList"></div>
+            </div>
+        </div>
+        <button class="button button--primary" id="openTabBtn"><span class="new-label-full" id="openTabLabelFull"></span><span class="new-label-short">+</span></button>
+    </div>
+</div>
+<div id="tab-bar"></div>
+<div id="tabContextMenu" class="tab-context-menu" hidden></div>
+<div id="chat-body" class="chat-body">
+<div id="messages">
+    <div class="placeholder" id="placeholder"></div>
+</div>
+<div id="logModal" class="chat-area-overlay">
+    <div class="modal-panel">
+        <div class="modal-header">
+            <span class="modal-header-title" id="logModalTitle"></span>
+            <div class="modal-header-actions">
+                <label class="log-filter" id="logFilterErrorLabel"><input type="checkbox" id="logFilterError" checked> ERROR</label>
+                <label class="log-filter" id="logFilterWarningLabel"><input type="checkbox" id="logFilterWarning" checked> WARNING</label>
+                <button id="copyLogBtn"></button>
+                <button id="clearLogBtn"></button>
+                <button id="closeLogBtn" class="modal-close-btn">✕</button>
+            </div>
+        </div>
+        <pre id="logContent" style="flex:1;overflow-y:auto;padding:8px 12px;font-size:11px;line-height:1.5;margin:0;white-space:pre-wrap;word-break:break-all"></pre>
+    </div>
+</div>
+</div>
+<div id="input-area">
+    <div class="input-resize-handle" id="inputResizeHandle"></div>
+    <div id="filePicker" class="file-picker" role="listbox"></div>
+    <div class="input-stack">
+    <div id="multiSelectToolbar" class="multi-select-toolbar" hidden>
+        <span class="ms-count" id="multiSelectCount"></span>
+        <button type="button" id="multiSelectAllBtn"></button>
+        <button type="button" id="multiSelectDeleteBtn" class="ms-danger" disabled></button>
+        <button type="button" id="multiSelectCopyBtn" disabled></button>
+        <button type="button" id="multiSelectExportBtn" disabled></button>
+        <div class="ms-role-filters" id="historyRoleFilters" hidden>
+            <div class="ms-role-row">
+                <label class="ms-role"><input type="checkbox" id="historyRoleUser" checked><span>User</span></label>
+                <label class="ms-role"><input type="checkbox" id="historyRoleAssistant" checked><span>Assistant</span></label>
+                <label class="ms-role"><input type="checkbox" id="historyRoleThought"><span>Thought</span></label>
+                <label class="ms-role"><input type="checkbox" id="historyRoleTool"><span>Tool</span></label>
+            </div>
+            <button type="button" id="historyRoleReload" class="ms-role-reload"></button>
+        </div>
+        <div class="ms-actions-end">
+            <button type="button" id="multiSelectAttachConfirmBtn" class="ms-attach-confirm" hidden disabled></button>
+            <button type="button" id="multiSelectExitBtn" class="ms-exit"></button>
+        </div>
+    </div>
+    <div class="input-quick-panel" id="inputQuickPanel" aria-hidden="true">
+        <div class="input-quick-panel-inner">
+            <div class="input-quick-toolbar">
+                <div class="chat-search">
+                    <svg class="chat-search-icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm5.03 8.47 2.5 2.5-.7.7-2.5-2.5.7-.7z"/></svg>
+                    <input type="search" id="chatSearchInput" disabled autocomplete="off" spellcheck="false">
+                    <div class="chat-search-meta">
+                        <span class="chat-search-count" id="chatSearchCount"></span>
+                        <button type="button" class="chat-search-nav" id="chatSearchPrev" disabled>↑</button>
+                        <button type="button" class="chat-search-nav" id="chatSearchNext" disabled>↓</button>
+                    </div>
+                </div>
+                <div class="input-quick-actions">
+                <button type="button" id="clearInputBtn" class="icon-btn" disabled>
+                    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h9A1.5 1.5 0 0 1 14 4.5v6A1.5 1.5 0 0 1 12.5 12h-9A1.5 1.5 0 0 1 2 10.5v-6zM3.5 4.5v6h9v-6h-9zM5 6.5h5v1H5v-1zm0 2h3v1H5v-1z"/><path d="M10.5 9.5 13.5 12.5l-.7.7-2-2-2 2-.7-.7 2-2-2-2 .7-.7 2 2 2-2 .7.7-2 2 2 2-.7.7-2-2z"/></svg>
+                </button>
+                <button type="button" id="copySessionBtn" class="icon-btn" disabled>
+                    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4 2h8a1 1 0 0 1 1 1v1h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h0zm1 2v8h8V5H5zm-2 2h1v6h6v1H4a1 1 0 0 1-1-1V6h0z"/></svg>
+                </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="input-composite-wrap">
+        <button type="button" id="quickToggleBtn" class="quick-toggle-btn" aria-expanded="false" aria-controls="inputQuickPanel">
+            <svg class="quick-toggle-chevron" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 10.5 8 7l3.5 3.5-.7.7L8 8.4l-2.8 2.8-.7-.7z"/></svg>
+        </button>
+        <div class="input-composite-shell">
+            <div class="input-picker-row">
+            <div class="picker input-model-picker menu" id="modelPicker" data-open="false">
+                <button type="button" class="input-model-btn menu__trigger" id="modelBtn" title="">
+                    <span class="input-picker-icon" aria-hidden="true"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 1 2 4.2v7.6L8 15l6-3.2V4.2L8 1zm0 1.5 4.3 2.3L8 7.1 3.7 4.8 8 2.5zM3 6.1l5 2.7 5-2.7v4.8l-5 2.7-5-2.7V6.1z"/></svg></span>
+                    <span class="input-picker-label" id="modelLabel"></span>
+                </button>
+                <div class="menu__panel" id="modelDropdown">
+                    <div class="dropdown-header" id="modelsHeader"></div>
+                    <div id="modelList"></div>
+                </div>
+            </div>
+            <div class="picker input-history-picker menu" id="historyPicker" data-open="false">
+                <button type="button" class="input-history-btn menu__trigger" id="historyPickerBtn" title="">
+                    <span class="input-picker-icon" aria-hidden="true"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 1.2a5.3 5.3 0 1 1 0 10.6 5.3 5.3 0 0 1 0-10.6z"/><path d="M8 4v3.8l2.5 1.5-.8 1.3-3.3-2V4h1.6z"/></svg></span>
+                    <span class="input-picker-label" id="historyPickerLabel"></span>
+                </button>
+                <div class="menu__panel" id="historyPickerDropdown">
+                    <div class="dropdown-header" id="historyPickerHeader"></div>
+                    <div class="history-session-list" id="historySessionList" role="listbox"></div>
+                </div>
+            </div>
+            </div>
+            <div class="reply-quote" id="replyQuote" hidden>
+                <div class="reply-quote-head">
+                    <span class="reply-quote-title" id="replyQuoteTitle"></span>
+                    <button type="button" class="reply-quote-toggle" id="replyQuoteToggle" aria-expanded="true"></button>
+                    <button type="button" class="reply-quote-clear" id="replyQuoteClear" aria-label="✕">✕</button>
+                </div>
+                <div class="reply-quote-body" id="replyQuoteBody"></div>
+            </div>
+            <div class="history-chip" id="historyChip" hidden>
+                <span class="history-chip-icon" aria-hidden="true"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 1.2a5.3 5.3 0 1 1 0 10.6 5.3 5.3 0 0 1 0-10.6z"/><path d="M8 4v3.8l2.5 1.5-.8 1.3-3.3-2V4h1.6z"/></svg></span>
+                <span class="history-chip-text" id="historyChipText"></span>
+                <span class="history-chip-pending" id="historyChipPending" hidden></span>
+                <button type="button" class="history-chip-clear" id="historyChipClear" aria-label="✕">✕</button>
+            </div>
+            <div class="composer-hint" id="composerHint" hidden></div>
+            <div class="composer-notice" id="undeliveredNotice" role="status" hidden>
+                <span class="composer-notice-text" id="undeliveredNoticeText"></span>
+                <div class="composer-notice-actions">
+                    <button type="button" class="button button--primary" id="undeliveredPrimaryBtn"></button>
+                    <button type="button" class="button" id="undeliveredDiscardBtn"></button>
+                </div>
+            </div>
+            <div class="input-composite" id="inputComposite">
+            <textarea id="input" rows="1" disabled></textarea>
+            <div class="input-composite-bar">
+                <div class="input-action">
+                    <div class="token-usage-ring" id="tokenUsageRing" hidden>
+                        <svg viewBox="0 0 28 28" aria-hidden="true">
+                            <circle class="token-ring-bg" cx="14" cy="14" r="11"></circle>
+                            <circle class="token-ring-fg" id="tokenUsageArc" cx="14" cy="14" r="11"></circle>
+                        </svg>
+                        <span class="token-usage-label" id="tokenUsagePct" aria-hidden="true"></span>
+                    </div>
+                    <div class="input-submit-slot">
+                        <button id="sendBtn" class="button button--primary" disabled></button>
+                        <button id="cancelBtn" class="button button--danger hidden stop-btn">
+                            <span class="stop-btn-spinner" aria-hidden="true"></span>
+                            <span id="stopBtnLabel"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+<div id="aboutModal" class="info-modal modal-overlay">
+    <div class="modal-panel" style="max-width:min(520px,100%)">
+        <div class="modal-header">
+            <span class="modal-header-title" id="aboutModalTitle"></span>
+            <button class="close-info-modal modal-close-btn">✕</button>
+        </div>
+        <div class="info-modal-body" id="aboutContent"></div>
+    </div>
+</div>
+
+<div id="helpModal" class="info-modal modal-overlay">
+    <div class="modal-panel" style="max-width:min(560px,100%)">
+        <div class="modal-header">
+            <span class="modal-header-title" id="helpModalTitle"></span>
+            <button class="close-info-modal modal-close-btn">✕</button>
+        </div>
+        <div class="info-modal-body" id="helpModalBody"></div>
+    </div>
+</div>
+
+<div id="faqModal" class="info-modal modal-overlay">
+    <div class="modal-panel" style="max-width:min(560px,100%)">
+        <div class="modal-header">
+            <span class="modal-header-title" id="faqModalTitle"></span>
+            <button class="close-info-modal modal-close-btn">✕</button>
+        </div>
+        <div class="info-modal-body faq-modal-body" id="faqModalBody"></div>
+    </div>
+</div>
+
+<div id="switchSessionModal" class="modal-overlay">
+    <div class="modal-panel" style="max-width:min(400px,100%)">
+        <div class="modal-header">
+            <span class="modal-header-title" id="switchSessionModalTitle"></span>
+        </div>
+        <div class="switch-session-body">
+            <p id="switchSessionModalBody"></p>
+            <div class="switch-session-actions">
+                <button type="button" class="toolbar-btn" id="switchSessionStayBtn"></button>
+                <button type="button" class="toolbar-btn primary" id="switchSessionConfirmBtn"></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="configureEnvModal" class="modal-overlay">
+    <div class="modal-panel configure-env-modal-panel">
+        <div class="modal-header">
+            <span class="modal-header-title" id="configureEnvModalTitle"></span>
+            <button type="button" class="modal-close-btn" id="configureEnvCloseBtn" aria-label="✕">✕</button>
+        </div>
+        <div class="configure-env-body">
+            <div class="configure-env-path-field">
+                <div class="configure-env-field-label" id="configureEnvPathLabel"></div>
+                <div class="configure-env-path-row">
+                    <div class="configure-env-path-input-wrap">
+                        <input type="text" id="configureEnvPathInput" autocomplete="off" spellcheck="false" />
+                        <button type="button" id="configureEnvPathClearBtn" class="configure-env-path-clear" hidden aria-label="✕">✕</button>
+                    </div>
+                    <button type="button" id="configureEnvBrowseBtn"></button>
+                    <button type="button" id="configureEnvDetectBtn"></button>
+                </div>
+            </div>
+            <div id="configureEnvDetectSection" class="configure-env-detect-panel" hidden>
+                <div class="detect-env-bar-panel configure-env-detect-bar">
+                    <button type="button" class="detect-env-main" id="configureEnvDetectToggle" aria-expanded="false">
+                        <span class="detect-env-icon running" id="configureEnvDetectCompactIcon" aria-hidden="true"></span>
+                        <span class="detect-env-text" id="configureEnvDetectCompactText"></span>
+                        <span class="detect-env-hint" id="configureEnvDetectCompactHint" aria-hidden="true">
+                            <svg class="detect-env-chevron" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 6l4 4 4-4"/>
+                            </svg>
+                        </span>
+                    </button>
+                    <button type="button" class="detect-env-close" id="configureEnvDetectClose" aria-label="✕">✕</button>
+                </div>
+                <div class="detect-env-details configure-env-detect-details" id="configureEnvDetectDetails" hidden>
+                    <div class="detect-env-details-title" id="configureEnvDetectDetailsTitle"></div>
+                    <ul class="detect-env-steps" id="configureEnvDetectSteps"></ul>
+                </div>
+            </div>
+            <div id="configureEnvCandidatesSection" class="configure-env-candidates-section" hidden>
+                <div class="configure-env-candidates-title" id="configureEnvCandidatesTitle"></div>
+                <ul class="configure-env-candidates" id="configureEnvCandidatesList"></ul>
+                <div class="configure-env-empty" id="configureEnvCandidatesEmpty" hidden></div>
+            </div>
+            <div class="configure-env-system-block">
+                <button type="button" class="toolbar-btn" id="configureEnvSystemBtn"></button>
+                <p class="configure-env-system-hint" id="configureEnvSystemHint"></p>
+            </div>
+            <div class="configure-env-actions">
+                <button type="button" class="toolbar-btn" id="configureEnvCancelBtn"></button>
+                <button type="button" class="toolbar-btn primary" id="configureEnvSaveBtn"></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var locale = {{LOCALE_JSON}};
+    {{LOCALE_HELPER}}
+</script>
+    <script src="{{CHAT_JS_URI}}"></script>
+    </body>
+    </html>

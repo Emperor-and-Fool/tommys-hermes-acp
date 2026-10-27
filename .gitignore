@@ -1,0 +1,15 @@
+node_modules/
+.vscode-test/
+out/
+*.vsix
+.DS_Store
+.chat-history.json
+.sessions.json
+docs/**
+
+# npm only — ignore other package manager lock files
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+bun.lockb
+media/pane.js
