@@ -207,15 +207,21 @@ let historyRoleBoxesWired = false;
 
 function syncHistoryRoleBoxes() {
     const pairs = [
-        ['user', historyRoleUser],
-        ['assistant', historyRoleAssistant],
-        ['thought', historyRoleThought],
-        ['tool', historyRoleTool],
+        ['user', historyRoleUser, locale.historyRoleUser],
+        ['assistant', historyRoleAssistant, locale.historyRoleAssistant],
+        ['thought', historyRoleThought, locale.historyRoleThought],
+        ['tool', historyRoleTool, locale.historyRoleTool],
     ];
     for (const pair of pairs) {
         const box = pair[1];
-        if (box) {
-            box.checked = historyPickRoles.has(pair[0]);
+        if (!box) {
+            continue;
+        }
+        box.checked = historyPickRoles.has(pair[0]);
+        const label = box.closest('.ms-role');
+        const text = label && label.querySelector('span');
+        if (text && pair[2]) {
+            text.textContent = pair[2];
         }
     }
     if (historyRoleBoxesWired) {

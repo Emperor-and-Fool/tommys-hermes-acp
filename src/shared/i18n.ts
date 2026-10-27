@@ -281,6 +281,11 @@ export interface LocaleStrings {
     historyAttachCount: string;
     historyViewerCancel: string;
     historyViewerUnavailable: string;
+    /** The role filter on the history attach bar. */
+    historyRoleUser: string;
+    historyRoleAssistant: string;
+    historyRoleThought: string;
+    historyRoleTool: string;
 
     // Session memory: the picker, the staged chip, the viewer
     historyPickerPlaceholder: string;
