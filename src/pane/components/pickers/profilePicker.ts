@@ -12,6 +12,13 @@ export function profileDisplayName() {
 
 const profileDropdown = byId('profileDropdown');
 
+/** Opened by the host: the profile this pane was using is not available any more. */
+export function openProfilePicker(): void {
+    closeAllDropdowns();
+    setMenuOpen(profilePicker, true);
+    post({ type: 'getProfiles' });
+}
+
 export function initProfileBtnClick(): void {
     profileBtn.addEventListener('click', function(e) {
         e.stopPropagation();

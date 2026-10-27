@@ -17,6 +17,8 @@
   "commands.tommys.openAbout.title": "About",
   "commands.tommys.openHelp.title": "Help",
   "commands.tommys.openFaq.title": "FAQ",
+  "commands.tommys.installSecondant.title": "Install secondant",
+  "commands.tommys.uninstallSecondant.title": "Uninstall secondant",
   "commands.tommys.openLogs.title": "Logs",
   "commands.tommys.detectEnvironment.title": "Environment detection",
   "commands.tommys.detectEnvironmentBusy.title": "Detecting environment....",

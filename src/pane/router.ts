@@ -17,7 +17,7 @@ import { isLogModalOpen, openLogModal, showModal } from './components/modals/mod
 import { clearSwitchQueued } from './components/modals/switchSession';
 import { renderClosedList } from './components/pickers/closedSessions';
 import { renderModelList } from './components/pickers/modelPicker';
-import { renderProfileList } from './components/pickers/profilePicker';
+import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
 import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
@@ -146,6 +146,13 @@ export function init(): void {
                 }
                 document.body.classList.toggle('surface-rail', msg.role === 'rail');
                 document.body.classList.toggle('surface-notabs', !!msg.hideTabs);
+                if (msg.bodyRole) {
+                    document.body.dataset.role = msg.bodyRole;
+                }
+                break;
+
+            case 'openProfilePicker':
+                openProfilePicker();
                 break;
 
             case 'focusComposer':

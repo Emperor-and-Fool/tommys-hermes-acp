@@ -9,6 +9,9 @@ import { migrateLegacySessionStorage } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
+import { setting, settingsSection } from '../shared/extensionId';
+import type { ExtensionIdentity } from '../shared/extensionId';
+import type { PrimaryProfileSource } from './activate';
 import { buildWebviewHtml } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -42,6 +45,33 @@ import { classifyLogLevel, LogLevel } from './logLevel';
 
 
 export class App implements vscode.WebviewViewProvider {
+
+    /**
+     * The profile this instance is talking to. The secondant reads it through `activate()`'s
+     * return value; nothing else is exported from the extension on purpose.
+     */
+    get activeProfile(): string {
+        return this._profiles.displayName || this._profiles.selectionId || '';
+    }
+
+    /** Fires when this extension's agent moves to another profile; the secondant listens. */
+    private readonly _profileChanged = new vscode.EventEmitter<string>();
+
+    readonly onDidChangeProfile: vscode.Event<string> = this._profileChanged.event;
+
+    /**
+     * The secondant may not share the primary's profile. Returns true when it had to let go, so
+     * the caller can say so: the link is dropped and the pane's picker opens on its own.
+     */
+    dropSharedProfile(primaryProfile: string): boolean {
+        if (!primaryProfile || this.activeProfile !== primaryProfile) {
+            return false;
+        }
+        this._connection.drop();
+        this._log(`Profile "${primaryProfile}" belongs to the primary; disconnected`);
+        this._postMessage({ type: 'openProfilePicker' });
+        return true;
+    }
 
     // ---- Session State ----
     private _historyDir: string;
@@ -186,17 +216,24 @@ export class App implements vscode.WebviewViewProvider {
     private _chatOpChain: Promise<void> = Promise.resolve();
 
     constructor(
+        private readonly _id: ExtensionIdentity,
         private readonly _extensionUri: vscode.Uri,
-        private readonly _context: vscode.ExtensionContext
+        private readonly _context: vscode.ExtensionContext,
+        /** The primary's API, when this is the secondant: it answers which profile is taken. */
+        private readonly _primary?: PrimaryProfileSource
     ) {
         const context = this._context;
-        this._extensionId = context.extension.id;
+        this._extensionId = this._id.extensionId;
         this._profiles = new Profiles({
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
+            excludedProfile: () => this._primary?.activeProfile || undefined,
         });
-        this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
+        this._output = vscode.window.createOutputChannel(
+            this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
+            'hermes-chat'
+        );
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
@@ -248,6 +285,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
+            profileChanged: (name) => this._profileChanged.fire(name),
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -255,7 +293,7 @@ export class App implements vscode.WebviewViewProvider {
 
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('tommys')) {
+                if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
                 }
             })
@@ -505,27 +543,27 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
-        if (e.affectsConfiguration('tommys.showThoughts') || e.affectsConfiguration('tommys.showToolCalls')) {
+        if (e.affectsConfiguration(setting('showThoughts')) || e.affectsConfiguration(setting('showToolCalls'))) {
             this._postConfig();
         }
-        if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
+        if (e.affectsConfiguration(setting('models')) || e.affectsConfiguration(setting('defaultModel'))) {
             if (!this._models.isRuntimeSource()) {
                 this._models.reset();
             }
             void this._models.sync();
         }
-        if (e.affectsConfiguration('tommys.agents')) {
+        if (e.affectsConfiguration(setting('agents'))) {
             this._profiles.forgetDiscovered();
             this._profiles.postList();
         }
-        const reconnectKeys = ['tommys.path', 'tommys.cwd', 'tommys.profile'];
-        if (e.affectsConfiguration('tommys.profile')) {
+        const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
+        if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
             this._approvalModes.clear();
         }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration('tommys.profile') && this._profiles.readAgentConfigs().length === 0) {
-                const config = vscode.workspace.getConfiguration('tommys');
+            if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
+                const config = vscode.workspace.getConfiguration(settingsSection());
                 this._profiles.selectionId = normalizeHermesCliProfile(config.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();
@@ -625,7 +663,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The executable the connection would start: the configured path first, then the search. */
     private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = vscode.workspace.getConfiguration('tommys').get<string>('path');
+        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
         const quick = await tryResolveHermesQuick(configured);
         if (quick) {
             return quick;
@@ -833,7 +871,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private _postConfig(): void {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         this._postMessage({
             type: 'config',
             showThoughts: config.get<boolean>('showThoughts', true),
@@ -983,7 +1021,7 @@ export class App implements vscode.WebviewViewProvider {
         // Cursor: always open Settings UI (JSON editor command often does nothing visible).
         if (preferJsonEditor && !isCursor) {
             await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
-                revealSetting: { key: 'tommys.path', edit: false },
+                revealSetting: { key: setting('path'), edit: false },
             });
             return;
         }
@@ -1003,6 +1041,7 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.detachView();
         this._historyViewer.dispose();
         this._output.dispose();
+        this._profileChanged.dispose();
     }
 
 }

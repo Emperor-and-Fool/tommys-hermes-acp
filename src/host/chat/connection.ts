@@ -31,6 +31,8 @@ export interface ConnectionHost {
     postWebviewLog(line: string, level: LogLevel): void;
     /** Hermes' own answer to a steer: a note, never reply text. */
     steerNotice(text: string): void;
+    /** A switch completed: the new profile's display name. */
+    profileChanged(name: string): void;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): vscode.WebviewView | undefined;
@@ -358,6 +360,7 @@ export class Connection {
         this._host.session.postList();
         this._host.profiles.postList();
         this._host.post({ type: 'activeAgent', name: target.displayName });
+        this._host.profileChanged(target.displayName);
         await this.connect(target.selectionId);
         this._host.lifecycle.restoreMessages();
     }

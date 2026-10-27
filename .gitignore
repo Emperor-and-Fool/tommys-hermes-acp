@@ -13,3 +13,4 @@ pnpm-lock.yaml
 bun.lock
 bun.lockb
 media/pane.js
+secondant/*.vsix

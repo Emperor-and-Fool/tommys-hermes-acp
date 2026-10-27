@@ -17,12 +17,14 @@ import type { LocaleStrings } from './i18n';
 /** Host → pane: every message the extension posts, in the same one place. */
 export type HostToPane =
     // Chrome: which renderer, locale, settings, identity.
-    | { type: 'surfaceRole'; role: 'chat' | 'rail' | 'viewer'; hideTabs: boolean }
+    | { type: 'surfaceRole'; role: 'chat' | 'rail' | 'viewer'; hideTabs: boolean; bodyRole?: 'primary' | 'secondant' }
     | { type: 'setLocale'; locale: LocaleStrings }
     | { type: 'config'; showThoughts: boolean; showToolCalls: boolean }
     | { type: 'pluginInfo'; displayName: string; version: string; publisher: string; description?: string; repository?: string; iconUri?: string }
     | { type: 'activeAgent'; name: string }
     | { type: 'profileList'; profiles: Array<{ id: string; label: string }> }
+    /** The profile this pane had is gone: open the dropdown so another can be picked. */
+    | { type: 'openProfilePicker' }
     | { type: 'log'; line: string; level: string }
     | { type: 'openAbout' }
     | { type: 'openHelp' }

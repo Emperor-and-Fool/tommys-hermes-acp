@@ -4,6 +4,7 @@ import * as path from 'path';
 import { findHermesExecutable, runHermesCommand } from '../environment/profileDiscovery';
 import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import { unwrapSteer, type ChatMessage } from '../../shared/chat';
+import { identity } from '../../shared/extensionId';
 
 /** One message as `hermes sessions export` writes it. */
 export interface ExportedMessage {
@@ -122,7 +123,10 @@ export async function exportSessionMessages(
         return [];
     }
     const cliProfile = normalizeHermesCliProfile(profile);
-    const file = path.join(os.tmpdir(), `tommys-session-${process.pid}-${Date.now()}.jsonl`);
+    const file = path.join(
+        os.tmpdir(),
+        `${identity().prefix}-session-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`
+    );
 
     try {
         // runHermesCommand stops the process itself after 15 s.

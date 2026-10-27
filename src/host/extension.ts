@@ -1,91 +1,50 @@
 import * as vscode from 'vscode';
-import { CHAT_PANEL_VIEW_TYPE } from './webview/surfaces';
 import { App } from './app';
-import { initI18n, t } from './i18n';
+import { activateExtension } from './activate';
+import { PRIMARY, commandId, setActiveIdentity } from '../shared/extensionId';
+import { installSecondant, refreshSecondantContext, uninstallSecondant } from './secondantInstall';
 
 let app: App | undefined;
 
-function bindChatCommand(
-    context: vscode.ExtensionContext,
-    command: string,
-    run: (provider: App) => void | Promise<void>
-): void {
-    context.subscriptions.push(
-        vscode.commands.registerCommand(command, () => {
-            if (!app) {
-                return;
-            }
-            void run(app);
-        })
-    );
+/**
+ * What the secondant may read of us. Additive: the primary does not consult it, and nothing
+ * here exposes the session, the tabs or the agent itself.
+ */
+export interface TommysHermesAcpApi {
+    /** The profile the primary's agent is talking to; empty before it settles. */
+    readonly activeProfile: string;
+    /** Fires when the primary moves to another profile, so the secondant can step aside. */
+    onDidChangeProfile(listener: (profile: string) => void): vscode.Disposable;
 }
 
-export function activate(context: vscode.ExtensionContext) {
-    initI18n();
-    console.log('Tommys Hermes ACP activating...');
+export function activate(context: vscode.ExtensionContext): TommysHermesAcpApi {
+    setActiveIdentity(PRIMARY);
+    const running = activateExtension(context, PRIMARY);
+    app = running;
 
-    // Register the chat webview provider
-    app = new App(context.extensionUri, context);
+    // The secondant is installed from here, and removed from here. Both go through the editor's
+    // own installer so the registry and the reload prompt behave as they do for any extension.
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('tommysChat', app, {
-            webviewOptions: { retainContextWhenHidden: true }
-        })
+        vscode.commands.registerCommand(commandId('installSecondant'), () =>
+            installSecondant(context.extensionUri)
+        )
     );
-
     context.subscriptions.push(
-        vscode.commands.registerCommand('tommys.toggleChatSurface', () => {
-            app?.toggleChatSurface();
-        })
+        vscode.commands.registerCommand(commandId('uninstallSecondant'), () => uninstallSecondant())
     );
+    void refreshSecondantContext();
 
-    // Restores the editor-tab chat after a window reload / app restart.
-    context.subscriptions.push(
-        vscode.window.registerWebviewPanelSerializer(CHAT_PANEL_VIEW_TYPE, {
-            deserializeWebviewPanel(panel: vscode.WebviewPanel) {
-                app?.restoreChatPanel(panel);
-                return Promise.resolve();
-            },
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('tommys.openChat', () => {
-            vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('tommys.sendSelection', () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.selection.isEmpty) {
-                vscode.window.showInformationMessage(t('selectCodeFirst'));
-                return;
-            }
-            const selection = editor.document.getText(editor.selection);
-            const fileName = editor.document.fileName;
-            const line = editor.selection.start.line + 1;
-            const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
-
-            vscode.commands.executeCommand('workbench.view.extension.tommys-sidebar');
-            app?.insertIntoInput(text);
-        })
-    );
-
-    bindChatCommand(context, 'tommys.reloadExtension', provider => provider.reloadExtension());
-    bindChatCommand(context, 'tommys.reloadSession', provider => provider.reloadSession());
-    bindChatCommand(context, 'tommys.openSettings', provider => provider.openSettings());
-    bindChatCommand(context, 'tommys.checkUpdate', provider => provider.checkForUpdate());
-    bindChatCommand(context, 'tommys.openAbout', provider => provider.openAbout());
-    bindChatCommand(context, 'tommys.openHelp', provider => provider.openHelp());
-    bindChatCommand(context, 'tommys.openFaq', provider => provider.openFaq());
-    bindChatCommand(context, 'tommys.openLogs', provider => provider.openLogs());
-    bindChatCommand(context, 'tommys.detectEnvironment', provider => provider.detectEnvironment());
-    bindChatCommand(context, 'tommys.detectEnvironmentBusy', () => undefined);
-    bindChatCommand(context, 'tommys.configureEnvironment', provider => provider.configureEnvironment());
-
-    console.log('Tommys Hermes ACP activated');
+    return {
+        get activeProfile(): string {
+            return running.activeProfile;
+        },
+        onDidChangeProfile(listener: (profile: string) => void): vscode.Disposable {
+            return running.onDidChangeProfile(listener);
+        },
+    };
 }
 
-export function deactivate() {
+export function deactivate(): void {
     app?.dispose();
+    app = undefined;
 }

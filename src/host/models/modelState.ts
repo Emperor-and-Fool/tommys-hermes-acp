@@ -11,6 +11,7 @@
  */
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import { loadProfileState, saveProfileState } from '../cache/profileStorage';
 import { resolveModelCatalog } from './acpModelCatalog';
@@ -93,7 +94,7 @@ export class ModelState {
         const catalog = resolveModelCatalog(modelOptions, hermesModelsRaw);
         const profileState = this._profileState();
         const session = this._host.tabs().find(s => s.id === this._host.sessionId());
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const settingsModels = config.get<Array<{ id: string; name: string }>>('models') || [];
 
         if (catalog?.groups.length) {
@@ -111,7 +112,7 @@ export class ModelState {
     }
 
     private _buildFallbackModelList(): ModelListState | null {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const models = config.get<Array<{ id: string; name: string }>>('models') || [];
         const defaultModel = config.get<string>('defaultModel') || '';
         const session = this._host.tabs().find(s => s.id === this._host.sessionId());

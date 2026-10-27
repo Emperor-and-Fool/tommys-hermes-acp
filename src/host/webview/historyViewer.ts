@@ -9,12 +9,15 @@
  * reload. One tab at most: `open()` reuses the live panel instead of creating a second one.
  */
 import * as vscode from 'vscode';
+import { identity } from '../../shared/extensionId';
 import type { HistoryRef, SessionInfo, ChatMessage } from '../../shared/chat';
 import type { HostToPane, PaneToHost } from '../../shared/webview';
 import { anchorFor } from '../chat/historyAttach';
 
 /** Its own viewType, deliberately not `CHAT_PANEL_VIEW_TYPE`. */
-export const HISTORY_VIEWER_VIEW_TYPE = 'tommys.historyViewer';
+export function historyViewerViewType(): string {
+    return identity().historyViewerType;
+}
 
 /** What one pick carries, as the viewer hands it on. */
 export interface HistoryPick {
@@ -71,7 +74,7 @@ export class HistoryViewer {
         }
 
         const panel = vscode.window.createWebviewPanel(
-            HISTORY_VIEWER_VIEW_TYPE,
+            historyViewerViewType(),
             title,
             { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
             {

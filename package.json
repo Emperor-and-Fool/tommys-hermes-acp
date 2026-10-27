@@ -87,6 +87,14 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "tommys.installSecondant",
+        "title": "%commands.tommys.installSecondant.title%"
+      },
+      {
+        "command": "tommys.uninstallSecondant",
+        "title": "%commands.tommys.uninstallSecondant.title%"
+      },
+      {
         "command": "tommys.openLogs",
         "title": "%commands.tommys.openLogs.title%",
         "icon": "$(output)"
@@ -173,6 +181,16 @@
         {
           "command": "tommys.toggleChatSurface",
           "group": "0@1"
+        },
+        {
+          "command": "tommys.installSecondant",
+          "when": "!tommys2Installed",
+          "group": "0@2"
+        },
+        {
+          "command": "tommys.uninstallSecondant",
+          "when": "tommys2Installed",
+          "group": "0@2"
         },
         {
           "command": "tommys.openSettings",
@@ -309,8 +327,10 @@
     "check": "tsc -p ./ --noEmit --noUnusedLocals --noUnusedParameters",
     "check:pane": "tsc -p src/pane --noEmit",
     "build:pane": "esbuild src/pane/main.ts --bundle --format=iife --target=es2020 --outfile=media/pane.js",
+    "predeploy": "node scripts/packageSecondant.mjs",
     "deploy": "node scripts/deploy.mjs",
-    "package": "npx --no-install @vscode/vsce package",
+    "package": "node scripts/packageSecondant.mjs && npx --no-install @vscode/vsce package",
+    "package:secondant": "node scripts/packageSecondant.mjs",
     "test": "node ./out/tests/runTest.js"
   },
   "devDependencies": {
