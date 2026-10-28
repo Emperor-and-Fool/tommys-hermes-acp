@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import type { ChatMessage, HistoryRef, SessionInfo, StoredImageRef } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
@@ -261,6 +261,42 @@ export class Sessions {
     saveSteerMessage(text: string): void {
         this.messages.push({ role: 'user', text, timestamp: Date.now(), steer: true });
         this.persistMessages();
+    }
+
+    /** A forwarded draft: stored like any message, with who sent it and where it stands. */
+    savePeerMessage(envelope: {
+        id: string;
+        fromProfile: string;
+        fromHost: string;
+        sourceMessageId?: string;
+        senderRole?: 'primary' | 'secondant';
+    }, text: string): void {
+        const record: ChatMessage = {
+            role: 'peer',
+            text,
+            timestamp: Date.now(),
+            peer: {
+                envelopeId: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole: envelope.senderRole,
+            },
+            peerState: 'pending',
+        };
+        this.messages.push(record);
+        this.persistMessages();
+    }
+
+    /** Deliver or Dismiss: the first decision stands, and it survives a reload. */
+    setPeerState(envelopeId: string, state: PeerState): boolean {
+        const stored = this.messages.find(m => m.role === 'peer' && m.peer?.envelopeId === envelopeId);
+        if (!stored || stored.peerState === state || stored.peerState !== 'pending') {
+            return false;
+        }
+        stored.peerState = state;
+        this.persistMessages();
+        return true;
     }
 
     saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[], history?: HistoryRef): void {

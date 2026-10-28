@@ -6,7 +6,9 @@ import { offerUndeliveredMessage } from './components/composer/replyQuote';
 import { closeConfigureEnvModal, finishConfigureEnvDetect, hideConfigureEnvDetectProgress, openConfigureEnvModal, setConfigureEnvDetecting, showConfigureEnvDetectPanel, updateConfigureEnvDetectProgress, updateConfigureEnvPathClearVisibility } from './components/environment/configureModal';
 import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvIcon, updateDetectEnvironmentStep } from './components/environment/detectPanel';
 import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
-import { insertIntoInput } from './components/messages/messageActions';
+import { applyOtherPaneProfile, insertIntoInput } from './components/messages/messageActions';
+import { applyPeerState } from './components/messages/messageList';
+import { post } from './post';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
 import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
@@ -39,6 +41,10 @@ export function init(): void {
                     // The card belongs above the question it was attached to, which is where the
                     // stored transcript puts it; appending would read differently after a reload.
                     insertBeforeLastUser('history', msg.text, { history: msg.history });
+                    break;
+                }
+                if (msg.role === 'peer') {
+                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState });
                     break;
                 }
                 if (msg.role === 'assistant') {
@@ -149,6 +155,14 @@ export function init(): void {
                 if (msg.bodyRole) {
                     document.body.dataset.role = msg.bodyRole;
                 }
+                break;
+
+            case 'peerActionResult':
+                applyPeerState(msg.envelopeId, msg.state);
+                break;
+
+            case 'setOtherPaneLive':
+                applyOtherPaneProfile(msg.profile, msg.live);
                 break;
 
             case 'openProfilePicker':

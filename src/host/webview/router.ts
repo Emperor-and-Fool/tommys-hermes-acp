@@ -41,6 +41,11 @@ export interface RouterHost {
     switchModel(configId: string, valueId: string): Promise<void>;
     syncModels(): Promise<void>;
     postProfileList(): void;
+    /** Trade a message with the sibling pane through the shared mailbox. */
+    forwardMessage(text: string, sourceMessageId?: string): void;
+    /** The two decisions a peer card offers. */
+    deliverPeer(envelopeId: string): void;
+    dismissPeer(envelopeId: string): void;
 
     retry(): Promise<void>;
     handlePermissionResponse(id: string, optionId: string | null): void;
@@ -155,6 +160,15 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'permissionResponse':
             host.handlePermissionResponse(message.id, message.optionId ?? null);
+            break;
+        case 'forwardMessage':
+            host.forwardMessage(message.text, message.sourceMessageId);
+            break;
+        case 'deliverPeer':
+            host.deliverPeer(message.envelopeId);
+            break;
+        case 'dismissPeer':
+            host.dismissPeer(message.envelopeId);
             break;
         case 'setApprovalMode':
             void host.setApprovalMode(message.mode);

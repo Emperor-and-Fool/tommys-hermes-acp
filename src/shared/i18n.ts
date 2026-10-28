@@ -229,6 +229,17 @@ export interface LocaleStrings {
     insertMenu: string;
     noActiveEditor: string;
     selectMessages: string;
+    /** "Forward to {0}" where {0} is the other pane's profile. */
+    forwardToOtherPane: string;
+    /** "{0}@{1}", the left half of the attribution header. */
+    forwardedFromHeader: string;
+    otherPaneNotLive: string;
+    peerCardDeliver: string;
+    peerCardDismiss: string;
+    peerCardDelivered: string;
+    peerCardDismissed: string;
+    /** "{0}@{1}": the sender line on a peer card. */
+    peerCardHeader: string;
     multiSelectAll: string;
     multiSelectDeselectAll: string;
     multiSelectDelete: string;

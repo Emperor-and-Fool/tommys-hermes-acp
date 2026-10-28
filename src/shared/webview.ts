@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, HistoryRef, SessionInfo } from './chat';
+import type { ChatMessage, HistoryRef, PeerRef, PeerState, SessionInfo } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -23,6 +23,10 @@ export type HostToPane =
     | { type: 'pluginInfo'; displayName: string; version: string; publisher: string; description?: string; repository?: string; iconUri?: string }
     | { type: 'activeAgent'; name: string }
     | { type: 'profileList'; profiles: Array<{ id: string; label: string }> }
+    /** The other pane's presence changed: its profile, or nothing when it is gone. */
+    | { type: 'setOtherPaneLive'; live: boolean; profile: string }
+    /** The answer to Deliver or Dismiss: the card settles into this state. */
+    | { type: 'peerActionResult'; envelopeId: string; state: 'delivered' | 'dismissed' }
     /** The profile this pane had is gone: open the dropdown so another can be picked. */
     | { type: 'openProfilePicker' }
     | { type: 'log'; line: string; level: string }
@@ -37,7 +41,7 @@ export type HostToPane =
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
-    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
     | { type: 'insertInput'; text: string }
@@ -128,6 +132,12 @@ export type PaneToHost =
     | { type: 'switchModel'; configId: string; valueId: string }
     | { type: 'getModels' }
     | { type: 'getProfiles' }
+    /** Forward this message to the other pane; the host decides who that is. */
+    | { type: 'forwardMessage'; text: string; sourceMessageId?: string }
+    /** Deliver a peer card to the agent as a real user turn. */
+    | { type: 'deliverPeer'; envelopeId: string }
+    /** Throw a peer card away: no turn, nothing sent. */
+    | { type: 'dismissPeer'; envelopeId: string }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironment' }

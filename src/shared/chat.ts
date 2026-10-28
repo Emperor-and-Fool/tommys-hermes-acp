@@ -92,6 +92,32 @@ export interface ChatMessage {
     history?: HistoryRef;
     /** Set on a user message that went into a *running* turn rather than starting one. */
     steer?: boolean;
+    /** Set on role 'peer': a draft forwarded from the sibling pane, not yet a turn. */
+    peer?: PeerRef;
+    /** Where a peer card stands. Absent on everything that is not a peer card. */
+    peerState?: PeerState;
+}
+
+/** Who sent a forwarded draft, and which envelope it came in on. */
+export interface PeerRef {
+    fromProfile: string;
+    fromHost: string;
+    sourceMessageId?: string;
+    /** The pane-mail envelope id: the dedupe key, and what the actions address. */
+    envelopeId: string;
+    /** Which side sent it: the accent on the card. */
+    senderRole?: 'primary' | 'secondant';
+}
+
+/** A peer card is pending until the user delivers or dismisses it. */
+export type PeerState = 'pending' | 'delivered' | 'dismissed';
+
+/** The state an action leaves behind: the first decision stands. */
+export function peerStateAfter(current: PeerState, action: 'deliver' | 'dismiss'): PeerState {
+    if (current !== 'pending') {
+        return current;
+    }
+    return action === 'deliver' ? 'delivered' : 'dismissed';
 }
 
 /** One tab: the session row as Hermes reports it, plus the view flags Hermes cannot know. */

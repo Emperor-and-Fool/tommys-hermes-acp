@@ -24,6 +24,11 @@ export function buildReplayMessages(replay: ReplayItem[], base: number = Date.no
         if (!text) {
             continue;
         }
+        if (item.role === 'peer') {
+            // Delivered peers are represented by the user turn that carries the provenance
+            // prefix; pending or dismissed ones were never said to any agent.
+            continue;
+        }
         if (item.role === 'user') {
             // A steer is a user message that went into a running turn: keep the sentence, drop
             // the wrapper, and let the transcript mark it as what it was.

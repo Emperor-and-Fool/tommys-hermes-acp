@@ -59,6 +59,11 @@
         <button class="button button--primary" id="openTabBtn"><span class="new-label-full" id="openTabLabelFull"></span><span class="new-label-short">+</span></button>
     </div>
 </div>
+    <!-- Second agent marker: no text, no handler. Shown by CSS when body was told
+         data-role="secondant", so the primary pane keeps the markup without the row. -->
+    <div class="secondant-badge-row" aria-hidden="true">
+        <img class="secondant-badge-icon" src="{{SECONDANT_ICON_URI}}" alt="" aria-hidden="true">
+    </div>
 <div id="tab-bar"></div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">

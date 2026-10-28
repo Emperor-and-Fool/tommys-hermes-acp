@@ -634,6 +634,12 @@ body[data-role="secondant"] #toolbar {
     border-top: 3px solid #e67e22;
 }
 
+/* The primary's counterpart: the same rule in blue, on the editor tab only. An editor panel now
+   says which agent owns it at a glance, and the side bar stays exactly as it was. */
+body[data-role="primary"].surface-notabs #toolbar {
+    border-top: 3px solid #5b83cc;
+}
+
 /* ...and the mark itself, before the status dot: a colour at the edge is easy to miss, a whale
    in the first pixel the eye lands on is not. */
 body[data-role="secondant"] #toolbar::before {
@@ -722,6 +728,25 @@ body[data-role="secondant"] #toolbar::before {
 }
 .detect-env-bar[hidden] {
     display: none !important;
+}
+
+/* The second agent's cue, a second time and where the eye actually is: a thin row under the
+   toolbar with the same orange whale as the activity bar. Hidden for the primary by default —
+   the markup is shared, the row is not. */
+.secondant-badge-row {
+    display: none;
+    flex: 0 0 auto;
+    justify-content: center;
+    align-items: center;
+    padding: 2px;
+}
+body[data-role="secondant"] .secondant-badge-row {
+    display: flex;
+}
+.secondant-badge-icon {
+    width: 32px;
+    height: 32px;
+    display: block;
 }
 .detect-env-bar-panel {
     display: flex;
@@ -1713,6 +1738,45 @@ body.surface-notabs #tab-bar {
     align-self: stretch;
     max-width: 100%;
 }
+/* A forwarded draft from the sibling pane: a bubble like the assistant's, with the sender's
+   accent down the left edge. Which accent is a data attribute, so one block covers both. */
+.message-group.peer > .message-container {
+    align-self: flex-start;
+    max-width: 98%;
+}
+.message-group.peer[data-sender-role="primary"] {
+    --peer-accent: #5b83cc;
+}
+.message-group.peer[data-sender-role="secondant"] {
+    --peer-accent: #e67e22;
+}
+.message.peer {
+    border-left: 3px solid var(--peer-accent, var(--primary));
+}
+.message.peer .peer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.message.peer .peer-status {
+    display: none;
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+.message.peer.is-delivered .peer-actions,
+.message.peer.is-dismissed .peer-actions {
+    display: none;
+}
+.message.peer.is-delivered .peer-status,
+.message.peer.is-dismissed .peer-status {
+    display: block;
+}
+.message.peer.is-dismissed .content {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
 
 /* The stack: card above its action bar, in every mode. */
 .message-stack {
@@ -1829,6 +1893,20 @@ body.surface-notabs #tab-bar {
     color: color-mix(in srgb, var(--primary) 75%, var(--dim));
 }
 .message-actions .select-btn.action-btn:hover {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--text-block));
+}
+
+/* Forward: the same button language as select, and only while the other pane is running —
+   a button that always fails is worse than no button. */
+.message-actions .forward-btn.action-btn {
+    display: none;
+    color: color-mix(in srgb, var(--primary) 60%, var(--dim));
+}
+body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
+    display: inline-flex;
+}
+.message-actions .forward-btn.action-btn:hover {
     color: var(--primary);
     background: color-mix(in srgb, var(--primary) 12%, var(--text-block));
 }

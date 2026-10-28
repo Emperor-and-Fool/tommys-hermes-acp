@@ -12,6 +12,9 @@ import { SupportedLocale } from '../shared/i18n';
 import { setting, settingsSection } from '../shared/extensionId';
 import type { ExtensionIdentity } from '../shared/extensionId';
 import type { PrimaryProfileSource } from './activate';
+import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
+import type { PaneMailEnvelope } from '../shared/paneMail';
+import { peerStateAfter } from '../shared/chat';
 import { buildWebviewHtml } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -210,6 +213,9 @@ export class App implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
     });
 
+    /** The two panes trade drafts through one shared file; this is this side of the trade. */
+    private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
+
     private _output: vscode.OutputChannel;
 
     /** Serializes webview send so rapid sends cannot overlap. */
@@ -248,6 +254,7 @@ export class App implements vscode.WebviewViewProvider {
             modelLabel: () => this._models.currentLabel,
         });
         this._session.init();
+        this._startPaneMail();
         this._lifecycle = new TabLifecycle({
             acp: () => this._connection.acp,
             session: this._session,
@@ -716,6 +723,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
     private _onWebviewReady(surface: ChatSurface): void {
+        // A fresh pane has no presence flag yet: answer once, unprompted.
+        this._mail?.presence.refresh(true);
+
         this._log('WebView ready');
         this._surfaces.postRole(surface);
         this._syncWebviewLocale();
@@ -791,6 +801,9 @@ export class App implements vscode.WebviewViewProvider {
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
             postProfileList: () => this._profiles.postList(),
+            forwardMessage: (text, sourceMessageId) => this.forwardMessage(text, sourceMessageId),
+            deliverPeer: (envelopeId) => this.deliverPeer(envelopeId),
+            dismissPeer: (envelopeId) => this.dismissPeer(envelopeId),
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             setApprovalMode: (mode) => this.setApprovalMode(mode),
@@ -941,6 +954,106 @@ export class App implements vscode.WebviewViewProvider {
         this._postMessage({ type: 'insertInput', text });
     }
 
+    /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
+    public forwardMessage(text: string, sourceMessageId?: string): void {
+        const body = (text || '').trim();
+        if (!body || !this._mail) {
+            return;
+        }
+        const other = this._mail.presence.other();
+        if (!other) {
+            void vscode.window.showInformationMessage(t('otherPaneNotLive'));
+            return;
+        }
+        const sent = this._mail.outbox.send(
+            newEnvelope({
+                fromProfile: this._ownProfile(),
+                toProfile: other.profile,
+                body,
+                sourceMessageId,
+            })
+        );
+        if (sent) {
+            void vscode.window.showInformationMessage(`Forwarded to ${other.profile}`);
+        }
+    }
+
+    /** A forwarded draft arrived: a card in the transcript, with two decisions on it. */
+    private _receivePeer(envelope: PaneMailEnvelope): void {
+        const senderRole: 'primary' | 'secondant' = this._id.role === 'primary' ? 'secondant' : 'primary';
+        this._session.savePeerMessage(
+            {
+                id: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole,
+            },
+            envelope.body
+        );
+        this._postMessage({
+            type: 'addMessage',
+            role: 'peer',
+            text: envelope.body,
+            peer: {
+                envelopeId: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole,
+            },
+            peerState: 'pending',
+        });
+    }
+
+    /** Deliver: the draft becomes the user's turn, tagged with where it came from. */
+    public deliverPeer(envelopeId: string): void {
+        const stored = this._session.messages.find(
+            m => m.role === 'peer' && m.peer?.envelopeId === envelopeId
+        );
+        if (!stored || !stored.peer || stored.peerState !== 'pending') {
+            return;
+        }
+        const state = peerStateAfter(stored.peerState, 'deliver') as 'delivered' | 'dismissed';
+        if (!this._session.setPeerState(envelopeId, state)) {
+            return;
+        }
+        this._postMessage({ type: 'peerActionResult', envelopeId, state });
+        const prefix = `[forwarded from ${stored.peer.fromProfile}@${stored.peer.fromHost}] `;
+        this._enqueueChatOp(() => this._handleUserMessage(`${prefix}${stored.text}`));
+    }
+
+    /** Dismiss: the card settles and nothing is sent to any agent. */
+    public dismissPeer(envelopeId: string): void {
+        const state = peerStateAfter('pending', 'dismiss') as 'delivered' | 'dismissed';
+        if (!this._session.setPeerState(envelopeId, state)) {
+            return;
+        }
+        this._postMessage({ type: 'peerActionResult', envelopeId, state });
+    }
+
+    private _ownProfile(): string {
+        return this._profiles.displayName || this._profiles.selectionId || '';
+    }
+
+    private _startPaneMail(): void {
+        const host = {
+            profile: () => this._ownProfile(),
+            onPeer: (envelope: PaneMailEnvelope) => this._receivePeer(envelope),
+            setOtherPaneLive: (live: boolean, profile: string) =>
+                this._postMessage({ type: 'setOtherPaneLive', live, profile }),
+            state: this._context.globalState,
+            log: (line: string) => this._log(line),
+        };
+        this._mail = {
+            outbox: new PaneMailOutbox(host),
+            inbox: new PaneMailInbox(host),
+            presence: new PaneMailPresence(host),
+        };
+        this._mail.inbox.start();
+        this._mail.presence.start();
+    }
+
     public openSettings(): void {
         void this._openSettings();
     }
@@ -1040,6 +1153,8 @@ export class App implements vscode.WebviewViewProvider {
         this._connection.dispose();
         this._surfaces.detachView();
         this._historyViewer.dispose();
+        this._mail?.inbox.dispose();
+        this._mail?.presence.dispose();
         this._output.dispose();
         this._profileChanged.dispose();
     }

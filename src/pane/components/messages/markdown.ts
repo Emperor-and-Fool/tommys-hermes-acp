@@ -81,7 +81,7 @@ export function cancelSessionMarkdownRender() {
 function collectMarkdownRenderTargets() {
     const targets = [];
     messagesEl.querySelectorAll('.message-group').forEach(function(group) {
-        const assistantContent = group.querySelector('.message.assistant .content');
+        const assistantContent = group.querySelector('.message:is(.assistant, .peer) .content');
         if (assistantContent) {
             const text = group._rawText || assistantContent.textContent || '';
             if (text.trim()) {

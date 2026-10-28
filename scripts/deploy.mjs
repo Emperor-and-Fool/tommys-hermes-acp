@@ -60,6 +60,23 @@ function walk(rel, out = []) {
     return out;
 }
 
+/** Folders VS Code actually has registered; a folder missing here is loaded from stale metadata. */
+function registeredFolders() {
+    const file = path.join(extensionsDir, 'extensions.json');
+    if (!existsSync(file)) return new Set();
+    try {
+        const entries = JSON.parse(readFileSync(file, 'utf8'));
+        return new Set(
+            entries
+                .map(entry => entry?.location?.path || (typeof entry?.location === 'string' ? entry.location : ''))
+                .filter(Boolean)
+                .map(dir => path.resolve(dir))
+        );
+    } catch {
+        return new Set();
+    }
+}
+
 /** Installed copies, by folder — VSCodium lowercases the publisher in the directory name. */
 const extensionsDir = path.join(homedir(), '.vscode-oss', 'extensions');
 function installed(prefix) {
@@ -145,6 +162,7 @@ function checkTarget(target, role) {
     const registersChat = readFileSync(path.join(target, 'out', 'host', 'activate.js'), 'utf8')
         .includes('registerWebviewViewProvider(id.chatViewId');
     const manifestMatches = viewIds.includes(identity.chatViewId);
+    const registered = registeredFolders().has(path.resolve(target));
     const entryMatches = entryFile === (role === 'primary' ? 'out/host/extension.js' : 'out/host/extensionSecondant.js');
 
     console.log(
@@ -154,6 +172,13 @@ function checkTarget(target, role) {
     );
     if (!manifestMatches || !registersChat || !entryExists || !entryMatches) {
         console.error(`deploy: [${role}] manifest and host build disagree — this copy will not run`);
+        return false;
+    }
+    if (!registered) {
+        console.error(
+            `deploy: [${role}] this folder is NOT in extensions.json — VS Code is running it from ` +
+                'stale metadata, so nothing copied here will show. Reinstall it from its VSIX.'
+        );
         return false;
     }
     return true;

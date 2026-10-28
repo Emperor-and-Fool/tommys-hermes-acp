@@ -41,7 +41,8 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
     if (!uri) {
         return html
             .replace('{{LOCALE_JSON}}', '{}')
-            .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
+            .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER)
+            .replace('{{SECONDANT_ICON_URI}}', '');
     }
 
     // A rebuilt file must get a new URL: the webview caches what it loads, and a stable
@@ -64,6 +65,7 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
         .replace('{{PURIFY_URI}}', versioned('vendor/purify.min.js'))
         .replace('{{CHAT_CSS_URI}}', versioned('chat.css'))
         .replace('{{CHAT_JS_URI}}', versioned('pane.js'))
+        .replace('{{SECONDANT_ICON_URI}}', versioned('icon_orange.svg'))
         .replace('{{LOCALE_JSON}}', JSON.stringify(input.locale).replace(/</g, '\\u003c'))
         .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
 }

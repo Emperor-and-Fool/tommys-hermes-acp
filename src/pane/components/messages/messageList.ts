@@ -1,4 +1,5 @@
 import { byId, messagesEl } from '../../dom';
+import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -239,6 +240,9 @@ function buildMessage(role, text, options) {
 }
 
 function buildCard(role, text, options) {
+    if (role === 'peer') {
+        return { card: buildPeerCard(text, options), auxParts: null };
+    }
     if (role === 'history') {
         const history = buildHistoryCard(text, options && options.history);
         return { card: history.div, auxParts: null, historyParts: history };
@@ -251,6 +255,80 @@ function buildCard(role, text, options) {
         return { card: auxParts.div, auxParts: auxParts };
     }
     return { card: buildMessage(role, text, options), auxParts: null };
+}
+
+/**
+ * A forwarded draft: not a turn, not the user's words. It arrives with its sender on the label,
+ * the text rendered like any assistant reply, and two decisions. Neither decision is a default:
+ * the card sits there until one is made.
+ */
+function buildPeerCard(text, options) {
+    const peer = (options && options.peer) || null;
+    const state = (options && options.peerState) || 'pending';
+    const card = document.createElement('div');
+    card.className = 'message peer' + (state === 'pending' ? '' : ' is-' + state);
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = peer
+        ? (locale.peerCardHeader || '{0}@{1}').replace('{0}', peer.fromProfile).replace('{1}', peer.fromHost)
+        : '';
+    card.appendChild(label);
+
+    const content = document.createElement('div');
+    content.className = 'content';
+    content.textContent = text;
+    card.appendChild(content);
+
+    const actions = document.createElement('div');
+    actions.className = 'peer-actions';
+    const deliverBtn = document.createElement('button');
+    deliverBtn.type = 'button';
+    deliverBtn.className = 'button button--primary deliver-btn';
+    deliverBtn.textContent = locale.peerCardDeliver || 'Deliver';
+    deliverBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!peer) return;
+        post({ type: 'deliverPeer', envelopeId: peer.envelopeId });
+    });
+    const dismissBtn = document.createElement('button');
+    dismissBtn.type = 'button';
+    dismissBtn.className = 'button dismiss-btn';
+    dismissBtn.textContent = locale.peerCardDismiss || 'Dismiss';
+    dismissBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!peer) return;
+        post({ type: 'dismissPeer', envelopeId: peer.envelopeId });
+    });
+    actions.appendChild(deliverBtn);
+    actions.appendChild(dismissBtn);
+    card.appendChild(actions);
+
+    const settled = document.createElement('div');
+    settled.className = 'peer-status';
+    settled.textContent = state === 'delivered'
+        ? (locale.peerCardDelivered || 'Delivered to agent')
+        : (locale.peerCardDismissed || 'Dismissed');
+    card.appendChild(settled);
+
+    return card;
+}
+
+/** Deliver or Dismiss came back: settle the card, no re-render. */
+export function applyPeerState(envelopeId, state) {
+    const group = document.querySelector('.message-group.peer[data-envelope-id="' + envelopeId + '"]');
+    if (!group) return;
+    group.dataset.peerState = state;
+    const card = group.querySelector('.message.peer');
+    if (!card) return;
+    card.classList.remove('is-delivered', 'is-dismissed');
+    card.classList.add('is-' + state);
+    const status = card.querySelector('.peer-status');
+    if (status) {
+        status.textContent = state === 'delivered'
+            ? (locale.peerCardDelivered || 'Delivered to agent')
+            : (locale.peerCardDismissed || 'Dismissed');
+    }
 }
 
 function mountMessage(group, built, options) {
@@ -302,6 +380,11 @@ export function appendMessage(role, text, options?) {
     }
 
     const group = createGroup(role);
+    if (role === 'peer' && options && options.peer) {
+        group.dataset.envelopeId = options.peer.envelopeId;
+        group.dataset.senderRole = options.peer.senderRole || 'secondant';
+        group.dataset.peerState = options.peerState || 'pending';
+    }
     const built = buildCard(role, text, options);
     if (built.auxParts === null) {
         group._rawText = text;
@@ -430,6 +513,8 @@ export function restoreHistory(messages, localHistoryOnly) {
                     images: m.images,
                     history: m.history,
                     steer: m.steer === true,
+                    peer: m.peer,
+                    peerState: m.peerState,
                 });
             }
         }
