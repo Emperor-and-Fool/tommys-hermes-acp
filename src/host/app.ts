@@ -45,6 +45,25 @@ export class App implements vscode.WebviewViewProvider {
      * The profile this instance is talking to. The secondant reads it through `activate()`'s
      * return value; nothing else is exported from the extension on purpose.
      */
+    /**
+     * The profile the *other* extension is on, when it has told us. Withheld from this pane's
+     * picker for the same reason it withholds ours: the two may not share one profile, and the
+     * rule should not depend on which side the user is looking at.
+     */
+    private _siblingProfile = '';
+
+    /** Called by the secondant: the profile it just connected to, or moved to. */
+    registerSiblingProfile(profile: string): void {
+        const next = profile || '';
+        if (next === this._siblingProfile) {
+            return;
+        }
+        this._siblingProfile = next;
+        this._log(`Sibling profile is "${next}"; withholding it from the picker`);
+        // The open picker lists from the last post, so re-post or it keeps offering it.
+        this._profiles.postList();
+    }
+
     get activeProfile(): string {
         // The Hermes CLI profile, not the label the chip shows. Two agents can be named
         // anything; what they must never share is the profile the agent actually runs on.
@@ -233,7 +252,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
-            excludedProfile: () => this._primary?.activeProfile || undefined,
+            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
         });
         this._output = vscode.window.createOutputChannel(
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
@@ -290,7 +309,11 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
-            profileChanged: (name) => this._profileChanged.fire(name),
+            profileChanged: (name) => {
+                this._profileChanged.fire(name);
+                // Push it up too: the primary's picker must stop offering this profile.
+                this._primary?.registerSiblingProfile?.(this.activeProfile);
+            },
             excludedProfile: () => this._primary?.activeProfile || undefined,
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
