@@ -148,11 +148,14 @@ export class Profiles {
             : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
 
         // The secondant may not offer the profile the primary is on: it is not a preference,
-        // it is the rule the two extensions live by.
+        // it is the rule the two extensions live by. Compare what the agent will run on
+        // (`cliProfile`), not the id or label an agent happens to be called.
         const excluded = this._host.excludedProfile?.();
-        return excluded
-            ? list.filter(entry => entry.id !== excluded && entry.label !== excluded)
-            : list;
+        if (!excluded) {
+            return list;
+        }
+        const excludedCli = normalizeHermesCliProfile(excluded);
+        return list.filter(entry => this.resolveTarget(entry.id).cliProfile !== excludedCli);
     }
 
     readAgentConfigs(): HermesAgentConfig[] {

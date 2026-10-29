@@ -56,7 +56,9 @@ export class App implements vscode.WebviewViewProvider {
      * return value; nothing else is exported from the extension on purpose.
      */
     get activeProfile(): string {
-        return this._profiles.displayName || this._profiles.selectionId || '';
+        // The Hermes CLI profile, not the label the chip shows. Two agents can be named
+        // anything; what they must never share is the profile the agent actually runs on.
+        return this._profiles.resolveTarget().cliProfile;
     }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
@@ -298,6 +300,7 @@ export class App implements vscode.WebviewViewProvider {
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
             profileChanged: (name) => this._profileChanged.fire(name),
+            excludedProfile: () => this._primary?.activeProfile || undefined,
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -457,7 +460,7 @@ export class App implements vscode.WebviewViewProvider {
                 sessionId: this._session.activeId,
             });
         }
-        this._session.saveMessage('user', text, undefined, imageRefs);
+        this._session.saveOutgoingUser(text, imageRefs);
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -538,7 +541,7 @@ export class App implements vscode.WebviewViewProvider {
         this._turn.promptSessionId = this._session.activeId;
         this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
-        this._session.saveMessage('user', text);
+        this._session.saveOutgoingUser(text);
         await this._turn.ensureSessionReady();
         await this._connection.acp.sendMessage(text);
     }

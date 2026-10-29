@@ -18,6 +18,7 @@ export const en: LocaleStrings = {
     noActiveTabHint: 'No chat is open. Use Open to pick a session, or start a new one.',
     sessionNotFound: 'This chat has no Hermes session ({0}). Reopen it from the closed chats.',
     sessionNotWritable: 'This chat is not connected to a Hermes session, so nothing was sent. Reopen it from the closed chats.',
+    profileExcluded: '"{0}" is the profile the primary agent is using. Pick another one for this pane.',
     modelSwitchIncomplete: 'The model did not change to {0}. The chat was left as it was.',
     openTab: 'Open',
     chooseChat: 'Closed Sessions',
