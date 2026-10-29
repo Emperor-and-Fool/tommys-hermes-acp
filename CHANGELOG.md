@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-29
+
+A second agent in the same window, and a transcript that belongs to Hermes again.
+
+Two things happened at once here, and they are the same thing seen from opposite ends. The
+extension gained a companion — a second, independent agent beside the first — and lost the
+local copy of the conversation it had been keeping since the fork. Neither works without the
+other: two panes sharing one stale mirror would have been worse than one pane with a stale
+one.
+
+### Added
+
+- **Secondant**: a second Hermes agent in the same editor window — own extension id, own
+  sidebar, own tabs, own profile. It ships as a VSIX inside the primary and is installed
+  from a command (`Install secondant`), so it is one install for the user and two extensions
+  on disk. Uninstalling it takes the version directories with it
+- **The pane says which one it is**: the secondant carries an orange rule on its toolbar and
+  a badge row below it; in the editor-panel surface each pane's frame is drawn in its own
+  accent. Two chats side by side no longer look identical
+- **The profile guard**: the secondant may not run on the profile the primary is using. When
+  they collide it drops the connection, opens its picker and says why. Two agents means two
+  profiles, enforced rather than assumed
+- **Pane mail**: forward any message from one pane to the other. It arrives as a card with a
+  sender pill and its body rendered as markdown, and nothing is sent to the receiving agent
+  until you press **Deliver**. The log is append-only NDJSON under the Hermes home, with a
+  presence heartbeat per pane, a byte cursor, and taken ids remembered in global state so a
+  reload or a log roll cannot deliver the same card twice
+- **One decision per stack**: consecutive pending forwards share a rail and a single
+  Deliver / Dismiss on the last card, sent as one turn in arrival order
+- **Session memory crosses the channel**: a session-memory slice can be forwarded too, and
+  the receiving agent gets the session handle, an anchor when no message ids matched, and a
+  note that the handle reads outside its own profile — with the call that reads more of it
+- **A loading state worth looking at**: the pane's own icon, pulsing, with the live chunk
+  count beneath it, and motion that respects `prefers-reduced-motion`
+- **Replay progress** streamed from the ACP updates as they arrive
+- **Search in the history viewer**: the same in-conversation search the chat has
+- **A wire trace** for ACP `session/update` traffic (`HERMES_ACP_TRACE=1`), written to the
+  output channel and to `pane-mail/trace-<profile>.ndjson`
+
+### Changed
+
+- **The history viewer reads from Hermes**, so any session Hermes knows can be opened — not
+  only the ones this pane happened to have rendered before
+- **The transcript mirror is gone.** What remains on disk is a five-user-message sidecar
+  whose only job is holding a message Hermes never received. Everything the pane shows now
+  comes from Hermes
+- **The tab's link to its session is proven from the catalog** — a bound `hermesSessionId`
+  and a catalog row for it — instead of from whether a cached transcript loaded
+- The message count is Hermes' own; the pane no longer writes a replay length back into the
+  tab record
+- The composer grows to ten lines and returns to its resting height when emptied
+
+### Fixed
+
+- **The tab could lose its session** when the cached paint was removed: `messages.length`
+  was answering "did the cache load?" while being read as "is this tab new?" — the same
+  shape in `applyCatalog` and in `resumeOrAdopt`
+- **"This conversation is not available locally"** is replaced by three honest states:
+  fetching, empty, and failed — with the failure logged instead of swallowed
+- The mail log's cursor counts **bytes**, so an envelope carrying multi-byte text no longer
+  pushes every later line out of reach
+- Peer cards rendered their markdown as literal characters, because the card was built live
+  and the sweep that renders markdown only runs after a restore
+
+### Repository
+
+- `sessionPrune`, `removeMessages`, `dropTranscript`, the `createBlankTab` unlink and the
+  `hideSessions` purge are gone. Each was a local `fs.unlink`; Hermes kept every row, so
+  "delete" was never a delete
+- The transcript cache's 100-message cap went with them — a size policy for a store that was
+  never the authority
+- `ReplayMessage` carries the metadata ACP already sends: `messageId`, tool
+  `title`/`kind`/`status`/`locations`, and `_meta`
+
 ## [1.1.0] - 2026-10-27
 
 What the transcript does while the agent is working, and a filter on what a
