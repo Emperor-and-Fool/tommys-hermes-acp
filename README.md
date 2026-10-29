@@ -1,16 +1,10 @@
-<div align="center">
-
-<img src="media/icon.png" alt="Tommys Hermes ACP icon" width="128" />
-
-# Tommys Hermes ACP
-
-**Hermes in your editor, with the three moves you won't find in most agent clients:
-steer a run while it is running, pull context out of any of your other conversations,
-and run a second independent agent beside the first.**
-
-</div>
+<div align="center"> <img src="media/icon_fullcolor.png" alt="Tommys Hermes ACP icon" width="128" /> <br /> <h1>Tommys Hermes ACP 2.0</h1> <p><strong><a href="https://hermes-agent.nousresearch.com">Hermes</a> in your editor, with the three moves you won't find in most agent clients: steer a run while it is running, pull context out of any of your other conversations, and run a second independent agent beside the first.</strong></p> </div>
 
 ---
+
+> **TL;DR** — Two Hermes agents in one editor window, on separate profiles.
+> Steer a run while it runs. Pull context from any of your sessions.
+> The panes allows agents to hand each other work, with you as the gate.
 
 ## What this is
 
@@ -18,86 +12,96 @@ A VS Code / VSCodium extension that runs your local
 [Hermes Agent](https://hermes-agent.nousresearch.com) inside the editor. It spawns
 `hermes acp --profile <profile>` and speaks the
 [Agent Client Protocol](https://agentclientprotocol.com) over stdio, so the agent you
-already trust is the one doing the work — the extension is the client, not another model.
+already trust is the one doing the work. 
 
-Most agent clients give you one chat, one turn at a time, and one way to react when the
-agent goes sideways: cancel and start over.
+The extension *is* the [Hermes](https://hermes-agent.nousresearch.com) client. All credits to the people on the Hermes project. Without them we would not have such great co-operation with Agents. Without them I would not have had this great profit of the 'lesser' models, now performing at the level of the Frontier corporate Big Tech.
 
-## Two agents in one window
+A secondary agent can now be installed from the primary extension's menu. A premium feature for free. In the same VSCodium in its own panel or each in their editor panel's tab they run side-by-side. Different profile, different session, different transcript, even a different model if you want. You tab between them for single tab view, or place them side by side for full conversation overview. 
 
-Install the companion from the primary — **Install secondant** — and a second, independent
-agent appears in the same editor: its own extension id, its own sidebar, its own tabs, its
-own Hermes profile. One install for you, two extensions on disk, nothing to configure twice.
+Personally I like the primary agent to be specialized on the current mission; the secondant should research, drafts prompts and tracks the project with an overview. You can have them send messages directly between them if you like. Guarded by your click.
 
-- **They cannot share a profile.** Pointed at the profile the primary is using, the
-  secondant drops its connection, opens its picker and says why. Two agents means two
-  profiles, enforced rather than hoped for.
-- **You can tell them apart at a glance.** The secondant carries an orange rule across its
-  toolbar and a badge row beneath it; in the editor-panel surface each pane's frame is
-  drawn in its own accent.
-- **They can hand each other work.** Forward any message from one pane to the other: it
-  arrives as a card with a sender pill and its body rendered as markdown, and nothing
-  reaches the receiving agent until you press **Deliver**. Consecutive forwards stack under
-  one rail with a single Deliver / Dismiss, sent as one turn in arrival order.
-- **Session memory crosses too.** Forward a slice of any conversation and the receiving
-  agent gets the session handle, an anchor when no message ids matched, and a note that the
-  handle reads outside its own profile — along with the call that reads more of it.
+'Secondant' is Dutch for the 'second' in a classic wing-man relationship when challenged. A fencer's _second_ stands beside the duellist as an equal with a different role. 
 
-The channel is a file under your Hermes home. No service, no port, no network: it carries
-your own messages under your own permissions, and you sit in the middle of every hop.
+That's the shape of this: two agents, their challenge, your call.
 
-## Steer a run while it runs
+Enjoy the game!
 
-With a turn in flight, type into the composer and **Stop becomes Steer**. Your words go
+Thomas Kai Tchong
+
+<details>
+<summary><strong>Read more — what the two agents do</strong></summary>
+
+<h2>Two agents in one window</h2>
+<p>Install the companion from the primary's menu <strong>Install secondant</strong>. A second, independent
+agent appears. One install for you, two extensions on disk, nothing to configure twice.</p>
+<ul>
+<li><strong>They cannot share a profile.</strong> Pointed at the profile the primary is using, the
+secondant drops its connection, opens its picker and says why. Two agents means two
+profiles, enforced rather than hoped for.</li>
+<li><strong>You can tell them apart at a glance.</strong> The secondant carries an orange rule across its
+toolbar and a badge row beneath it; in the editor-panel surface each pane's frame is
+drawn in its own accent.</li>
+<li><strong>They can hand each other work.</strong> Forward any message from one pane to the other: it
+arrives as a card with a sender pill and its body rendered as markdown, and nothing
+reaches the receiving agent until you press <strong>Deliver</strong>. Consecutive forwards stack under
+one rail with a single Deliver / Dismiss, sent as one turn in arrival order.</li>
+<li><strong>Session memory crosses too.</strong> Forward a slice of any conversation and the receiving
+agent gets the session handle, an anchor when no message ids matched, and a note that the
+handle reads outside its own profile — along with the call that reads more of it.</li>
+</ul>
+<p>The channel is a file under your Hermes home. No service, no port, no network: it carries
+your own messages under your own permissions, and you sit in the middle of every hop.</p>
+<img src="media/two-agents-side-by-side.png" alt="Two Hermes agents side by side in one VSCodium window: the primary on the left, labelled Profile dev-vsc, with a blue accent; the secondant on the right, labelled Profile pa, with an orange accent across its toolbar." width="880" />
+
+<h2>Steer a run while it runs</h2>
+<p>With a turn in flight, type into the composer and <strong>Stop becomes Steer</strong>. Your words go
 into the turn — not as a new question, not as cancel-and-retry — as guidance the agent
-folds into what it is already doing. The transcript marks it with an orange **Steer** tag
-that survives reload. The turn keeps its identity, its tool calls, its context.
-
-It is the one workflow difference you will feel every day.
-
-> **Roadmap:** time-limited auto-approve while a steered turn runs, so you can say
-> "go ahead with the next three" without clicking a card for each one.
-
-## Pull context from another conversation
-
-Pick any of your other sessions from the composer, read it in a throwaway tab, tick the
-messages you want, and they arrive above your prompt as a quoted, attributed block.
-
-- **Anchored, not pasted** — the block points at message ids, so the quote stays faithful
-  even after the source conversation moves on.
-- **Every session Hermes knows** — the viewer reads from Hermes rather than from a local
-  copy, so a conversation you had in the TUI, the dashboard or the other pane opens the
-  same as one from this tab.
-- **A pick belongs to its tab** — context you staged for one thread cannot leak into
-  another. The current session is also offered: after a model switch the agent has lost
-  its context, and this tab's own earlier messages are exactly the memory worth
-  re-attaching.
-- **Choose the depth** — a role filter on the attach bar lets you toggle User, Assistant,
-  Thought and Tool messages, so you can carry a question and its answer without dragging
-  forty tool calls along, or include the reasoning when you need it.
-
-## The rest of the client
-
-Sidebar or editor pane, your choice · tabs with rename and reopen · streaming markdown
-with syntax highlighting · image paste and image-only prompts · `@` file mentions ·
+folds into what it is already doing. The transcript marks it with an orange <strong>Steer</strong> tag
+that survives reload. The turn keeps its identity, its tool calls, its context.</p>
+<p>It is the one workflow difference you will feel every day.</p>
+<blockquote>
+<p><strong>Roadmap:</strong> time-limited auto-approve while a steered turn runs, so you can say
+"go ahead with the next three" without clicking a card for each one.</p>
+</blockquote>
+<h2>Pull context from another conversation</h2>
+<p>Pick any of your other sessions from the composer, read it in a throwaway tab, tick the
+messages you want, and they arrive above your prompt as a quoted, attributed block.</p>
+<ul>
+<li><strong>Anchored, not pasted</strong> — the block points at message ids, so the quote stays faithful
+even after the source conversation moves on.</li>
+<li><strong>Every session Hermes knows</strong> — the viewer reads from Hermes rather than from a local
+copy, so a conversation you had in the TUI can be opened in our primary or secondant extension in two clicks.</li>
+<li><strong>A pick belongs to its tab</strong> — context you staged for one thread cannot leak into
+another. The current session is also offered: after a model switch the agent has lost
+its context, and this tab's own earlier messages are exactly the memory worth
+re-attaching.</li>
+<li><strong>Choose the depth</strong> — a role filter on the attach bar lets you toggle User, Assistant,
+Thought and Tool messages, so you can carry a question and its answer without dragging
+forty tool calls along, or include the reasoning when you need it.</li>
+</ul>
+<h2>The rest of the client</h2>
+<p>Sidebar or editor pane, your choice · tabs with rename and reopen · streaming markdown
+with syntax highlighting · image paste and image-only prompts · <code>@</code> file mentions ·
 send the editor selection as a prompt · transcript search, in the chat and in the viewer ·
 multi-select copy, delete and export · session export as markdown · token meter · log
-viewer · environment detection that finds a Hermes install and repairs `PATH` itself ·
-English and Simplified Chinese throughout, including Hermes' own permission wording.
+viewer · environment detection that finds a Hermes install and repairs <code>PATH</code> itself ·
+English and Simplified Chinese throughout, including Hermes' own permission wording.</p>
+<h2>Quieter touches</h2>
+<ul>
+<li><strong>Approvals carry their own mode switch</strong> — Manual · Smart · Off on the pending card,
+written through to the profile and applied to every other waiting card.</li>
+<li><strong>The agent's structured questions render as forms</strong>, not as dead prompts.</li>
+<li><strong>Consecutive tool calls fold into one card</strong>, so a dozen reads do not bury the answer.</li>
+<li><strong>Thoughts and tool cards grow with the text while live</strong>, then collapse to a readable
+cap when the turn finishes — so you can follow reasoning as it arrives without it
+pushing the answer off-screen afterwards.</li>
+<li><strong>Loading looks deliberate</strong> — the pane's own icon, pulsing, with a live count of the
+messages arriving from Hermes beneath it.</li>
+<li><strong>A message Hermes never received is caught</strong> — the last few user turns live in a small
+sidecar, and the agent's replay is checked against it before the transcript is replaced.</li>
+</ul>
 
-## Quieter touches
-
-- **Approvals carry their own mode switch** — Manual · Smart · Off on the pending card,
-  written through to the profile and applied to every other waiting card.
-- **The agent's structured questions render as forms**, not as dead prompts.
-- **Consecutive tool calls fold into one card**, so a dozen reads do not bury the answer.
-- **Thoughts and tool cards grow with the text while live**, then collapse to a readable
-  cap when the turn finishes — so you can follow reasoning as it arrives without it
-  pushing the answer off-screen afterwards.
-- **Loading looks deliberate** — the pane's own icon, pulsing, with a live count of the
-  chunks arriving from Hermes beneath it.
-- **A message Hermes never received is caught** — the last few user turns live in a small
-  sidecar, and the agent's replay is checked against it before the transcript is replaced.
+</details>
 
 ## Who this is for
 
@@ -105,30 +109,92 @@ Not people shopping for an AI assistant in the abstract. People who have already
 Hermes, work across more than one conversation at a time, and want the
 editing-while-it-runs rhythm that most clients make you fight for.
 
-## Requirements
+<details>
+<summary><strong>Requirements, settings and install</strong></summary>
 
-- VS Code 1.85+ or VSCodium (this is developed against VSCodium)
-- [Hermes Agent](https://hermes-agent.nousresearch.com) installed and configured
-- `hermes` on `PATH`, or `tommys.path` set in settings
-- For the secondant: a **second Hermes profile**, because the two panes may not share one
-
-## Build and install
-
-```bash
-npm install
+<h2>Requirements</h2>
+<ul>
+<li>VS Code 1.85+ or VSCodium (this is developed against VSCodium)</li>
+<li><a href="https://hermes-agent.nousresearch.com">Hermes Agent</a> installed and configured</li>
+<li><code>hermes</code> on <code>PATH</code>, or <code>tommys.path</code> set in settings</li>
+<li>For the secondant: a <strong>second Hermes profile</strong>, because the two panes may not share one</li>
+</ul>
+<h2>Build and install</h2>
+<pre><code class="language-bash">npm install
 npm run package                                     # compile + bundle the pane + vsix
 codium --install-extension ./tommys-hermes-acp-2.0.0.vsix --force
-```
-
-`npm run package` bundles the secondant VSIX inside the primary. `npm run package:secondant`
+</code></pre>
+<p><code>npm run package</code> bundles the secondant VSIX inside the primary. <code>npm run package:secondant</code>
 builds that companion on its own; users never need it, because the primary installs it from a
-command.
+command.</p>
+<p><code>npm run deploy</code> is the fast path while developing: it compiles, rebuilds the pane bundle
+and copies everything into the installed extension directory, verifying each file by hash.</p>
+<p>Extension ids: <code>emperorandfool.tommys-hermes-acp</code> and
+<code>emperorandfool.tommys-hermes-secondant</code>.</p>
+<h2>Settings</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tommys.path</code></td>
+<td>Path to the Hermes executable</td>
+<td>auto-detect</td>
+</tr>
+<tr>
+<td><code>tommys.cwd</code></td>
+<td>Working directory for sessions</td>
+<td>workspace root</td>
+</tr>
+<tr>
+<td><code>tommys.profile</code></td>
+<td>Hermes profile name</td>
+<td><code>default</code></td>
+</tr>
+<tr>
+<td><code>tommys.showThoughts</code></td>
+<td>Show agent reasoning</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>tommys.showToolCalls</code></td>
+<td>Show tool-call notifications</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>tommys.chatSurface</code></td>
+<td><code>sidebar</code> or <code>editor</code></td>
+<td><code>sidebar</code></td>
+</tr>
+<tr>
+<td><code>tommys.models</code></td>
+<td>Fallback model list</td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>tommys.defaultModel</code></td>
+<td>Default model id (fallback list only)</td>
+<td><code>""</code></td>
+</tr>
+<tr>
+<td><code>tommys.agents</code></td>
+<td>Named agent configurations</td>
+<td><code>[]</code></td>
+</tr>
+</tbody></table>
+<p>The secondant exposes the same keys under <code>tommys2.*</code>.</p>
+<pre><code class="language-json">"tommys.agents": [
+  { "name": "Default", "profile": "" },
+  { "name": "Fast", "path": "/path/to/hermes", "profile": "fast" }
+]
+</code></pre>
+<p>The composer's <code>Aa</code> pill sets the transcript font size (10–28 px) and remembers it.</p>
 
-`npm run deploy` is the fast path while developing: it compiles, rebuilds the pane bundle
-and copies everything into the installed extension directory, verifying each file by hash.
-
-Extension ids: `emperorandfool.tommys-hermes-acp` and
-`emperorandfool.tommys-hermes-secondant`.
+</details>
 
 ## Use
 
@@ -144,31 +210,6 @@ Extension ids: `emperorandfool.tommys-hermes-acp` and
 > Opening a tab for a session Hermes knows resumes it over ACP (`session/load`), and the
 > transcript arrives from Hermes itself — nothing is read back from a local copy.
 
-## Settings
-
-| Setting | Description | Default |
-|---|---|---|
-| `tommys.path` | Path to the Hermes executable | auto-detect |
-| `tommys.cwd` | Working directory for sessions | workspace root |
-| `tommys.profile` | Hermes profile name | `default` |
-| `tommys.showThoughts` | Show agent reasoning | `true` |
-| `tommys.showToolCalls` | Show tool-call notifications | `true` |
-| `tommys.chatSurface` | `sidebar` or `editor` | `sidebar` |
-| `tommys.models` | Fallback model list | `[]` |
-| `tommys.defaultModel` | Default model id (fallback list only) | `""` |
-| `tommys.agents` | Named agent configurations | `[]` |
-
-The secondant exposes the same keys under `tommys2.*`.
-
-```json
-"tommys.agents": [
-  { "name": "Default", "profile": "" },
-  { "name": "Fast", "path": "/path/to/hermes", "profile": "fast" }
-]
-```
-
-The composer's `Aa` pill sets the transcript font size (10–28 px) and remembers it.
-
 ## Troubleshooting
 
 | Symptom | What to try |
@@ -180,7 +221,7 @@ The composer's `Aa` pill sets the transcript font size (10–28 px) and remember
 | An activity-bar icon is missing after an upgrade | Hide, then show the container from the activity-bar context menu |
 | Secondant disconnected itself | It is on the primary's profile. Pick another from its profile dropdown |
 | Secondant installed but not visible | Reload the window; the registry only lists it after a reload |
-| Forward button greyed out | The other pane is not running — the two panes announce themselves with a heartbeat |
+| Forward button missing | The other pane is not running — the two panes announce themselves with a heartbeat |
 | Need to see what Hermes sends over ACP | Launch the editor with `HERMES_ACP_TRACE=1`; each `session/update` goes to the OutputChannel and to `~/.hermes/pane-mail/trace-<profile>.ndjson` |
 
 ## Known issues
