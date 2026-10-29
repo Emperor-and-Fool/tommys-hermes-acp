@@ -216,6 +216,10 @@ export class TabLifecycle {
             return;
         }
         this._host.session.messages = messages;
+        const restoredPeers = this._host.session.mergePendingPeers();
+        if (restoredPeers.length) {
+            this._host.log(`Restored ${restoredPeers.length} pending forwarded draft(s) for ${localId}`);
+        }
         this._host.post({ type: 'newChat' });
         this._host.post({
             type: 'restoreHistory',
@@ -245,6 +249,9 @@ export class TabLifecycle {
     }
 
     restoreMessages(target?: ChatSurface): void {
+        // Drafts waiting on a decision are not Hermes' — a replay will never bring them back —
+        // so they are merged in before anything is painted or measured.
+        this._host.session.mergePendingPeers();
         if (this._host.session.messages.length === 0) {
             // Nothing to repaint, but the chip still belongs to the tab now on screen.
             this.postHistoryState();
@@ -357,8 +364,9 @@ export class TabLifecycle {
     async hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
         const acp = this._host.acp();
         for (const id of toHide) {
-            // A closed tab's staged pick has nowhere to go; it must not outlive the tab.
+            // A closed tab's staged pick and undecided drafts have nowhere to go.
             this._host.dropHistoryStage(id);
+            this._host.session.pendingPeers.clear(id);
             if (acp) {
                 try {
                     await acp.setSessionHidden(id, true);

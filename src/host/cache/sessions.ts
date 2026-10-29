@@ -4,6 +4,7 @@ import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
+import { PendingPeerStore } from './pendingPeers';
 import {
     normalizePinnedOrder,
     pinSession,
@@ -42,6 +43,9 @@ export class Sessions {
     /** Last few user turns: the one state Hermes cannot hold for us. */
     pendingUsers: PendingUserStore;
 
+    /** Forwarded drafts not yet decided: not Hermes' until delivered, so kept here. */
+    pendingPeers: PendingPeerStore;
+
     constructor(
         private readonly historyDir: string,
         scopeKey: string,
@@ -50,6 +54,7 @@ export class Sessions {
         this.scopeKey = scopeKey;
         this.store = new SessionStore(this.historyDir, this.scopeKey);
         this.pendingUsers = new PendingUserStore(this.historyDir);
+        this.pendingPeers = new PendingPeerStore(this.historyDir);
     }
 
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
@@ -259,6 +264,41 @@ export class Sessions {
         }
         this.messages.push(record);
         this.persistMessages();
+        this.pendingPeers.append(this.activeId, {
+            envelopeId: record.peer!.envelopeId,
+            text,
+            peer: record.peer!,
+            history,
+            savedAt: record.timestamp,
+        });
+    }
+
+    /**
+     * Bring back the drafts this tab still holds open.
+     *
+     * The pane repaints from Hermes, which never saw a pending card, so the cards have to be
+     * merged in on the way: deduped by envelope id, still `pending`, in arrival order.
+     */
+    mergePendingPeers(): ChatMessage[] {
+        const added: ChatMessage[] = [];
+        for (const entry of this.pendingPeers.read(this.activeId)) {
+            if (this.messages.some(m => m.role === 'peer' && m.peer?.envelopeId === entry.envelopeId)) {
+                continue;
+            }
+            const record: ChatMessage = {
+                role: 'peer',
+                text: entry.text,
+                timestamp: entry.savedAt,
+                peer: entry.peer,
+                peerState: 'pending',
+            };
+            if (entry.history) {
+                record.history = entry.history;
+            }
+            this.messages.push(record);
+            added.push(record);
+        }
+        return added;
     }
 
     /** Deliver or Dismiss: the first decision stands, and it survives a reload. */
@@ -269,6 +309,7 @@ export class Sessions {
         }
         stored.peerState = state;
         this.persistMessages();
+        this.pendingPeers.remove(this.activeId, envelopeId);
         return true;
     }
 
@@ -333,14 +374,26 @@ export class Sessions {
     }
 
     /**
-     * The only write left: the user's own message, kept until a replay confirms it arrived.
-     * Nothing else is persisted — assistant, thought and tool rows are Hermes'.
+     * The only write left: the tab index and the active id.
+     *
+     * It used to take `(role, text)` and append user turns to the sidecar, but no caller ever
+     * passed them — so the sidecar was never written and `findUndelivered` always read nothing.
+     * The append now happens where the send happens (`saveOutgoingUser`), which is the only place
+     * that can tell a real send from a replayed user row.
      */
-    persistMessages(role?: string, text?: string): void {
-        if (role === 'user' && typeof text === 'string') {
-            this.pendingUsers.append(this.activeId, text);
-        }
+    persistMessages(): void {
         this.saveCurrent();
+    }
+
+    /**
+     * A message the user actually sent — not a replay echoing one back.
+     *
+     * The sidecar exists to answer one question when a replay arrives: did Hermes ever receive
+     * this? Only a send can answer it, so only a send writes it.
+     */
+    saveOutgoingUser(text: string, imageRefs?: StoredImageRef[]): void {
+        this.saveMessage('user', text, undefined, imageRefs);
+        this.pendingUsers.append(this.activeId, text);
     }
 
     private permissionBodyText(title?: string, detail?: string): string {
