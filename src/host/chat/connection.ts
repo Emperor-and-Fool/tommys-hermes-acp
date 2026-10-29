@@ -33,6 +33,8 @@ export interface ConnectionHost {
     steerNotice(text: string): void;
     /** A switch completed: the new profile's display name. */
     profileChanged(name: string): void;
+    /** The profile this extension may not use: the primary's, seen from the secondant. */
+    excludedProfile?: () => string | undefined;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): vscode.WebviewView | undefined;
@@ -105,6 +107,21 @@ export class Connection {
         }
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
+
+        // The rule the two extensions live by: the secondant never runs on the primary's
+        // profile. Checked here, on every path that connects, because a picker that hides it is
+        // a preference while this is the guarantee.
+        const excluded = this._host.excludedProfile?.();
+        if (excluded && target.cliProfile === excluded) {
+            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to the primary`);
+            this._host.post({
+                type: 'status',
+                status: 'error',
+                message: t('profileExcluded', target.displayName),
+            });
+            this._host.post({ type: 'openProfilePicker' });
+            return;
+        }
 
         this._host.log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._host.post({ type: 'activeAgent', name: target.displayName });
@@ -223,14 +240,12 @@ export class Connection {
                 writeTextFile: (p: string, content: string) => this._host.files.writeTextFile(p, content),
             },
             (cmd: string, args: string[], cwd: string) => {
-                this._host.log(`Terminal: ${cmd.slice(0, 80)}`);
-                const fullCmd = args.length > 0 ? cmd + ' ' + args.join(' ') : cmd;
-                const terminal = vscode.window.createTerminal({
-                    name: `Hermes: ${cmd.slice(0, 30)}`,
-                    cwd,
-                });
-                terminal.sendText(fullCmd);
-                terminal.show(false);
+                // Showing a command must not run it. This callback used to open a VS Code
+                // terminal and `sendText()` the same command the ACP terminal had already
+                // spawned: every tool call could execute twice, and the second copy lost its
+                // argument quoting in `args.join(' ')`. The log keeps the visible record.
+                const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
+                this._host.log(`Terminal (${cwd}): ${fullCmd.slice(0, 200)}`);
             },
             (usage) => {
                 if (!this._host.isViewingPromptSession()) {
