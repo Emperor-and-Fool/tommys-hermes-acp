@@ -38,7 +38,9 @@ one.
   the receiving agent gets the session handle, an anchor when no message ids matched, and a
   note that the handle reads outside its own profile — with the call that reads more of it
 - **A loading state worth looking at**: the pane's own icon, pulsing, with the live chunk
-  count beneath it, and motion that respects `prefers-reduced-motion`
+  count beneath it. Under `prefers-reduced-motion` it keeps breathing as an opacity-only pulse —
+  slower, without the scale — because a still indicator reads as a broken one; the preference
+  picks the gentler motion, not silence
 - **Replay progress** streamed from the ACP updates as they arrive
 - **Search in the history viewer**: the same in-conversation search the chat has
 - **A wire trace** for ACP `session/update` traffic (`HERMES_ACP_TRACE=1`), written to the
