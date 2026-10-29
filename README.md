@@ -141,6 +141,7 @@ The composer's `Aa` pill sets the transcript font size (10–28 px) and remember
 | No reply on the first message | Normal — Hermes may load plugins on the first turn |
 | Model not listed | Add entries under `tommys.models` |
 | An activity-bar icon is missing after an upgrade | Hide, then show the container from the activity-bar context menu |
+| Need to see what Hermes sends over ACP | Launch the editor with `HERMES_ACP_TRACE=1`; each `session/update` goes to the OutputChannel and to `~/.hermes/pane-mail/trace-<profile>.ndjson` |
 
 ## Known issues
 

@@ -22,6 +22,10 @@ import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
+import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
+import { shouldReportReplay } from './replayProgress';
+import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
+import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 import {
     ToolCallTracker,
     formatToolCallDisplay,
@@ -30,6 +34,9 @@ import {
 import type { CatalogSession, PermissionOption } from '../../shared/acp';
 import { isSteerNotice } from './steerNotice';
 export type { CatalogSession, PermissionOption } from '../../shared/acp';
+
+/** Dev-only: HERMES_ACP_TRACE=1 in the shell that launched the editor. */
+const ACP_TRACE = acpTraceEnabled();
 
 export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
 export type { ModelListState } from '../models/modelConfig';
@@ -129,9 +136,25 @@ export interface ReplayMessage {
     role: 'user' | 'assistant' | 'thought' | 'tool';
     text: string;
     toolCallId?: string;
+
+    /** ContentChunk.messageId: chunks of one assistant/thought message share it. Absent on user rows. */
+    messageId?: string;
+    /** Tool rows only, from ToolCall / ToolCallUpdate. */
+    toolTitle?: string;
+    toolKind?: string;
+    toolStatus?: string;
+    toolLocations?: Array<{ path: string; line?: number }>;
+    /** ACP `_meta`: captured verbatim (e.g. Hermes' compaction flags), never interpreted here. */
+    meta?: Record<string, unknown>;
 }
 
 export type HistoryReplayHandler = (sessionId: string, messages: ReplayMessage[]) => void;
+
+/**
+ * Replay progress for the loading state: how many content chunks have arrived. A count to show,
+ * never a gate — the load response resolving is the gate.
+ */
+export type ReplayProgressHandler = (received: number) => void;
 
 /** A steer's own reply line, lifted out of the running turn's stream. */
 export type SteerNoticeHandler = (text: string) => void;
@@ -146,6 +169,10 @@ export class AcpClient {
     private _loadedSessionId: string = '';
     /** Non-null while ``session/load`` streams its replay: chunks are collected, not rendered. */
     private _replaySink: ReplayMessage[] | null = null;
+    /** Content chunks collected for the replay in flight: what the loading state counts. */
+    private _replayReceived = 0;
+    /** Only used to name the dev trace file; empty until start() knows the profile. */
+    private _traceProfile = '';
     private _conn: ClientConnection | null = null;
     private _status: AcpStatus = 'idle';
     private _onMessage: MessageHandler;
@@ -302,6 +329,7 @@ export class AcpClient {
     }
 
     async start(cwd: string = process.cwd(), hermesPath?: string, hermesProfile?: string): Promise<void> {
+        this._traceProfile = hermesProfile || '';
         if (!this._transitionTo('connecting', 'Loading profile & session...')) {
             return;
         }
@@ -407,6 +435,10 @@ export class AcpClient {
             });
 
             this._app.onNotification('session/update', async ({ params }) => {
+                if (ACP_TRACE) {
+                    const line = appendAcpTrace(resolveDefaultHermesHome(), this._traceProfile, params);
+                    this._onLog(`[trace] ${line ?? JSON.stringify(params)}`);
+                }
                 this._handleSessionUpdate(params);
             });
 
@@ -1116,7 +1148,8 @@ export class AcpClient {
             case 'user_message_chunk': {
                 const text = extractTextFromContentBlock(update.content);
                 if (text) {
-                    sink.push({ role: 'user', text });
+                    sink.push({ role: 'user', text, ...extractChunkMeta(update) });
+                    this._noteReplayChunk();
                 }
                 return true;
             }
@@ -1124,7 +1157,8 @@ export class AcpClient {
             case 'agent_message_chunk': {
                 const text = extractTextFromContentBlock(update.content);
                 if (text) {
-                    sink.push({ role: 'assistant', text });
+                    sink.push({ role: 'assistant', text, ...extractChunkMeta(update) });
+                    this._noteReplayChunk();
                 }
                 return true;
             }
@@ -1132,7 +1166,8 @@ export class AcpClient {
             case 'agent_thought_chunk': {
                 const text = extractTextFromContentBlock(update.content);
                 if (text) {
-                    sink.push({ role: 'thought', text });
+                    sink.push({ role: 'thought', text, ...extractChunkMeta(update) });
+                    this._noteReplayChunk();
                 }
                 return true;
             }
@@ -1238,7 +1273,13 @@ export class AcpClient {
         const merged = this._toolCallTracker.apply(parsed);
         const text = formatToolCallDisplay(merged);
         if (this._replaySink) {
-            this._replaySink.push({ role: 'tool', text, toolCallId: merged.toolCallId });
+            this._replaySink.push({
+                role: 'tool',
+                text,
+                toolCallId: merged.toolCallId,
+                ...extractToolMeta(update, merged),
+            });
+            this._noteReplayChunk();
             return;
         }
         this._onMessage('tool', text, merged.toolCallId);
