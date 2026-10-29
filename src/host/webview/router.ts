@@ -10,6 +10,7 @@
  */
 import type { EnvironmentDetection } from '../environment/detection';
 import type { PaneToHost, ApprovalMode } from '../../shared/webview';
+import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
 export interface RouterHost {
@@ -42,10 +43,13 @@ export interface RouterHost {
     syncModels(): Promise<void>;
     postProfileList(): void;
     /** Trade a message with the sibling pane through the shared mailbox. */
-    forwardMessage(text: string, sourceMessageId?: string): void;
+    forwardMessage(text: string, sourceMessageId?: string, history?: HistoryRef): void;
     /** The two decisions a peer card offers. */
     deliverPeer(envelopeId: string): void;
     dismissPeer(envelopeId: string): void;
+    /** The same pair for every pending peer card in the tab, as one action. */
+    deliverAllPeers(): void;
+    dismissAllPeers(): void;
 
     retry(): Promise<void>;
     handlePermissionResponse(id: string, optionId: string | null): void;
@@ -162,13 +166,19 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.handlePermissionResponse(message.id, message.optionId ?? null);
             break;
         case 'forwardMessage':
-            host.forwardMessage(message.text, message.sourceMessageId);
+            host.forwardMessage(message.text, message.sourceMessageId, message.history);
             break;
         case 'deliverPeer':
             host.deliverPeer(message.envelopeId);
             break;
         case 'dismissPeer':
             host.dismissPeer(message.envelopeId);
+            break;
+        case 'deliverAllPeers':
+            host.deliverAllPeers();
+            break;
+        case 'dismissAllPeers':
+            host.dismissAllPeers();
             break;
         case 'setApprovalMode':
             void host.setApprovalMode(message.mode);

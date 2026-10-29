@@ -160,6 +160,27 @@ describe('pane mail', () => {
         assert.strictEqual(parseEnvelope('{"id":"x"}'), null);
         assert.strictEqual(parseEnvelope(''), null);
     });
+
+    it('carries a session-memory ref through the log, and drops one that cannot be rendered', () => {
+        const ref = {
+            sessionId: 'h-1',
+            profile: 'pa',
+            title: 'Secondant 01',
+            count: 2,
+            messageIds: [null, 7] as Array<number | null>,
+            from: 1000,
+            to: 2000,
+        };
+        const line = serializeEnvelope({
+            id: 'e1', writtenAt: 1, fromProfile: 'pa', fromHost: 'h', toProfile: 'dev-vsc',
+            body: 'x', history: ref,
+        });
+        assert.deepStrictEqual(parseEnvelope(line)?.history, { ...ref, anchor: undefined });
+
+        const broken = JSON.parse(line);
+        broken.history = { title: 'no session id' };
+        assert.strictEqual(parseEnvelope(JSON.stringify(broken))?.history, undefined, 'a ref without an id is not a ref');
+    });
 });
 
 describe('peer card state', () => {

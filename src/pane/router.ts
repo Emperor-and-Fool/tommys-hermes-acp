@@ -44,7 +44,7 @@ export function init(): void {
                     break;
                 }
                 if (msg.role === 'peer') {
-                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState });
+                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history });
                     break;
                 }
                 if (msg.role === 'assistant') {

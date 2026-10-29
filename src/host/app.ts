@@ -797,9 +797,11 @@ export class App implements vscode.WebviewViewProvider {
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
             postProfileList: () => this._profiles.postList(),
-            forwardMessage: (text, sourceMessageId) => this.forwardMessage(text, sourceMessageId),
+            forwardMessage: (text, sourceMessageId, history) => this.forwardMessage(text, sourceMessageId, history),
             deliverPeer: (envelopeId) => this.deliverPeer(envelopeId),
             dismissPeer: (envelopeId) => this.dismissPeer(envelopeId),
+            deliverAllPeers: () => this.deliverAllPeers(),
+            dismissAllPeers: () => this.dismissAllPeers(),
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             setApprovalMode: (mode) => this.setApprovalMode(mode),
@@ -951,7 +953,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
-    public forwardMessage(text: string, sourceMessageId?: string): void {
+    public forwardMessage(text: string, sourceMessageId?: string, history?: HistoryRef): void {
         const body = (text || '').trim();
         if (!body || !this._mail) {
             return;
@@ -967,6 +969,8 @@ export class App implements vscode.WebviewViewProvider {
                 toProfile: other.profile,
                 body,
                 sourceMessageId,
+                // A session-memory pick travels with its ref: the recipient draws the envelope.
+                history,
             })
         );
         if (sent) {
@@ -985,12 +989,14 @@ export class App implements vscode.WebviewViewProvider {
                 sourceMessageId: envelope.sourceMessageId,
                 senderRole,
             },
-            envelope.body
+            envelope.body,
+            envelope.history
         );
         this._postMessage({
             type: 'addMessage',
             role: 'peer',
             text: envelope.body,
+            history: envelope.history,
             peer: {
                 envelopeId: envelope.id,
                 fromProfile: envelope.fromProfile,
@@ -1000,6 +1006,13 @@ export class App implements vscode.WebviewViewProvider {
             },
             peerState: 'pending',
         });
+    }
+
+    /** The pending peer cards in this tab, in arrival order: what one stack decision acts on. */
+    private _pendingPeers(): ChatMessage[] {
+        return this._session.messages.filter(
+            message => message.role === 'peer' && message.peerState === 'pending' && !!message.peer
+        );
     }
 
     /** Deliver: the draft becomes the user's turn, tagged with where it came from. */
@@ -1015,8 +1028,13 @@ export class App implements vscode.WebviewViewProvider {
             return;
         }
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
-        const prefix = `[forwarded from ${stored.peer.fromProfile}@${stored.peer.fromHost}] `;
-        this._enqueueChatOp(() => this._handleUserMessage(`${prefix}${stored.text}`));
+        const turn = peerTurnBlock({
+            fromProfile: stored.peer.fromProfile,
+            fromHost: stored.peer.fromHost,
+            body: stored.text,
+            history: stored.history,
+        });
+        this._enqueueChatOp(() => this._handleUserMessage(turn));
     }
 
     /** Dismiss: the card settles and nothing is sent to any agent. */
@@ -1026,6 +1044,50 @@ export class App implements vscode.WebviewViewProvider {
             return;
         }
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
+    }
+
+    /**
+     * Deliver a whole stack: every pending card, in arrival order, as one turn.
+     *
+     * One turn, not N: they arrived as one queue on screen, and a stack answered with three
+     * separate sends would put three of the user's messages where the user pressed one button.
+     */
+    public deliverAllPeers(): void {
+        const pending = this._pendingPeers();
+        if (!pending.length) {
+            return;
+        }
+        const turn = peerTurnText(
+            pending.map(message => ({
+                fromProfile: message.peer!.fromProfile,
+                fromHost: message.peer!.fromHost,
+                body: message.text,
+                history: message.history,
+            }))
+        );
+        const settled = pending.filter(message => {
+            const id = message.peer!.envelopeId;
+            if (!this._session.setPeerState(id, 'delivered')) {
+                return false;
+            }
+            this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'delivered' });
+            return true;
+        });
+        if (!settled.length) {
+            return;
+        }
+        this._enqueueChatOp(() => this._handleUserMessage(turn));
+    }
+
+    /** Dismiss a whole stack: the same set, settled, and nothing sent. */
+    public dismissAllPeers(): void {
+        for (const message of this._pendingPeers()) {
+            const id = message.peer!.envelopeId;
+            if (!this._session.setPeerState(id, 'dismissed')) {
+                continue;
+            }
+            this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'dismissed' });
+        }
     }
 
     private _ownProfile(): string {

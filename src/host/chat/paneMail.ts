@@ -14,6 +14,7 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import type * as vscode from 'vscode';
 import { PANE_MAIL_DIR, PANE_MAIL_LOG, PaneMailEnvelope, parseEnvelope, serializeEnvelope } from '../../shared/paneMail';
+import type { HistoryRef } from '../../shared/chat';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 
 /** A presence file older than this says the other pane is gone, whatever it last wrote. */
@@ -257,6 +258,7 @@ export function newEnvelope(input: {
     toProfile: string;
     body: string;
     sourceMessageId?: string;
+    history?: HistoryRef;
 }): PaneMailEnvelope {
     return {
         id: crypto.randomUUID(),
@@ -266,5 +268,6 @@ export function newEnvelope(input: {
         toProfile: input.toProfile,
         body: input.body,
         sourceMessageId: input.sourceMessageId,
+        history: input.history,
     };
 }

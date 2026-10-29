@@ -1753,6 +1753,45 @@ body.surface-notabs #tab-bar {
 .message.peer {
     border-left: 3px solid var(--peer-accent, var(--primary));
 }
+/* The sender, as a pill: tinted, small, and in that sender's accent. The rail carries the colour
+   for a single card; the pill carries it for every card in a mixed stack. */
+.message.peer .peer-pill {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--peer-accent, var(--primary)) 18%, transparent);
+    color: color-mix(in srgb, var(--peer-accent, var(--primary)) 72%, var(--fg));
+}
+.message.peer .content {
+    margin-top: 4px;
+}
+/* A pending stack: one continuous rail, the cards inside without their own, and the decisions only
+   on the last card — one button answers the whole queue it belongs to. */
+.peer-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 3px solid var(--peer-accent, var(--primary));
+    padding-left: 8px;
+}
+.peer-stack[data-sender-role="primary"] {
+    --peer-accent: #5b83cc;
+}
+.peer-stack[data-sender-role="secondant"] {
+    --peer-accent: #e67e22;
+}
+.peer-stack .message.peer {
+    border-left: none;
+    padding-left: 0;
+}
+.peer-stack .message-group.peer-stack-early .peer-actions {
+    display: none;
+}
 .message.peer .peer-actions {
     display: flex;
     flex-wrap: wrap;

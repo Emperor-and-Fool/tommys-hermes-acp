@@ -135,11 +135,14 @@ export type PaneToHost =
     | { type: 'getModels' }
     | { type: 'getProfiles' }
     /** Forward this message to the other pane; the host decides who that is. */
-    | { type: 'forwardMessage'; text: string; sourceMessageId?: string }
+    | { type: 'forwardMessage'; text: string; sourceMessageId?: string; history?: HistoryRef }
     /** Deliver a peer card to the agent as a real user turn. */
     | { type: 'deliverPeer'; envelopeId: string }
     /** Throw a peer card away: no turn, nothing sent. */
     | { type: 'dismissPeer'; envelopeId: string }
+    /** The same two decisions for a whole stack of pending peer cards. */
+    | { type: 'deliverAllPeers' }
+    | { type: 'dismissAllPeers' }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironment' }

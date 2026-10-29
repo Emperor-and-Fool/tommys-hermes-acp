@@ -1,5 +1,6 @@
 import { byId, inputEl } from '../../dom';
 import { post } from '../../post';
+import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';
 import { escapeHtml } from '../../util/html';
 import { syncInputHeightFromContent, updateQuickActionBtns } from '../composer/composer';
@@ -52,10 +53,23 @@ export function attachMessageActions(group, inner) {
         e.stopPropagation();
         const text = getGroupMarkdownText(group).trim();
         if (!text) return;
+        // In the read-only viewer the host owns the transcript, so the click names the message by
+        // index and the host attaches the session ref itself — the same card, envelope included,
+        // as forwarding from the live conversation.
+        if (document.body.classList.contains('is-viewer') && state.viewerSessionId) {
+            const index = Number(group.dataset && group.dataset.sessionIndex);
+            if (Number.isInteger(index) && index >= 0) {
+                post({ type: 'historyForwarded', sessionId: state.viewerSessionId, indices: [index] });
+                return;
+            }
+        }
         post({
             type: 'forwardMessage',
             text: text,
-            sourceMessageId: group.dataset && group.dataset.messageId ? group.dataset.messageId : undefined
+            sourceMessageId: group.dataset && group.dataset.messageId ? group.dataset.messageId : undefined,
+            // A session-memory card forwards its ref: the other pane draws the envelope from it
+            // instead of reading a description of itself.
+            history: group._historyRef || undefined
         });
     });
     actions.appendChild(forwardBtn);

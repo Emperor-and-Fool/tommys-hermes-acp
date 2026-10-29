@@ -238,7 +238,7 @@ export class Sessions {
         fromHost: string;
         sourceMessageId?: string;
         senderRole?: 'primary' | 'secondant';
-    }, text: string): void {
+    }, text: string, history?: HistoryRef): void {
         const record: ChatMessage = {
             role: 'peer',
             text,
@@ -252,6 +252,11 @@ export class Sessions {
             },
             peerState: 'pending',
         };
+        // The envelope a session-memory pick arrived with: kept so the card can redraw it after a
+        // reload, and so delivering it can tell the agent which conversation the text came from.
+        if (history) {
+            record.history = history;
+        }
         this.messages.push(record);
         this.persistMessages();
     }
