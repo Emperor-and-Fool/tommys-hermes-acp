@@ -1,7 +1,7 @@
 import { byId, profileBtn, profilePicker } from '../../dom';
 import { post } from '../../post';
 import { escapeHtml } from '../../util/html';
-import { closeAllDropdowns, setMenuOpen } from '../modals/modal';
+import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';
 
 
 export function profileDisplayName() {
@@ -20,14 +20,8 @@ export function openProfilePicker(): void {
 }
 
 export function initProfileBtnClick(): void {
-    profileBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const open = profilePicker.dataset.open !== 'true';
-        closeAllDropdowns();
-        if (open) {
-            setMenuOpen(profilePicker, true);
-            post({ type: 'getProfiles' });
-        }
+    wirePickerButton(profileBtn, profilePicker, function() {
+        post({ type: 'getProfiles' });
     });
 }
 
