@@ -71,8 +71,13 @@ export class Sessions {
         this.store.writeActiveId(this.activeId);
     }
 
+    /** The first user turn's opening words, or undefined while the tab has none. */
+    private _tabTitle(): string | undefined {
+        return this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
+    }
+
     saveCurrent(): void {
-        const firstUser = this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
+        const firstUser = this._tabTitle();
         const existing = this.tabs.find(s => s.id === this.activeId);
         if (existing) {
             existing.updatedAt = Date.now();
@@ -100,10 +105,9 @@ export class Sessions {
     }
 
     ensureRegistered(): void {
-        const firstUser = this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
         const next = registerSession(this.tabs, {
             id: this.activeId,
-            title: firstUser || t('newChat'),
+            title: this._tabTitle() || t('newChat'),
         });
         if (next === this.tabs) {
             return;
@@ -418,7 +422,6 @@ export class Sessions {
             }
         }
         this.persistMessages();
-        this.saveCurrent();
     }
 
     handleReorderSessions(sessionIds: unknown): void {
