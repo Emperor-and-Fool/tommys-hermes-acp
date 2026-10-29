@@ -1,34 +1,15 @@
 import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
 import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn } from '../dom';
-import { assistantRoleLabel } from '../i18n';
 import { post } from '../post';
 import { state } from '../state';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
 import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './composer/fileMention';
-import { getGroupMarkdownText } from './messages/markdown';
 import { reindexSessionIndices } from './messages/messageList';
-import { auxiliaryRoleLabel } from './messages/toolCards';
 
 
 const multiSelectToolbar = byId('multiSelectToolbar');
 
 const multiSelectCount = byId('multiSelectCount');
-
-function getSessionPlainText() {
-    const groups = messagesEl.querySelectorAll('.message-group');
-    const lines = [];
-    groups.forEach(function(group) {
-        const role = group.classList.contains('user') ? locale.roleYou
-            : group.classList.contains('assistant') ? assistantRoleLabel()
-            : group.classList.contains('thought') ? auxiliaryRoleLabel('thought')
-            : group.classList.contains('tool') ? auxiliaryRoleLabel('tool', group._auxState && group._auxState.rawText)
-            : locale.roleMessage;
-        const text = getGroupMarkdownText(group).trim();
-        if (!text) return;
-        lines.push(role + ':\n' + text);
-    });
-    return lines.join('\n\n');
-}
 
 export function isSelectableRole(role) {
     return role === 'user' || role === 'assistant' || role === 'thought' || role === 'tool';

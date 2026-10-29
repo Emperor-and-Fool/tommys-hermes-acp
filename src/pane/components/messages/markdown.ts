@@ -5,7 +5,7 @@ import { escapeHtmlEntities } from '../../util/html';
 import { processFileRefs } from '../composer/fileMention';
 import { scheduleChatSearch } from '../search';
 import { createInsertDropdown } from './messageActions';
-import { getGroupRoleLabel, getMessagePlainText, markMissingImages, maybeScrollToBottom } from './messageList';
+import { getMessagePlainText, markMissingImages, maybeScrollToBottom } from './messageList';
 import { setAuxiliaryContent } from './toolCards';
 
 
@@ -152,17 +152,6 @@ export function scheduleSessionMarkdownRender() {
         }
     }
     requestAnimationFrame(runBatch);
-}
-
-function getGroupsMarkdown(groups) {
-    const parts = [];
-    groups.forEach(function(group) {
-        const role = getGroupRoleLabel(group);
-        const text = getGroupMarkdownText(group).trim();
-        if (!text) return;
-        parts.push('## ' + role + '\n\n' + text);
-    });
-    return parts.join('\n\n');
 }
 
 export function renderMarkdown(text) {
