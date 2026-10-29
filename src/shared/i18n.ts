@@ -3,7 +3,6 @@ export type SupportedLocale = 'en' | 'zh-cn';
 export interface LocaleStrings {
     // Extension host
     selectCodeFirst: string;
-    allowHermesRun: string;
     allow: string;
     deny: string;
     waitForResponse: string;
@@ -35,13 +34,9 @@ export interface LocaleStrings {
     statusNewSessionFailed: string;
     detectEnvironmentProgress: string;
     detectEnvironmentProgressPrefix: string;
-    detectEnvironmentStepCompleteShort: string;
     detectEnvironmentCancelled: string;
     detectEnvironmentNotFound: string;
     detectEnvironmentPickExecutable: string;
-    detectEnvironmentConfigureTitle: string;
-    detectEnvironmentConfigurePlugin: string;
-    detectEnvironmentConfigurePluginDesc: string;
     detectEnvironmentConfigureSystem: string;
     detectEnvironmentConfigureSystemDesc: string;
     detectEnvironmentSystemVarTargetWindows: string;
@@ -91,9 +86,6 @@ export interface LocaleStrings {
     detectEnvironmentSummaryAcpManual: string;
     detectEnvironmentViewDetails: string;
     detectEnvironmentHideDetails: string;
-    viewChatTitle: string;
-    detectEnvironmentAlreadyConfigured: string;
-    detectEnvironmentRunFirst: string;
     detectEnvironmentClose: string;
 
     configureEnvironmentTitle: string;
@@ -101,7 +93,6 @@ export interface LocaleStrings {
     configureEnvironmentPathPlaceholder: string;
     configureEnvironmentBrowse: string;
     configureEnvironmentDetect: string;
-    configureEnvironmentDetecting: string;
     configureEnvironmentCandidatesTitle: string;
     configureEnvironmentNoCandidates: string;
     configureEnvironmentSave: string;
@@ -132,17 +123,8 @@ export interface LocaleStrings {
     model: string;
     models: string;
     modelPlaceholder: string;
-    newChatBtn: string;
-    moreOptions: string;
-    menuAbout: string;
-    menuSettings: string;
-    menuHelp: string;
-    menuFaq: string;
-    menuLogs: string;
 
     // WebView — placeholder & connection
-    connectingTitle: string;
-    connectingHint: string;
     readyPlaceholder: string;
     connectionError: string;
     retryConnect: string;
@@ -155,7 +137,6 @@ export interface LocaleStrings {
     searchChat: string;
     searchPrev: string;
     searchNext: string;
-    clearChat: string;
     clearInput: string;
     copySession: string;
     quickActions: string;
@@ -210,7 +191,6 @@ export interface LocaleStrings {
     permissionRejectOnce: string;
     permissionRejectAlways: string;
     permissionDeny: string;
-    permissionExpand: string;
     permissionCollapse: string;
     permissionShowMore: string;
     permissionCardCollapse: string;
@@ -226,7 +206,6 @@ export interface LocaleStrings {
     modelLocalPreference: string;
     tokenUsageLabel: string;
     copied: string;
-    clickToInsert: string;
     insertToInput: string;
     insertToEditor: string;
     insertMenu: string;
@@ -235,7 +214,6 @@ export interface LocaleStrings {
     /** "Forward to {0}" where {0} is the other pane's profile. */
     forwardToOtherPane: string;
     /** "{0}@{1}", the left half of the attribution header. */
-    forwardedFromHeader: string;
     otherPaneNotLive: string;
     peerCardDeliver: string;
     peerCardDismiss: string;
@@ -268,9 +246,6 @@ export interface LocaleStrings {
     sessionExportModel: string;
     sessionExportDate: string;
     sessionRendering: string;
-    localHistoryDivider: string;
-    localHistoryDividerTitle: string;
-    localHistoryBadge: string;
 
     switchSessionPromptTitle: string;
     switchSessionPromptBody: string;
