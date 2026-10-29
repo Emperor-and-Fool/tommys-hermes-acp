@@ -21,11 +21,6 @@ export function isSelectableRole(role) {
  */
 const historyPickRoles: Set<string> = new Set(['user', 'assistant']);
 
-/** Roles the picker currently offers, for the boxes and for anything that needs to ask. */
-export function historyPickRoleEnabled(role: string): boolean {
-    return historyPickRoles.has(role);
-}
-
 /**
  * Turn one role on or off. Groups of a role that just went off lose their tick with it, and the
  * whole transcript is re-evaluated so cards of a role that came on gain one.

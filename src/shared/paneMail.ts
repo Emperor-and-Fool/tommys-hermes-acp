@@ -90,15 +90,3 @@ export function parseEnvelope(line: string): PaneMailEnvelope | null {
         return null;
     }
 }
-
-/**
- * What lands in the recipient's composer: who sent it, where it was going, then the text quoted.
- * Never sent on its own — the recipient edits and presses Send.
- */
-export function forwardBlock(header: string, body: string): string {
-    const quoted = body
-        .split('\n')
-        .map(line => (line ? `> ${line}` : '>'))
-        .join('\n');
-    return `${header}\n${quoted}`;
-}

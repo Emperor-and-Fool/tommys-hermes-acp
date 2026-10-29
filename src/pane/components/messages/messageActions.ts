@@ -105,11 +105,6 @@ function forwardTitle(): string {
     return (locale.forwardToOtherPane || 'Forward to {0}').replace('{0}', otherPaneProfile);
 }
 
-function attachCopyButton(group) {
-    const stack = group.querySelector('.message-stack');
-    if (stack) attachMessageActions(group, stack);
-}
-
 function appendToInput(text) {
     if (!text) return;
     hideFilePicker();

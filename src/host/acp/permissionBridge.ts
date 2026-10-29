@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 /** ACP permission option as shown in the chat UI. */
 export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 
@@ -47,10 +45,6 @@ type PendingPermission = {
 };
 
 export const PERMISSION_TIMEOUT_MS = 120_000;
-
-export function createPermissionRequestId(): string {
-    return `perm-${randomUUID()}`;
-}
 
 export function normalizePermissionOptions(options: unknown): PermissionOptionView[] {
     if (!Array.isArray(options) || options.length === 0) {

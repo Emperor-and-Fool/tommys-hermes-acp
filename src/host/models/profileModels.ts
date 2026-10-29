@@ -34,15 +34,6 @@ export async function discoverProfileModelCatalog(
     return buildProfileModelCatalog(content, { probeLive: true });
 }
 
-/** Load configured models for a Hermes profile (flat list). */
-export async function discoverProfileConfigModels(
-    hermesPath: string | undefined,
-    profile: string
-): Promise<ModelListItem[]> {
-    const catalog = await discoverProfileModelCatalog(hermesPath, profile);
-    return catalog.flatModels;
-}
-
 export async function buildProfileModelCatalog(
     content: string,
     options: { probeLive?: boolean } = {}
