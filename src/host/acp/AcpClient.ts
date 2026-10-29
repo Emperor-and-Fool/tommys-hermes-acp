@@ -1145,28 +1145,15 @@ export class AcpClient {
             return false;
         }
         switch (kind) {
-            case 'user_message_chunk': {
-                const text = extractTextFromContentBlock(update.content);
-                if (text) {
-                    sink.push({ role: 'user', text, ...extractChunkMeta(update) });
-                    this._noteReplayChunk();
-                }
-                return true;
-            }
-
-            case 'agent_message_chunk': {
-                const text = extractTextFromContentBlock(update.content);
-                if (text) {
-                    sink.push({ role: 'assistant', text, ...extractChunkMeta(update) });
-                    this._noteReplayChunk();
-                }
-                return true;
-            }
-
+            case 'user_message_chunk':
+            case 'agent_message_chunk':
             case 'agent_thought_chunk': {
+                const role = kind === 'user_message_chunk' ? 'user'
+                    : kind === 'agent_message_chunk' ? 'assistant'
+                    : 'thought';
                 const text = extractTextFromContentBlock(update.content);
                 if (text) {
-                    sink.push({ role: 'thought', text, ...extractChunkMeta(update) });
+                    sink.push({ role, text, ...extractChunkMeta(update) });
                     this._noteReplayChunk();
                 }
                 return true;
