@@ -120,17 +120,20 @@ export function peerStateAfter(current: PeerState, action: 'deliver' | 'dismiss'
     return action === 'deliver' ? 'delivered' : 'dismissed';
 }
 
-/** One tab: the session row as Hermes reports it, plus the view flags Hermes cannot know. */
+/**
+ * One tab: the id pair (local, Hermes) and the view flags Hermes cannot know.
+ *
+ * Nothing here is a fact about the conversation's content. A count or an "engaged" flag read
+ * from the transcript was a local copy of something Hermes owns, and it outlived the transcript
+ * it was derived from — which is how the local copy came to stand in for the link itself.
+ */
 export interface SessionInfo {
     id: string;
     title: string;
     createdAt: number;
     updatedAt: number;
-    messageCount: number;
     modelId?: string;
     modelLabel?: string;
-    /** User has sent at least one message to Hermes in this session. */
-    agentEngaged?: boolean;
     /** Pinned tabs stay at the front and reorder only within pinned group. */
     pinned?: boolean;
     /**
@@ -159,8 +162,12 @@ export interface ApplyCatalogInput<T extends CatalogRow = CatalogRow> {
     rows: T[];
     /** The tab the pane is showing: it may not be in the catalog yet. */
     activeId: string;
-    /** A tab with no messages yet is new; it is kept even when Hermes does not list it. */
-    activeHasMessages: boolean;
+    /**
+     * Whether the active tab is bound to a session Hermes just listed. A tab that is not —
+     * a brand-new one, or one whose session vanished — is kept by hand; a linked one is the
+     * catalog's to supply, so the record is rebuilt from the row rather than carried forward.
+     */
+    activeLinked: boolean;
     now?: number;
 }
 

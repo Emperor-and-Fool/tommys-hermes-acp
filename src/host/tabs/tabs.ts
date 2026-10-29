@@ -1,8 +1,7 @@
-import type { ChatMessage, SessionInfo } from '../../shared/chat';
+import type { SessionInfo } from '../../shared/chat';
 
 /**
- * The bookkeeping rules of the tab index: registering a tab, marking that the agent has
- * spoken in it, filling that flag in from the transcript, and the two order rules the strip
+ * The bookkeeping rules of the tab index: registering a tab, and the two order rules the strip
  * has — pinned first, and pins stay inside their own group.
  *
  * Pure array-in/array-out, so each rule can be read and tested on its own. The panel keeps
@@ -11,7 +10,7 @@ import type { ChatMessage, SessionInfo } from '../../shared/chat';
 
 export function registerSession(
     sessions: SessionInfo[],
-    entry: { id: string; title: string; messageCount: number; now?: number }
+    entry: { id: string; title: string; now?: number }
 ): SessionInfo[] {
     if (sessions.some(session => session.id === entry.id)) {
         return sessions;
@@ -23,38 +22,9 @@ export function registerSession(
             title: entry.title,
             createdAt: parseInt(entry.id, 36) || now,
             updatedAt: now,
-            messageCount: entry.messageCount,
         },
         ...sessions,
     ];
-}
-
-/** True when the session had not been marked yet, so the caller knows to persist. */
-export function markAgentEngaged(sessions: SessionInfo[], sessionId: string, now: number = Date.now()): boolean {
-    const session = sessions.find(record => record.id === sessionId);
-    if (!session || session.agentEngaged) {
-        return false;
-    }
-    session.agentEngaged = true;
-    session.updatedAt = now;
-    return true;
-}
-
-/**
- * Fill in `agentEngaged` for a record written before the flag existed: the transcript is the
- * only evidence of whether the agent ever answered in it.
- */
-export function backfillAgentEngaged(
-    session: SessionInfo,
-    messages: ChatMessage[] | null
-): SessionInfo {
-    if (session.agentEngaged !== undefined) {
-        return session;
-    }
-    session.agentEngaged = messages
-        ? messages.some(message => message.role === 'assistant' || message.role === 'thought' || message.role === 'tool')
-        : false;
-    return session;
 }
 
 /**

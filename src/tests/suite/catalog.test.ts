@@ -7,7 +7,6 @@ const local = (over: Partial<SessionInfo>): SessionInfo => ({
     title: 'local title',
     createdAt: 100,
     updatedAt: 100,
-    messageCount: 0,
     ...over,
 });
 
@@ -32,7 +31,7 @@ describe('applyCatalogRows', () => {
             previous,
             rows: [row({ sessionId: 'h-1', title: 'agent name' })],
             activeId: 'tab-a',
-            activeHasMessages: true,
+            activeLinked: true,
             now: 1000,
         });
         const merged = result.sessions[0];
@@ -44,6 +43,8 @@ describe('applyCatalogRows', () => {
         assert.strictEqual(merged.cwd, '/work/a');
         assert.strictEqual(merged.hermesSessionId, 'h-1');
         assert.strictEqual(result.activeChanged, false);
+        assert.strictEqual('messageCount' in merged, false, 'the count is Hermes\' and is not copied');
+        assert.strictEqual('agentEngaged' in merged, false, 'engagement is read from the catalog, not stored');
     });
 
     it('skips hidden rows and hands them back for the picker', () => {
@@ -51,32 +52,36 @@ describe('applyCatalogRows', () => {
             previous: [],
             rows: [row({ sessionId: 'h-1' }), row({ sessionId: 'h-2', hidden: true })],
             activeId: 'h-1',
-            activeHasMessages: true,
+            activeLinked: true,
             now: 1000,
         });
         assert.deepStrictEqual(result.sessions.map(s => s.hermesSessionId), ['h-1']);
         assert.deepStrictEqual(result.hiddenRows.map(r => r.sessionId), ['h-2']);
     });
 
-    it('keeps a brand-new tab Hermes does not list yet, but only while it has no messages', () => {
+    it('keeps a tab Hermes does not list, but not one whose row is there and closed', () => {
+        // A tab created moments ago: no Hermes id, so no row can exist. It stays.
         const fresh = local({ id: 'tab-new', createdAt: 900, updatedAt: 900 });
         const kept = applyCatalogRows({
             previous: [fresh],
             rows: [row({ sessionId: 'h-old', updatedAt: 400 })],
             activeId: 'tab-new',
-            activeHasMessages: false,
+            activeLinked: false,
             now: 1000,
         });
         assert.deepStrictEqual(kept.sessions.map(s => s.id), ['tab-new', 'h-old']);
 
+        // A bound tab whose row is present but hidden — closed elsewhere — is not kept: the
+        // catalog says this session is not open, and the record must not argue with it.
+        const bound = local({ id: 'tab-closed', hermesSessionId: 'h-closed', createdAt: 900, updatedAt: 900 });
         const dropped = applyCatalogRows({
-            previous: [fresh],
-            rows: [row({ sessionId: 'h-old', updatedAt: 400 })],
-            activeId: 'tab-new',
-            activeHasMessages: true,
+            previous: [bound],
+            rows: [row({ sessionId: 'h-old', updatedAt: 400 }), row({ sessionId: 'h-closed', hidden: true })],
+            activeId: 'tab-closed',
+            activeLinked: true,
             now: 1000,
         });
-        assert.deepStrictEqual(dropped.sessions.map(s => s.id), ['h-old']);
+        assert.deepStrictEqual(dropped.sessions.map(s => s.id), ['h-old'], 'a closed tab is not resurrected');
         assert.strictEqual(dropped.activeChanged, true, 'the tab that vanished is replaced');
         assert.strictEqual(dropped.activeId, 'h-old');
     });
@@ -90,26 +95,13 @@ describe('applyCatalogRows', () => {
                 row({ sessionId: 'h-pin', updatedAt: 100 }),
             ],
             activeId: 'tab-pin',
-            activeHasMessages: true,
+            activeLinked: true,
             now: 1000,
         });
         assert.deepStrictEqual(
             result.sessions.map(s => s.hermesSessionId),
             ['h-pin', 'h-new', 'h-old']
         );
-    });
-
-    it('reads agent-engaged from the message count for an unknown session', () => {
-        const result = applyCatalogRows({
-            previous: [],
-            rows: [row({ sessionId: 'h-empty', messageCount: 0 }), row({ sessionId: 'h-used', messageCount: 7 })],
-            activeId: 'h-empty',
-            activeHasMessages: true,
-            now: 1000,
-        });
-        const byId = new Map(result.sessions.map(s => [s.hermesSessionId, s]));
-        assert.strictEqual(byId.get('h-empty')?.agentEngaged, false);
-        assert.strictEqual(byId.get('h-used')?.agentEngaged, true);
     });
 });
 

@@ -272,11 +272,9 @@ export class App implements vscode.WebviewViewProvider {
             saveCatalog: () => this._session.saveCatalog(),
             saveCurrent: () => this._session.saveCurrent(),
             ensureRegistered: () => this._session.ensureRegistered(),
-            msgPath: (id) => this._session.msgPath(id),
             postSessionList: () => this._session.postList(),
             postHistoryState: (tabId) => this._postHistoryState(tabId),
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
-            loadHistory: () => this._session.loadHistory(),
             activate: (id, options) => this._session.activate(id, options),
             workspaceState: context.workspaceState,
         });
@@ -453,7 +451,6 @@ export class App implements vscode.WebviewViewProvider {
             });
         }
         this._session.saveMessage('user', text, undefined, imageRefs);
-        this._session.markEngaged();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -535,7 +532,6 @@ export class App implements vscode.WebviewViewProvider {
         this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
         this._session.saveMessage('user', text);
-        this._session.markEngaged();
         await this._turn.ensureSessionReady();
         await this._connection.acp.sendMessage(text);
     }
@@ -1159,4 +1155,4 @@ export class App implements vscode.WebviewViewProvider {
         this._profileChanged.dispose();
     }
 
-}
+}

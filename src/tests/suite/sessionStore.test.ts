@@ -1,61 +1,47 @@
-import * as assert from 'assert';
+import { describe, it, beforeEach, afterEach } from 'mocha';
+import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CATALOG_LIMIT, SessionStore, TRANSCRIPT_LIMIT } from '../../host/cache/sessionStore';
-import type { ChatMessage, SessionInfo } from '../../shared/chat';
+import { CATALOG_LIMIT, SessionStore } from '../../host/cache/sessionStore';
+import type { SessionInfo } from '../../shared/chat';
 
-function tempDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'session-store-'));
-}
+const row = (id: string): SessionInfo => ({
+    id,
+    title: id,
+    createdAt: 0,
+    updatedAt: 0,
+});
 
-function record(i: number): SessionInfo {
-    return { id: `s${i}`, title: `t${i}`, createdAt: i, updatedAt: i } as SessionInfo;
-}
+describe('session store: the catalog', () => {
+    let dir: string;
+    let store: SessionStore;
 
-function message(i: number): ChatMessage {
-    return { role: i % 2 ? 'assistant' : 'user', text: `m${i}`, timestamp: i };
-}
-
-describe('SessionStore', () => {
-    it('round-trips a catalog, keeping the cap', () => {
-        const dir = tempDir();
-        const store = new SessionStore(dir, 'dev');
-        const many = Array.from({ length: CATALOG_LIMIT + 5 }, (_, i) => record(i));
-        assert.strictEqual(store.writeCatalog(many), true);
-        const read = store.readCatalog();
-        assert.strictEqual(read.length, CATALOG_LIMIT);
-        assert.strictEqual(read[0].id, 's0');
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-'));
+        store = new SessionStore(dir, 'scope');
     });
 
-    it('keeps the last 100 messages on a live write, and everything on a replay write', () => {
-        const dir = tempDir();
-        const store = new SessionStore(dir, 'dev');
-        const many = Array.from({ length: TRANSCRIPT_LIMIT + 20 }, (_, i) => message(i));
-
-        store.writeMessages('abc', many);
-        const live = store.readMessages('abc');
-        assert.strictEqual(live.length, TRANSCRIPT_LIMIT);
-        assert.strictEqual(live[live.length - 1].text, `m${TRANSCRIPT_LIMIT + 19}`);
-
-        store.writeReplayedMessages('abc', many);
-        assert.strictEqual(store.readMessages('abc').length, TRANSCRIPT_LIMIT + 20);
+    afterEach(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    it('answers with an empty list where nothing was written, and never throws', () => {
-        const store = new SessionStore(path.join(tempDir(), 'missing'), 'nobody');
+    it('round-trips the catalog', () => {
+        assert.ok(store.writeCatalog([row('a'), row('b')]));
+        assert.deepStrictEqual(store.readCatalog().map(entry => entry.id), ['a', 'b']);
+    });
+
+    it('caps the catalog', () => {
+        store.writeCatalog(Array.from({ length: CATALOG_LIMIT + 10 }, (_, index) => row(`s${index}`)));
+        assert.strictEqual(store.readCatalog().length, CATALOG_LIMIT);
+    });
+
+    it('round-trips the active id', () => {
+        store.writeActiveId('abc');
+        assert.strictEqual(store.readActiveId(), 'abc');
+    });
+
+    it('returns an empty catalog when the file is missing', () => {
         assert.deepStrictEqual(store.readCatalog(), []);
-        assert.deepStrictEqual(store.readMessages('nope'), []);
-        assert.strictEqual(store.readActiveId(), null);
-    });
-
-    it('remembers the active id per scope', () => {
-        const dir = tempDir();
-        const store = new SessionStore(dir, 'dev');
-        store.writeActiveId('xyz');
-        assert.strictEqual(store.readActiveId(), 'xyz');
-        store.setScope('other');
-        assert.strictEqual(store.readActiveId(), null);
-        assert.notStrictEqual(store.catalogPath, path.join(dir, 'sessions.json'));
     });
 });
