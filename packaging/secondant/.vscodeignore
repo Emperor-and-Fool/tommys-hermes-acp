@@ -1,0 +1,35 @@
+# The secondant's own ignore list: the primary's, minus the secondant's own leftovers.
+#
+# Used via `vsce package --ignoreFile`, which replaces `.vscodeignore` rather than adding to it,
+# so everything the primary needs to leave out is repeated here.
+.vscode/**
+node_modules/**
+!node_modules/@agentclientprotocol/**
+!node_modules/zod/**
+src/**
+tsconfig.json
+.gitignore
+PLAN.md
+CODE_REVIEW*.md
+.sessions.json
+.chat-history.json
+out/tests/
+out/**/*.d.ts
+out/**/*.js.map
+docs/**
+media/icon.svg
+scripts/**
+.github/**
+packaging/**
+.mocharc.yml
+.vscode-test/**
+package-lock.json
+*.vsix
+*.old
+
+# The primary's own entry points are not the secondant's: its activation is
+# out/host/extensionSecondant.js, and installing secondants is the primary's job.
+out/host/extension.js
+out/host/extension.js.map
+out/host/secondantInstall.js
+out/host/secondantInstall.js.map

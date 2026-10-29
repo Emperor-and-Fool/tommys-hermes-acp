@@ -9,6 +9,14 @@ import { migrateLegacySessionStorage } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
+import { setting, settingsSection } from '../shared/extensionId';
+import type { ExtensionIdentity } from '../shared/extensionId';
+import type { PrimaryProfileSource } from './activate';
+import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
+import type { PaneMailEnvelope } from '../shared/paneMail';
+import { peerStateAfter } from '../shared/chat';
+import type { ChatMessage, HistoryRef } from '../shared/chat';
+import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
 import { buildWebviewHtml } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -22,8 +30,8 @@ import { Profiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './tabs/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
-import { HistoryStages, blockMessageLines } from './chat/historyAttach';
-import { exportSessionMessages, matchMessageIds } from './chat/historyLookup';
+import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
+import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
 import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './environment/approvalMode';
@@ -42,6 +50,33 @@ import { classifyLogLevel, LogLevel } from './logLevel';
 
 
 export class App implements vscode.WebviewViewProvider {
+
+    /**
+     * The profile this instance is talking to. The secondant reads it through `activate()`'s
+     * return value; nothing else is exported from the extension on purpose.
+     */
+    get activeProfile(): string {
+        return this._profiles.displayName || this._profiles.selectionId || '';
+    }
+
+    /** Fires when this extension's agent moves to another profile; the secondant listens. */
+    private readonly _profileChanged = new vscode.EventEmitter<string>();
+
+    readonly onDidChangeProfile: vscode.Event<string> = this._profileChanged.event;
+
+    /**
+     * The secondant may not share the primary's profile. Returns true when it had to let go, so
+     * the caller can say so: the link is dropped and the pane's picker opens on its own.
+     */
+    dropSharedProfile(primaryProfile: string): boolean {
+        if (!primaryProfile || this.activeProfile !== primaryProfile) {
+            return false;
+        }
+        this._connection.drop();
+        this._log(`Profile "${primaryProfile}" belongs to the primary; disconnected`);
+        this._postMessage({ type: 'openProfilePicker' });
+        return true;
+    }
 
     // ---- Session State ----
     private _historyDir: string;
@@ -156,9 +191,14 @@ export class App implements vscode.WebviewViewProvider {
         html: (webview) => this._getHtml(webview),
         localResourceRoots: () => [this._extensionUri],
         tabs: () => this._session.tabs,
-        readMessages: (localId) => this._session.store.readMessages(localId),
         profile: () => this._profiles.resolveTarget().cliProfile,
+        otherPane: () => {
+            const other = this._mail?.presence.other();
+            return { live: !!other, profile: other ? other.profile : '' };
+        },
+        loadRemote: (hermesSessionId, profile) => this._loadHistoryRemote(hermesSessionId, profile),
         onPicked: (pick) => { this._stageHistory(pick); },
+        onForwarded: (pick) => { this._forwardHistoryPick(pick); },
         focusComposer: () => this._postMessage({ type: 'focusComposer' }),
         log: (line) => this._log(line),
     });
@@ -180,23 +220,33 @@ export class App implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
     });
 
+    /** The two panes trade drafts through one shared file; this is this side of the trade. */
+    private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
+
     private _output: vscode.OutputChannel;
 
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
 
     constructor(
+        private readonly _id: ExtensionIdentity,
         private readonly _extensionUri: vscode.Uri,
-        private readonly _context: vscode.ExtensionContext
+        private readonly _context: vscode.ExtensionContext,
+        /** The primary's API, when this is the secondant: it answers which profile is taken. */
+        private readonly _primary?: PrimaryProfileSource
     ) {
         const context = this._context;
-        this._extensionId = context.extension.id;
+        this._extensionId = this._id.extensionId;
         this._profiles = new Profiles({
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
+            excludedProfile: () => this._primary?.activeProfile || undefined,
         });
-        this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
+        this._output = vscode.window.createOutputChannel(
+            this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
+            'hermes-chat'
+        );
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
@@ -211,6 +261,7 @@ export class App implements vscode.WebviewViewProvider {
             modelLabel: () => this._models.currentLabel,
         });
         this._session.init();
+        this._startPaneMail();
         this._lifecycle = new TabLifecycle({
             acp: () => this._connection.acp,
             session: this._session,
@@ -228,11 +279,9 @@ export class App implements vscode.WebviewViewProvider {
             saveCatalog: () => this._session.saveCatalog(),
             saveCurrent: () => this._session.saveCurrent(),
             ensureRegistered: () => this._session.ensureRegistered(),
-            msgPath: (id) => this._session.msgPath(id),
             postSessionList: () => this._session.postList(),
             postHistoryState: (tabId) => this._postHistoryState(tabId),
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
-            loadHistory: () => this._session.loadHistory(),
             activate: (id, options) => this._session.activate(id, options),
             workspaceState: context.workspaceState,
         });
@@ -248,6 +297,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
+            profileChanged: (name) => this._profileChanged.fire(name),
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -255,7 +305,7 @@ export class App implements vscode.WebviewViewProvider {
 
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('tommys')) {
+                if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
                 }
             })
@@ -408,7 +458,6 @@ export class App implements vscode.WebviewViewProvider {
             });
         }
         this._session.saveMessage('user', text, undefined, imageRefs);
-        this._session.markEngaged();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -490,7 +539,6 @@ export class App implements vscode.WebviewViewProvider {
         this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
         this._session.saveMessage('user', text);
-        this._session.markEngaged();
         await this._turn.ensureSessionReady();
         await this._connection.acp.sendMessage(text);
     }
@@ -505,27 +553,27 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
-        if (e.affectsConfiguration('tommys.showThoughts') || e.affectsConfiguration('tommys.showToolCalls')) {
+        if (e.affectsConfiguration(setting('showThoughts')) || e.affectsConfiguration(setting('showToolCalls'))) {
             this._postConfig();
         }
-        if (e.affectsConfiguration('tommys.models') || e.affectsConfiguration('tommys.defaultModel')) {
+        if (e.affectsConfiguration(setting('models')) || e.affectsConfiguration(setting('defaultModel'))) {
             if (!this._models.isRuntimeSource()) {
                 this._models.reset();
             }
             void this._models.sync();
         }
-        if (e.affectsConfiguration('tommys.agents')) {
+        if (e.affectsConfiguration(setting('agents'))) {
             this._profiles.forgetDiscovered();
             this._profiles.postList();
         }
-        const reconnectKeys = ['tommys.path', 'tommys.cwd', 'tommys.profile'];
-        if (e.affectsConfiguration('tommys.profile')) {
+        const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
+        if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
             this._approvalModes.clear();
         }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration('tommys.profile') && this._profiles.readAgentConfigs().length === 0) {
-                const config = vscode.workspace.getConfiguration('tommys');
+            if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
+                const config = vscode.workspace.getConfiguration(settingsSection());
                 this._profiles.selectionId = normalizeHermesCliProfile(config.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();
@@ -569,12 +617,45 @@ export class App implements vscode.WebviewViewProvider {
         this._historyViewer.open(hermesSessionId, title);
     }
 
+    /**
+     * A session with no tab here: read it from Hermes, never cache it.
+     *
+     * The three outcomes are logged apart — no Hermes, export failed, export empty — because they
+     * read the same on screen and mean three different things. Failure throws: the viewer has to be
+     * able to say "could not read it" rather than show an empty transcript and call it a day.
+     */
+    private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            this._log('History viewer: no Hermes executable found; cannot fetch the transcript');
+            throw new Error('no Hermes executable found');
+        }
+        const exported = await exportSessionMessages(executable, profile, hermesSessionId);
+        const messages = toChatMessages(exported);
+        this._log(
+            `History viewer: export for ${hermesSessionId} returned ${exported.length} row(s), ` +
+                `${messages.length} usable`
+        );
+        return messages;
+    }
+
     /** The viewer came back with ticks: the chip first, the real ids when the lookup answers. */
     private _stageHistory(pick: HistoryPick): void {
         const tabId = this._session.activeId;
         const staged = this._historyStages.stage(tabId, pick.ref, pick.messages);
         this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: true });
         this._historyStages.begin(tabId, this._lookupHistoryIds(tabId, pick));
+    }
+
+    /**
+     * A slice ticked in the viewer, sent to the sibling pane instead of into this composer.
+     *
+     * It lands there as a draft card — envelope plus body — and nothing reaches either agent until
+     * that pane's user delivers it. The ref travels as data, so the card draws its envelope rather
+     * than reading a description of itself.
+     */
+    private _forwardHistoryPick(pick: HistoryPick): void {
+        this.forwardMessage(historySliceBody(pick.ref, pick.messages), undefined, pick.ref);
     }
 
     /**
@@ -625,7 +706,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The executable the connection would start: the configured path first, then the search. */
     private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = vscode.workspace.getConfiguration('tommys').get<string>('path');
+        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
         const quick = await tryResolveHermesQuick(configured);
         if (quick) {
             return quick;
@@ -678,6 +759,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
     private _onWebviewReady(surface: ChatSurface): void {
+        // A fresh pane has no presence flag yet: answer once, unprompted.
+        this._mail?.presence.refresh(true);
+
         this._log('WebView ready');
         this._surfaces.postRole(surface);
         this._syncWebviewLocale();
@@ -753,6 +837,11 @@ export class App implements vscode.WebviewViewProvider {
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
             postProfileList: () => this._profiles.postList(),
+            forwardMessage: (text, sourceMessageId, history) => this.forwardMessage(text, sourceMessageId, history),
+            deliverPeer: (envelopeId) => this.deliverPeer(envelopeId),
+            dismissPeer: (envelopeId) => this.dismissPeer(envelopeId),
+            deliverAllPeers: () => this.deliverAllPeers(),
+            dismissAllPeers: () => this.dismissAllPeers(),
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             setApprovalMode: (mode) => this.setApprovalMode(mode),
@@ -782,6 +871,11 @@ export class App implements vscode.WebviewViewProvider {
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
+        // The viewer is a webview too, and it draws a forward button whose tooltip names the
+        // sibling pane: presence has to reach it or the button lies about what it can do.
+        if (msg.type === 'setOtherPaneLive') {
+            this._historyViewer.postToPanel(msg);
+        }
         if (msg.type === 'permissionRequest') {
             // The card is about to ask for a decision; its switch needs the current mode now.
             this._postApprovalMode();
@@ -833,7 +927,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private _postConfig(): void {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         this._postMessage({
             type: 'config',
             showThoughts: config.get<boolean>('showThoughts', true),
@@ -901,6 +995,166 @@ export class App implements vscode.WebviewViewProvider {
 
     public insertIntoInput(text: string): void {
         this._postMessage({ type: 'insertInput', text });
+    }
+
+    /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
+    public forwardMessage(text: string, sourceMessageId?: string, history?: HistoryRef): void {
+        const body = (text || '').trim();
+        if (!body || !this._mail) {
+            return;
+        }
+        const other = this._mail.presence.other();
+        if (!other) {
+            void vscode.window.showInformationMessage(t('otherPaneNotLive'));
+            return;
+        }
+        const sent = this._mail.outbox.send(
+            newEnvelope({
+                fromProfile: this._ownProfile(),
+                toProfile: other.profile,
+                body,
+                sourceMessageId,
+                // A session-memory pick travels with its ref: the recipient draws the envelope.
+                history,
+            })
+        );
+        if (sent) {
+            void vscode.window.showInformationMessage(`Forwarded to ${other.profile}`);
+        }
+    }
+
+    /** A forwarded draft arrived: a card in the transcript, with two decisions on it. */
+    private _receivePeer(envelope: PaneMailEnvelope): void {
+        const senderRole: 'primary' | 'secondant' = this._id.role === 'primary' ? 'secondant' : 'primary';
+        this._session.savePeerMessage(
+            {
+                id: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole,
+            },
+            envelope.body,
+            envelope.history
+        );
+        this._postMessage({
+            type: 'addMessage',
+            role: 'peer',
+            text: envelope.body,
+            history: envelope.history,
+            peer: {
+                envelopeId: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole,
+            },
+            peerState: 'pending',
+        });
+    }
+
+    /** The pending peer cards in this tab, in arrival order: what one stack decision acts on. */
+    private _pendingPeers(): ChatMessage[] {
+        return this._session.messages.filter(
+            message => message.role === 'peer' && message.peerState === 'pending' && !!message.peer
+        );
+    }
+
+    /** Deliver: the draft becomes the user's turn, tagged with where it came from. */
+    public deliverPeer(envelopeId: string): void {
+        const stored = this._session.messages.find(
+            m => m.role === 'peer' && m.peer?.envelopeId === envelopeId
+        );
+        if (!stored || !stored.peer || stored.peerState !== 'pending') {
+            return;
+        }
+        const state = peerStateAfter(stored.peerState, 'deliver') as 'delivered' | 'dismissed';
+        if (!this._session.setPeerState(envelopeId, state)) {
+            return;
+        }
+        this._postMessage({ type: 'peerActionResult', envelopeId, state });
+        const turn = peerTurnBlock({
+            fromProfile: stored.peer.fromProfile,
+            fromHost: stored.peer.fromHost,
+            body: stored.text,
+            history: stored.history,
+        });
+        this._enqueueChatOp(() => this._handleUserMessage(turn));
+    }
+
+    /** Dismiss: the card settles and nothing is sent to any agent. */
+    public dismissPeer(envelopeId: string): void {
+        const state = peerStateAfter('pending', 'dismiss') as 'delivered' | 'dismissed';
+        if (!this._session.setPeerState(envelopeId, state)) {
+            return;
+        }
+        this._postMessage({ type: 'peerActionResult', envelopeId, state });
+    }
+
+    /**
+     * Deliver a whole stack: every pending card, in arrival order, as one turn.
+     *
+     * One turn, not N: they arrived as one queue on screen, and a stack answered with three
+     * separate sends would put three of the user's messages where the user pressed one button.
+     */
+    public deliverAllPeers(): void {
+        const pending = this._pendingPeers();
+        if (!pending.length) {
+            return;
+        }
+        const turn = peerTurnText(
+            pending.map(message => ({
+                fromProfile: message.peer!.fromProfile,
+                fromHost: message.peer!.fromHost,
+                body: message.text,
+                history: message.history,
+            }))
+        );
+        const settled = pending.filter(message => {
+            const id = message.peer!.envelopeId;
+            if (!this._session.setPeerState(id, 'delivered')) {
+                return false;
+            }
+            this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'delivered' });
+            return true;
+        });
+        if (!settled.length) {
+            return;
+        }
+        this._enqueueChatOp(() => this._handleUserMessage(turn));
+    }
+
+    /** Dismiss a whole stack: the same set, settled, and nothing sent. */
+    public dismissAllPeers(): void {
+        for (const message of this._pendingPeers()) {
+            const id = message.peer!.envelopeId;
+            if (!this._session.setPeerState(id, 'dismissed')) {
+                continue;
+            }
+            this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'dismissed' });
+        }
+    }
+
+    private _ownProfile(): string {
+        return this._profiles.displayName || this._profiles.selectionId || '';
+    }
+
+    private _startPaneMail(): void {
+        const host = {
+            profile: () => this._ownProfile(),
+            onPeer: (envelope: PaneMailEnvelope) => this._receivePeer(envelope),
+            setOtherPaneLive: (live: boolean, profile: string) =>
+                this._postMessage({ type: 'setOtherPaneLive', live, profile }),
+            state: this._context.globalState,
+            log: (line: string) => this._log(line),
+        };
+        this._mail = {
+            outbox: new PaneMailOutbox(host),
+            inbox: new PaneMailInbox(host),
+            presence: new PaneMailPresence(host),
+        };
+        this._mail.inbox.start();
+        this._mail.presence.start();
     }
 
     public openSettings(): void {
@@ -983,7 +1237,7 @@ export class App implements vscode.WebviewViewProvider {
         // Cursor: always open Settings UI (JSON editor command often does nothing visible).
         if (preferJsonEditor && !isCursor) {
             await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
-                revealSetting: { key: 'tommys.path', edit: false },
+                revealSetting: { key: setting('path'), edit: false },
             });
             return;
         }
@@ -1002,7 +1256,10 @@ export class App implements vscode.WebviewViewProvider {
         this._connection.dispose();
         this._surfaces.detachView();
         this._historyViewer.dispose();
+        this._mail?.inbox.dispose();
+        this._mail?.presence.dispose();
         this._output.dispose();
+        this._profileChanged.dispose();
     }
 
-}
+}

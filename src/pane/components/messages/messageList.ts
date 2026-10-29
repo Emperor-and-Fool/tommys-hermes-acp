@@ -1,4 +1,5 @@
 import { byId, messagesEl } from '../../dom';
+import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -9,7 +10,7 @@ import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelect
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
-import { cancelSessionMarkdownRender, chatSearchState, getGroupMarkdownText, scheduleSessionMarkdownRender } from './markdown';
+import { cancelSessionMarkdownRender, chatSearchState, getGroupMarkdownText, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
@@ -239,6 +240,9 @@ function buildMessage(role, text, options) {
 }
 
 function buildCard(role, text, options) {
+    if (role === 'peer') {
+        return { card: buildPeerCard(text, options), auxParts: null };
+    }
     if (role === 'history') {
         const history = buildHistoryCard(text, options && options.history);
         return { card: history.div, auxParts: null, historyParts: history };
@@ -251,6 +255,144 @@ function buildCard(role, text, options) {
         return { card: auxParts.div, auxParts: auxParts };
     }
     return { card: buildMessage(role, text, options), auxParts: null };
+}
+
+/**
+ * A forwarded draft: not a turn, not the user's words. It arrives with its sender as a pill, the
+ * body rendered the same way an assistant reply is — markdown, sanitised, with the same policy —
+ * and two decisions. Neither decision is a default: the card sits there until one is made.
+ *
+ * A forwarded session-memory pick also carries its ref, which draws as the attach flow's envelope
+ * card (title, session handle, span, count) above the body. The body is that peer's text either way.
+ */
+function buildPeerCard(text, options) {
+    const peer = (options && options.peer) || null;
+    const state = (options && options.peerState) || 'pending';
+    const card = document.createElement('div');
+    card.className = 'message peer' + (state === 'pending' ? '' : ' is-' + state);
+
+    const label = document.createElement('div');
+    label.className = 'label peer-pill';
+    if (peer && peer.senderRole) label.classList.add('is-' + peer.senderRole);
+    label.textContent = peer
+        ? (locale.peerCardHeader || '{0}@{1}').replace('{0}', peer.fromProfile).replace('{1}', peer.fromHost)
+        : '';
+    card.appendChild(label);
+
+    const ref = options && options.history;
+    if (ref) {
+        const envelope = buildHistoryCard('', ref, false);
+        envelope.div.classList.add('peer-envelope');
+        card.appendChild(envelope.div);
+    }
+
+    const content = document.createElement('div');
+    content.className = 'content';
+    // Built here, not left to the session sweep: a peer card arrives live, and the sweep only runs
+    // after a restore — which is why forwarded markdown used to sit there as literal characters.
+    content.innerHTML = renderMarkdown(text);
+    card.appendChild(content);
+
+    const actions = document.createElement('div');
+    actions.className = 'peer-actions';
+    const deliverBtn = document.createElement('button');
+    deliverBtn.type = 'button';
+    deliverBtn.className = 'button button--primary deliver-btn';
+    deliverBtn.textContent = locale.peerCardDeliver || 'Deliver';
+    deliverBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!peer) return;
+        // One button answers the queue it sits in. A queue of one is a single card, and takes the
+        // single-card path — the same transitions, one envelope instead of a set.
+        post(pendingInStack(card).length > 1
+            ? { type: 'deliverAllPeers' }
+            : { type: 'deliverPeer', envelopeId: peer.envelopeId });
+    });
+    const dismissBtn = document.createElement('button');
+    dismissBtn.type = 'button';
+    dismissBtn.className = 'button dismiss-btn';
+    dismissBtn.textContent = locale.peerCardDismiss || 'Dismiss';
+    dismissBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!peer) return;
+        post(pendingInStack(card).length > 1
+            ? { type: 'dismissAllPeers' }
+            : { type: 'dismissPeer', envelopeId: peer.envelopeId });
+    });
+    actions.appendChild(deliverBtn);
+    actions.appendChild(dismissBtn);
+    card.appendChild(actions);
+
+    const settled = document.createElement('div');
+    settled.className = 'peer-status';
+    settled.textContent = state === 'delivered'
+        ? (locale.peerCardDelivered || 'Delivered to agent')
+        : (locale.peerCardDismissed || 'Dismissed');
+    card.appendChild(settled);
+
+    return card;
+}
+
+/** Deliver or Dismiss came back: settle the card, no re-render. */
+export function applyPeerState(envelopeId, state) {
+    const group = document.querySelector('.message-group.peer[data-envelope-id="' + envelopeId + '"]');
+    if (!group) return;
+    group.dataset.peerState = state;
+    const card = group.querySelector('.message.peer');
+    if (!card) return;
+    card.classList.remove('is-delivered', 'is-dismissed');
+    card.classList.add('is-' + state);
+    const status = card.querySelector('.peer-status');
+    if (status) {
+        status.textContent = state === 'delivered'
+            ? (locale.peerCardDelivered || 'Delivered to agent')
+            : (locale.peerCardDismissed || 'Dismissed');
+    }
+}
+
+/**
+ * Pending peer cards queue into one stack: one rail, one pill per card, one set of decisions on
+ * the last card. A new pending card after a settled one starts a fresh stack, so a delivered
+ * conversation never grows a rail over what came before it.
+ */
+function pendingInStack(card) {
+    const stack = card.closest('.peer-stack');
+    if (!stack) {
+        return [];
+    }
+    return Array.prototype.slice.call(
+        stack.querySelectorAll('.message-group.peer[data-peer-state="pending"]')
+    );
+}
+
+function appendPeerToStack(group) {
+    const last = messagesEl.lastElementChild;
+    // Only a stack that still has a pending card takes another one: a queue that has been
+    // answered is closed, and a new card after it starts its own rail.
+    const stack = last && last.classList.contains('peer-stack')
+        && last.querySelector('.message-group.peer[data-peer-state="pending"]')
+        ? last
+        : null;
+    let target = stack;
+    if (!target) {
+        target = document.createElement('div');
+        target.className = 'peer-stack';
+        // The rail takes the stack's first sender; each card's pill carries its own identity.
+        target.dataset.senderRole = group.dataset.senderRole || 'secondant';
+        messagesEl.appendChild(target);
+    }
+    target.appendChild(group);
+    syncPeerStackDecisions(target);
+}
+
+/** Only the last pending card in a stack offers Deliver/Dismiss. */
+function syncPeerStackDecisions(stack) {
+    const items = Array.prototype.slice.call(stack.querySelectorAll(':scope > .message-group.peer'));
+    items.forEach(function(item, index) {
+        const last = index === items.length - 1;
+        item.classList.toggle('peer-stack-last', last);
+        item.classList.toggle('peer-stack-early', !last);
+    });
 }
 
 function mountMessage(group, built, options) {
@@ -273,8 +415,12 @@ function mountMessage(group, built, options) {
     attachMessageActions(group, stack);
     container.appendChild(stack);
     group.appendChild(container);
-    messagesEl.appendChild(group);
-    if (built.historyParts) {
+    if (role === 'peer' && group.dataset.peerState === 'pending') {
+        appendPeerToStack(group);
+    } else {
+        messagesEl.appendChild(group);
+    }
+    if (built.historyParts && built.historyParts.moreBtn) {
         // Only now does the card have a height to measure: a slice that fits shows no toggle.
         const scrollEl = built.historyParts.scrollEl;
         built.historyParts.moreBtn.hidden = scrollEl.scrollHeight <= scrollEl.clientHeight + 1;
@@ -302,6 +448,16 @@ export function appendMessage(role, text, options?) {
     }
 
     const group = createGroup(role);
+    if (role === 'peer' && options && options.peer) {
+        group.dataset.envelopeId = options.peer.envelopeId;
+        group.dataset.senderRole = options.peer.senderRole || 'secondant';
+        group.dataset.peerState = options.peerState || 'pending';
+    }
+    // Forwarding a history card should hand the other pane the ref, not a paragraph that
+    // describes it: the group keeps it so the forward button can send the structured payload.
+    if (role === 'history' && options && options.history) {
+        group._historyRef = options.history;
+    }
     const built = buildCard(role, text, options);
     if (built.auxParts === null) {
         group._rawText = text;
@@ -430,6 +586,8 @@ export function restoreHistory(messages, localHistoryOnly) {
                     images: m.images,
                     history: m.history,
                     steer: m.steer === true,
+                    peer: m.peer,
+                    peerState: m.peerState,
                 });
             }
         }

@@ -13,6 +13,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 
 /** What the host supplies: the pane and the log. Nothing else is needed. */
@@ -43,7 +44,7 @@ export class WorkspaceFiles {
             return folders.some(f => p.startsWith(f.uri.fsPath));
         }
         // No workspace: restrict to cwd
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const configCwd = config.get<string>('cwd');
         const cwd = configCwd || process.cwd();
         return p.startsWith(cwd);

@@ -21,4 +21,5 @@ packaging/**
 .vscode-test/**
 package-lock.json
 *.vsix
+!secondant/tommys-hermes-secondant.vsix
 *.old

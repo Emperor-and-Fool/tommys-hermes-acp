@@ -11,9 +11,12 @@
  */
 import * as vscode from 'vscode';
 import type { HostToPane } from '../../shared/webview';
+import { identity, settingsSection } from '../../shared/extensionId';
 
 /** Webview panel id; the serializer re-creates it after a window reload. */
-export const CHAT_PANEL_VIEW_TYPE = 'tommys.chatPanel';
+export function chatPanelViewType(): string {
+    return identity().chatPanelType;
+}
 
 /**
  * Which renderer of the pane this webview is. `viewer` never enters the surface list: it is the
@@ -88,7 +91,7 @@ export class Surfaces {
     }
 
     readMode(): 'sidebar' | 'editor' {
-        return vscode.workspace.getConfiguration('tommys').get<string>('chatSurface') === 'editor'
+        return vscode.workspace.getConfiguration(settingsSection()).get<string>('chatSurface') === 'editor'
             ? 'editor'
             : 'sidebar';
     }
@@ -151,7 +154,12 @@ export class Surfaces {
 
     postRole(surface: ChatSurface): void {
         // The panel is the conversation only: the rail already lists the chats.
-        void surface.webview.postMessage({ type: 'surfaceRole', role: surface.role, hideTabs: !!surface.panel });
+        void surface.webview.postMessage({
+            type: 'surfaceRole',
+            role: surface.role,
+            hideTabs: !!surface.panel,
+            bodyRole: identity().role,
+        });
     }
 
     postTo(surface: ChatSurface, msg: HostToPane): void {
@@ -172,7 +180,9 @@ export class Surfaces {
     private setMode(mode: 'sidebar' | 'editor'): void {
         this._mode = mode;
         this._host.log(`Chat surface: ${mode}`);
-        void vscode.workspace.getConfiguration('tommys').update('chatSurface', mode, vscode.ConfigurationTarget.Global);
+        void vscode.workspace
+            .getConfiguration(settingsSection())
+            .update('chatSurface', mode, vscode.ConfigurationTarget.Global);
         for (const surface of this._list) {
             if (surface.view) {
                 surface.role = mode === 'editor' ? 'rail' : 'chat';
@@ -195,7 +205,7 @@ export class Surfaces {
             return;
         }
         const panel = vscode.window.createWebviewPanel(
-            CHAT_PANEL_VIEW_TYPE,
+            chatPanelViewType(),
             this._host.activeTabTitle(),
             vscode.ViewColumn.One,
             {

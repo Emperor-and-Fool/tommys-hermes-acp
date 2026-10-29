@@ -119,6 +119,8 @@ export interface LocaleStrings {
     statusReady: string;
     statusThinking: string;
     statusThinkingProvider: string;
+    /** The loading block's counter: `{0}` content chunks received while the replay streams. */
+    loadingMessageChunks: string;
     statusError: string;
     connectionLostRetrying: string;
     retry: string;
@@ -229,6 +231,17 @@ export interface LocaleStrings {
     insertMenu: string;
     noActiveEditor: string;
     selectMessages: string;
+    /** "Forward to {0}" where {0} is the other pane's profile. */
+    forwardToOtherPane: string;
+    /** "{0}@{1}", the left half of the attribution header. */
+    forwardedFromHeader: string;
+    otherPaneNotLive: string;
+    peerCardDeliver: string;
+    peerCardDismiss: string;
+    peerCardDelivered: string;
+    peerCardDismissed: string;
+    /** "{0}@{1}": the sender line on a peer card. */
+    peerCardHeader: string;
     multiSelectAll: string;
     multiSelectDeselectAll: string;
     multiSelectDelete: string;
@@ -280,7 +293,12 @@ export interface LocaleStrings {
     /** The pick button: "{0} ticked of {1}". */
     historyAttachCount: string;
     historyViewerCancel: string;
-    historyViewerUnavailable: string;
+    /** The viewer while its transcript is being fetched (no chunk counter: an export is one call). */
+    historyViewerLoading: string;
+    /** The viewer's fetch returned nothing: an answer, not a failure. */
+    historyViewerEmpty: string;
+    /** The viewer's fetch failed. `{0}` is not used; the reason stays in the tooltip and the log. */
+    historyViewerFetchFailed: string;
     /** The role filter on the history attach bar. */
     historyRoleUser: string;
     historyRoleAssistant: string;

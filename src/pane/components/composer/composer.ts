@@ -360,7 +360,7 @@ export function initClearInputBtnClick(): void {
             inputEl.value = '';
             syncInputHeightFromContent();
             updateQuickActionBtns();
-            updateStopButtonState();
+                    updateStopButtonState();
             inputEl.focus();
         });
     }

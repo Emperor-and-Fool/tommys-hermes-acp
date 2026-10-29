@@ -628,6 +628,28 @@ body {
 }
 
 /* Toolbar */
+/* The secondant is a second agent: an orange rule along the top says which one you are in.
+   Declared before the toolbar rule itself so nothing here has to out-specify it later. */
+body[data-role="secondant"] #toolbar {
+    border-top: 3px solid #e67e22;
+}
+
+/* The primary's counterpart: the same rule in blue, on the editor tab only. An editor panel now
+   says which agent owns it at a glance, and the side bar stays exactly as it was. */
+body[data-role="primary"].surface-notabs #toolbar {
+    border-top: 3px solid #5b83cc;
+}
+
+/* ...and the mark itself, before the status dot: a colour at the edge is easy to miss, a whale
+   in the first pixel the eye lands on is not. */
+body[data-role="secondant"] #toolbar::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    background: url("data:image/svg+xml,<svg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2024%2024%27><path%20fill=%27%23e67e22%27%20fill-rule=%27evenodd%27%20d=%27M21%2012.3%20C21%209.8%2017.7%208%2013.6%208%20C10.3%208%207.6%209.2%206.4%2011.2%20C4.9%209.9%203.2%209.1%201.7%208.9%20C1%208.8%200.5%209.6%201%2010.2%20C2.1%2011.8%203.2%2013.6%203.8%2015.4%20C4.4%2017.2%208.4%2018.1%2012.6%2018.1%20C17.4%2018.1%2021%2015.6%2021%2012.3%20Z%20M16.6%2012.9%20A0.9%200.9%200%201%200%2014.8%2012.9%20A0.9%200.9%200%201%200%2016.6%2012.9%20Z%27/></svg>") center / contain no-repeat;
+}
+
 #toolbar {
     padding: 6px 8px;
     flex-wrap: wrap;
@@ -706,6 +728,25 @@ body {
 }
 .detect-env-bar[hidden] {
     display: none !important;
+}
+
+/* The second agent's cue, a second time and where the eye actually is: a thin row under the
+   toolbar with the same orange whale as the activity bar. Hidden for the primary by default —
+   the markup is shared, the row is not. */
+.secondant-badge-row {
+    display: none;
+    flex: 0 0 auto;
+    justify-content: center;
+    align-items: center;
+    padding: 2px;
+}
+body[data-role="secondant"] .secondant-badge-row {
+    display: flex;
+}
+.secondant-badge-icon {
+    width: 32px;
+    height: 32px;
+    display: block;
 }
 .detect-env-bar-panel {
     display: flex;
@@ -1697,6 +1738,84 @@ body.surface-notabs #tab-bar {
     align-self: stretch;
     max-width: 100%;
 }
+/* A forwarded draft from the sibling pane: a bubble like the assistant's, with the sender's
+   accent down the left edge. Which accent is a data attribute, so one block covers both. */
+.message-group.peer > .message-container {
+    align-self: flex-start;
+    max-width: 98%;
+}
+.message-group.peer[data-sender-role="primary"] {
+    --peer-accent: #5b83cc;
+}
+.message-group.peer[data-sender-role="secondant"] {
+    --peer-accent: #e67e22;
+}
+.message.peer {
+    border-left: 3px solid var(--peer-accent, var(--primary));
+}
+/* The sender, as a pill: tinted, small, and in that sender's accent. The rail carries the colour
+   for a single card; the pill carries it for every card in a mixed stack. */
+.message.peer .peer-pill {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--peer-accent, var(--primary)) 18%, transparent);
+    color: color-mix(in srgb, var(--peer-accent, var(--primary)) 72%, var(--fg));
+}
+.message.peer .content {
+    margin-top: 4px;
+}
+/* A pending stack: one continuous rail, the cards inside without their own, and the decisions only
+   on the last card — one button answers the whole queue it belongs to. */
+.peer-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 3px solid var(--peer-accent, var(--primary));
+    padding-left: 8px;
+}
+.peer-stack[data-sender-role="primary"] {
+    --peer-accent: #5b83cc;
+}
+.peer-stack[data-sender-role="secondant"] {
+    --peer-accent: #e67e22;
+}
+.peer-stack .message.peer {
+    border-left: none;
+    padding-left: 0;
+}
+.peer-stack .message-group.peer-stack-early .peer-actions {
+    display: none;
+}
+.message.peer .peer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.message.peer .peer-status {
+    display: none;
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+.message.peer.is-delivered .peer-actions,
+.message.peer.is-dismissed .peer-actions {
+    display: none;
+}
+.message.peer.is-delivered .peer-status,
+.message.peer.is-dismissed .peer-status {
+    display: block;
+}
+.message.peer.is-dismissed .content {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
 
 /* The stack: card above its action bar, in every mode. */
 .message-stack {
@@ -1813,6 +1932,20 @@ body.surface-notabs #tab-bar {
     color: color-mix(in srgb, var(--primary) 75%, var(--dim));
 }
 .message-actions .select-btn.action-btn:hover {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--text-block));
+}
+
+/* Forward: the same button language as select, and only while the other pane is running —
+   a button that always fails is worse than no button. */
+.message-actions .forward-btn.action-btn {
+    display: none;
+    color: color-mix(in srgb, var(--primary) 60%, var(--dim));
+}
+body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
+    display: inline-flex;
+}
+.message-actions .forward-btn.action-btn:hover {
     color: var(--primary);
     background: color-mix(in srgb, var(--primary) 12%, var(--text-block));
 }
@@ -2052,6 +2185,81 @@ body.surface-notabs #tab-bar {
     font-style: italic;
     font-size: 12px;
     line-height: 1.8;
+}
+
+/* The loading state, in place of the placeholder: the identity's icon, the status, and a chunk
+   counter that climbs while the replay streams. No denominator: Hermes' message_count counts
+   rows the pane never renders (empty-content tool carriers), so "n of m" would misreport a
+   finished load as incomplete. */
+.loading-block {
+    /* Over the message area, not inside it: `resetChatView` rewrites #messages.innerHTML and would
+       take the block with it. Absolute inside `.chat-body`, which is already position: relative. */
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--dim);
+    background: var(--bg);
+}
+.loading-block[hidden] {
+    display: none;
+}
+.loading-icon {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    animation: loading-pulse 1.6s ease-in-out infinite;
+}
+.loading-title {
+    color: var(--fg);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.loading-count {
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
+    font-size: 12px;
+    /* Tabular numerals: the counter must not jitter as the digits change. */
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    opacity: 0.85;
+}
+@keyframes loading-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(0.96); }
+    50% { opacity: 1; transform: scale(1.04); }
+}
+/*
+ * The icon is a progress indicator, not decoration: its motion is the only thing saying "still
+ * working" while a load is in flight. Under reduced motion it keeps breathing, but opacity only,
+ * slower, and without the scale — a small scale pulse is the part a vestibular-sensitive user
+ * feels. Nothing enforces this media feature (MDN: it is a query the page reads, not a switch the
+ * engine throws), so this rule is what decides.
+ */
+@keyframes loading-breathe {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+/*
+ * The secondant's mark is hairline art: at the same opacity swing the full-colour whale reads as
+ * breathing and the outline barely flickers. Same motion, deeper floor.
+ */
+@keyframes loading-breathe-line {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .loading-icon {
+        animation: loading-breathe 2.4s ease-in-out infinite;
+    }
+    body[data-role='secondant'] .loading-icon {
+        animation-name: loading-breathe-line;
+    }
 }
 
 /* Input area */

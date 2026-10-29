@@ -9,18 +9,47 @@ import { profileDisplayName } from '../pickers/profilePicker';
 export const TOKEN_RING_RADIUS = 11;
 
 const statusDot = byId('statusDot');
+const loadingBlock = byId('loadingBlock');
+const loadingTitle = byId('loadingTitle');
+const loadingCount = byId('loadingCount');
 
-function setConnectingPlaceholder() {
-    if (!state.placeholder) return;
-    state.placeholder.className = 'placeholder';
-    state.placeholder.textContent = '';
-    state.placeholder.appendChild(document.createTextNode(locale.connectingTitle || ''));
-    state.placeholder.appendChild(document.createElement('br'));
-    const hint = document.createElement('span');
-    hint.style.fontSize = '11px';
-    hint.style.opacity = '0.6';
-    hint.textContent = locale.connectingHint || '';
-    state.placeholder.appendChild(hint);
+/**
+ * The loading state: the identity's icon, a heading, and (in the conversation) a chunk counter.
+ * A count to show, never a gate on a load — and no denominator, because Hermes' `message_count`
+ * counts rows the pane never renders.
+ *
+ * `counter: false` is the history viewer's case: an export is one call, not a stream.
+ */
+export function showLoadingBlock(options?: { title?: string; counter?: boolean }) {
+    if (!loadingBlock) return;
+    const wasHidden = loadingBlock.hidden;
+    const withCounter = options?.counter !== false;
+    loadingBlock.hidden = false;
+    const title = options?.title || state.currentStatusMessage || locale.statusConnecting;
+    if (loadingTitle) loadingTitle.textContent = title;
+    if (loadingCount) {
+        loadingCount.hidden = !withCounter;
+        if (withCounter && wasHidden) {
+            // A fresh load starts at zero; a later status message must not wipe a count mid-replay.
+            loadingCount.textContent = localeText('loadingMessageChunks', '0');
+        }
+    }
+    // The block replaces the italic placeholder for as long as the wait lasts.
+    if (state.placeholder) state.placeholder.style.display = 'none';
+}
+
+/** One chunk arrived: the count is the only thing that changes. */
+export function updateLoadProgress(received) {
+    if (state.currentStatus !== 'connecting') return;
+    showLoadingBlock();
+    if (loadingCount) loadingCount.textContent = localeText('loadingMessageChunks', String(received));
+}
+
+/** Put the pane back on its placeholder: the block belongs to a wait, not to a state. */
+export function hideLoadingBlock() {
+    if (!loadingBlock || loadingBlock.hidden) return;
+    loadingBlock.hidden = true;
+    if (state.placeholder) state.placeholder.style.display = '';
 }
 
 function updateConnectionActionVisibility(status) {
@@ -79,6 +108,7 @@ function syncEmptyState() {
     if (el) el.textContent = emptyStateText();
 }
 
+/** The status line, the dot, and the pane's empty state — one entry point for all three. */
 export function updateStatus(status, message) {
     statusDot.className = 'dot ' + status;
     const labels = {
@@ -109,6 +139,12 @@ export function updateStatus(status, message) {
     statusText.title = message && !vendorOverride ? message : text;
     state.currentStatus = status;
     state.currentStatusMessage = message || '';
+    // Every state but connecting belongs to the placeholder, not the loading block.
+    if (status === 'connecting') {
+        showLoadingBlock();
+    } else {
+        hideLoadingBlock();
+    }
     syncEmptyState();
     updateRetryVisibility(status);
 }

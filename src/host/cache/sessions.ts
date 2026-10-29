@@ -1,12 +1,10 @@
-import * as fs from 'fs';
-import type { ChatMessage, HistoryRef, SessionInfo, StoredImageRef } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
+import { PendingUserStore } from './pendingUsers';
 import {
-    backfillAgentEngaged,
-    markAgentEngaged,
     normalizePinnedOrder,
     pinSession,
     registerSession,
@@ -33,9 +31,16 @@ export class Sessions {
     activeId: string = '';
     messages: ChatMessage[] = [];
     tabs: SessionInfo[] = [];
+    /**
+     * Hermes' catalog as last read. In memory only: the count lives here, where it is as fresh
+     * as the last read, and never in `sessions.json`, where it would outlive its source.
+     */
+    catalogRows: CatalogSession[] = [];
     hiddenSessions: CatalogSession[] = [];
     scopeKey: string;
     store: SessionStore;
+    /** Last few user turns: the one state Hermes cannot hold for us. */
+    pendingUsers: PendingUserStore;
 
     constructor(
         private readonly historyDir: string,
@@ -44,14 +49,14 @@ export class Sessions {
     ) {
         this.scopeKey = scopeKey;
         this.store = new SessionStore(this.historyDir, this.scopeKey);
+        this.pendingUsers = new PendingUserStore(this.historyDir);
     }
 
-    /** Load the catalog, restore the active id, register it, then load its transcript. */
+    /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
         this.activeId = this.restoreActive();
         this.ensureRegistered();
-        this.loadHistory();
     }
 
     private restoreActive(): string {
@@ -66,26 +71,11 @@ export class Sessions {
         this.store.writeActiveId(this.activeId);
     }
 
-    msgPath(sid: string): string {
-        return this.store.msgPath(sid);
-    }
-
-    loadHistory(): void {
-        const messages = this.store.readMessages(this.activeId);
-        if (messages.length) {
-            this.messages = messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            this.host.log(`Loaded ${this.messages.length} messages from history`);
-            return;
-        }
-        this.messages = [];
-    }
-
     saveCurrent(): void {
         const firstUser = this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
         const existing = this.tabs.find(s => s.id === this.activeId);
         if (existing) {
             existing.updatedAt = Date.now();
-            existing.messageCount = this.messages.length;
             // Hermes owns the title of any session it knows about: the catalog supplies it,
             // and this cache must not overwrite it with the first user message (which here is
             // usually the injected memory preamble). Only a purely local chat, which Hermes
@@ -99,7 +89,6 @@ export class Sessions {
                 title: firstUser || t('newChat'),
                 createdAt: parseInt(this.activeId, 36) || Date.now(),
                 updatedAt: Date.now(),
-                messageCount: this.messages.length,
             });
         }
         try {
@@ -115,7 +104,6 @@ export class Sessions {
         const next = registerSession(this.tabs, {
             id: this.activeId,
             title: firstUser || t('newChat'),
-            messageCount: this.messages.length,
         });
         if (next === this.tabs) {
             return;
@@ -153,36 +141,11 @@ export class Sessions {
 
     private loadCatalog(): void {
         this.tabs = this.store.readCatalog();
-        for (const session of this.tabs) {
-            this.backfillEngaged(session);
-        }
         this.normalizePinned();
     }
 
     private normalizePinned(): void {
         this.tabs = normalizePinnedOrder(this.tabs);
-    }
-
-    private backfillEngaged(session: SessionInfo): void {
-        if (session.agentEngaged !== undefined) {
-            return;
-        }
-        try {
-            // The transcript is the only evidence of whether the agent ever answered here.
-            backfillAgentEngaged(session, this.store.readMessages(session.id));
-        } catch {
-            session.agentEngaged = false;
-        }
-    }
-
-    markEngaged(): void {
-        if (!markAgentEngaged(this.tabs, this.activeId)) {
-            return;
-        }
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
-        this.postList();
     }
 
     /**
@@ -194,11 +157,12 @@ export class Sessions {
      * dashboard appears without any adoption step.
      */
     applyCatalog(rows: CatalogSession[]): void {
+        this.catalogRows = rows;
         const result = applyCatalogRows({
             previous: this.tabs,
             rows,
             activeId: this.activeId,
-            activeHasMessages: this.messages.length > 0,
+            activeLinked: this.activeIsLinked(),
         });
         if (result.activeChanged) {
             // The tab the pane showed is gone from the catalog, so it points at the newest.
@@ -214,6 +178,26 @@ export class Sessions {
         this.postHidden();
     }
 
+    /**
+     * The link, proven from the source: this tab is bound to a Hermes id, and Hermes lists it.
+     *
+     * The one predicate that replaces "does the local copy have content". A tab with no binding
+     * is new; a tab whose id no longer appears in the catalog points at a session that is gone.
+     * Neither is a fact about any message, so neither can go stale behind the transcript's back.
+     */
+    activeIsLinked(): boolean {
+        const record = this.tabs.find(s => s.id === this.activeId);
+        return !!record?.hermesSessionId && !!this.catalogRow(record.hermesSessionId);
+    }
+
+    /** The catalog's row for a Hermes session: where the count is read from. */
+    catalogRow(hermesSessionId: string | undefined): CatalogSession | undefined {
+        if (!hermesSessionId) {
+            return undefined;
+        }
+        return this.catalogRows.find(row => row.sessionId === hermesSessionId);
+    }
+
     bindProfileScope(scopeKey: string): void {
         if (scopeKey === this.scopeKey) {
             return;
@@ -225,12 +209,11 @@ export class Sessions {
         this.loadCatalog();
         this.activeId = this.restoreActive();
         this.messages = [];
-        this.loadHistory();
         this.ensureRegistered();
         this.postList();
     }
 
-    /** Point the pane at another tab: save the old one, load the new one's transcript. */
+    /** Point the pane at another tab: save the old one, and let the replay fill the new one. */
     activate(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
         this.host.log(`Switch to session: ${sessionId}`);
         if (!options?.skipSaveCurrent) {
@@ -238,29 +221,55 @@ export class Sessions {
         }
         this.activeId = sessionId;
         this.messages = [];
-        this.loadHistory();
         this.host.post({ type: 'newChat' });
         this.postList();
-    }
-
-    // NOTE: duplicates store.readMessages + sort — left in place deliberately (see Part A notes).
-    private loadFromDisk(sessionId: string): ChatMessage[] {
-        try {
-            const p = this.msgPath(sessionId);
-            if (!fs.existsSync(p)) {
-                return [];
-            }
-            const messages: ChatMessage[] = JSON.parse(fs.readFileSync(p, 'utf-8'));
-            return messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        } catch {
-            return [];
-        }
     }
 
     /** A steer is a user message the run has already taken: kept for the transcript, marked. */
     saveSteerMessage(text: string): void {
         this.messages.push({ role: 'user', text, timestamp: Date.now(), steer: true });
         this.persistMessages();
+    }
+
+    /** A forwarded draft: stored like any message, with who sent it and where it stands. */
+    savePeerMessage(envelope: {
+        id: string;
+        fromProfile: string;
+        fromHost: string;
+        sourceMessageId?: string;
+        senderRole?: 'primary' | 'secondant';
+    }, text: string, history?: HistoryRef): void {
+        const record: ChatMessage = {
+            role: 'peer',
+            text,
+            timestamp: Date.now(),
+            peer: {
+                envelopeId: envelope.id,
+                fromProfile: envelope.fromProfile,
+                fromHost: envelope.fromHost,
+                sourceMessageId: envelope.sourceMessageId,
+                senderRole: envelope.senderRole,
+            },
+            peerState: 'pending',
+        };
+        // The envelope a session-memory pick arrived with: kept so the card can redraw it after a
+        // reload, and so delivering it can tell the agent which conversation the text came from.
+        if (history) {
+            record.history = history;
+        }
+        this.messages.push(record);
+        this.persistMessages();
+    }
+
+    /** Deliver or Dismiss: the first decision stands, and it survives a reload. */
+    setPeerState(envelopeId: string, state: PeerState): boolean {
+        const stored = this.messages.find(m => m.role === 'peer' && m.peer?.envelopeId === envelopeId);
+        if (!stored || stored.peerState === state || stored.peerState !== 'pending') {
+            return false;
+        }
+        stored.peerState = state;
+        this.persistMessages();
+        return true;
     }
 
     saveMessage(role: string, text: string, toolCallId?: string, imageRefs?: StoredImageRef[], history?: HistoryRef): void {
@@ -323,10 +332,15 @@ export class Sessions {
         });
     }
 
-    persistMessages(): void {
-        if (this.store.writeMessages(this.activeId, this.messages)) {
-            this.saveCurrent();
+    /**
+     * The only write left: the user's own message, kept until a replay confirms it arrived.
+     * Nothing else is persisted — assistant, thought and tool rows are Hermes'.
+     */
+    persistMessages(role?: string, text?: string): void {
+        if (role === 'user' && typeof text === 'string') {
+            this.pendingUsers.append(this.activeId, text);
         }
+        this.saveCurrent();
     }
 
     private permissionBodyText(title?: string, detail?: string): string {
@@ -433,9 +447,12 @@ export class Sessions {
         if (!session) {
             return;
         }
-        let messages = sessionId === this.activeId
-            ? this.messages
-            : this.loadFromDisk(sessionId);
+        if (sessionId !== this.activeId) {
+            // Only the tab on screen has a transcript in hand; Hermes owns the rest.
+            this.host.log(`Export: ${sessionId} is not the open tab; nothing local to export`);
+            return;
+        }
+        let messages = this.messages;
         if (Array.isArray(indices) && indices.length > 0) {
             const pick = new Set(
                 indices.filter((index): index is number => typeof index === 'number' && index >= 0)

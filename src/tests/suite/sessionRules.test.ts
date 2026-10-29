@@ -1,50 +1,28 @@
 import * as assert from 'assert';
 import {
-    backfillAgentEngaged,
     hermesSessionIdFor,
-    markAgentEngaged,
     normalizePinnedOrder,
     pinSession,
     registerSession,
     reorderSessions,
 } from '../../host/tabs/tabs';
-import type { ChatMessage, SessionInfo } from '../../shared/chat';
+import type { SessionInfo } from '../../shared/chat';
 
 const session = (id: string, over: Partial<SessionInfo> = {}): SessionInfo => ({
     id,
     title: id,
     createdAt: 1,
     updatedAt: 1,
-    messageCount: 0,
     ...over,
 });
-
-const message = (role: string): ChatMessage => ({ role, text: 'x', timestamp: 1 });
 
 describe('session rules', () => {
     it('registers a tab once, at the front', () => {
         const sessions = [session('a')];
-        const added = registerSession(sessions, { id: 'b', title: 'New chat', messageCount: 0, now: 50 });
+        const added = registerSession(sessions, { id: 'b', title: 'New chat', now: 50 });
         assert.deepStrictEqual(added.map(s => s.id), ['b', 'a']);
-        assert.strictEqual(registerSession(added, { id: 'b', title: 'ignored', messageCount: 9 }), added);
-    });
-
-    it('marks the agent engaged only once', () => {
-        const sessions = [session('a')];
-        assert.strictEqual(markAgentEngaged(sessions, 'a', 99), true);
-        assert.strictEqual(sessions[0].agentEngaged, true);
-        assert.strictEqual(sessions[0].updatedAt, 99);
-        assert.strictEqual(markAgentEngaged(sessions, 'a'), false, 'the second call has nothing to persist');
-        assert.strictEqual(markAgentEngaged(sessions, 'missing'), false);
-    });
-
-    it('backfills from the transcript, and answers false when there is none', () => {
-        const answered = backfillAgentEngaged(session('a'), [message('user'), message('assistant')]);
-        assert.strictEqual(answered.agentEngaged, true);
-        assert.strictEqual(backfillAgentEngaged(session('b'), [message('user')]).agentEngaged, false);
-        assert.strictEqual(backfillAgentEngaged(session('c'), null).agentEngaged, false);
-        const already = backfillAgentEngaged(session('d', { agentEngaged: true }), [message('user')]);
-        assert.strictEqual(already.agentEngaged, true);
+        assert.strictEqual(registerSession(added, { id: 'b', title: 'ignored' }), added);
+        assert.deepStrictEqual(Object.keys(added[0]).sort(), ['createdAt', 'id', 'title', 'updatedAt'], 'ids and titles only');
     });
 
     it('keeps pinned tabs in front when normalising', () => {

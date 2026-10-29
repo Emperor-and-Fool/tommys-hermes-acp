@@ -14,11 +14,15 @@ function formatSpan(from?: number, to?: number): string {
  * It borrows the tool/thought card's classes rather than inventing a look: header label, collapsible
  * body with the same toggles. The meta line says how much came across and, when the lookup found
  * them, the real session handle and span; otherwise the quote the agent can search for.
+ *
+ * `withBody: false` draws the header and meta only. A forwarded peer message uses that: the
+ * envelope says *which* conversation the text came from, and the text below it is that peer's own
+ * body, rendered as markdown rather than the attach flow's plain quoted lines.
  */
 /** 5 lines at the aux line-height of 1.35em, the same cap a thought card takes. */
 const COLLAPSED_MAX_HEIGHT = '6.75em';
 
-export function buildHistoryCard(text: string, ref?: HistoryRef) {
+export function buildHistoryCard(text: string, ref?: HistoryRef, withBody = true) {
     const div = document.createElement('div');
     div.className = 'message history';
 
@@ -49,6 +53,10 @@ export function buildHistoryCard(text: string, ref?: HistoryRef) {
 
     const wrap = document.createElement('div');
     wrap.className = 'aux-body-wrap';
+    if (!withBody) {
+        // Envelope only: the caller supplies the text as its own body.
+        return { div, scrollEl: wrap, moreBtn: null };
+    }
 
     const scrollEl = document.createElement('div');
     scrollEl.className = 'aux-body-scroll is-collapsed';

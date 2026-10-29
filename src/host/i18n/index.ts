@@ -2,6 +2,7 @@ import { en } from './locales/en';
 import { zhCn } from './locales/zh-cn';
 import { formatLocaleString } from './format';
 import { LocaleKey, LocaleStrings, SupportedLocale } from '../../shared/i18n';
+import { identity } from '../../shared/extensionId';
 
 const LOCALES: Record<SupportedLocale, LocaleStrings> = {
     en,
@@ -30,9 +31,28 @@ export function resolveLocale(language?: string): SupportedLocale {
     return resolveLocaleFromLanguage(vscode.env.language);
 }
 
+/**
+ * The strings name settings by their real key — `tommys.path`, `tommys.models`. The secondant's
+ * keys are its own, so its copy of the strings is rewritten once, on load, rather than kept as a
+ * second translation. The primary's strings are used exactly as written: no prefix, no rewrite.
+ */
+function withIdentityPrefix(locale: LocaleStrings): LocaleStrings {
+    if (identity().prefix === 'tommys') {
+        return locale;
+    }
+    const prefix = identity().prefix;
+    const rewrite = (text: string): string => text.replace(/\btommys\./g, `${prefix}.`);
+    const copy = {} as LocaleStrings;
+    for (const [key, value] of Object.entries(locale)) {
+        (copy as unknown as Record<string, unknown>)[key] =
+            typeof value === 'string' ? rewrite(value) : value;
+    }
+    return copy;
+}
+
 export function initI18n(language?: string): SupportedLocale {
     currentLocale = resolveLocale(language);
-    strings = LOCALES[currentLocale];
+    strings = withIdentityPrefix(LOCALES[currentLocale]);
     return currentLocale;
 }
 

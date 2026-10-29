@@ -6,7 +6,9 @@ import { offerUndeliveredMessage } from './components/composer/replyQuote';
 import { closeConfigureEnvModal, finishConfigureEnvDetect, hideConfigureEnvDetectProgress, openConfigureEnvModal, setConfigureEnvDetecting, showConfigureEnvDetectPanel, updateConfigureEnvDetectProgress, updateConfigureEnvPathClearVisibility } from './components/environment/configureModal';
 import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvIcon, updateDetectEnvironmentStep } from './components/environment/detectPanel';
 import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
-import { insertIntoInput } from './components/messages/messageActions';
+import { applyOtherPaneProfile, insertIntoInput } from './components/messages/messageActions';
+import { applyPeerState } from './components/messages/messageList';
+import { post } from './post';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
 import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
@@ -17,11 +19,11 @@ import { isLogModalOpen, openLogModal, showModal } from './components/modals/mod
 import { clearSwitchQueued } from './components/modals/switchSession';
 import { renderClosedList } from './components/pickers/closedSessions';
 import { renderModelList } from './components/pickers/modelPicker';
-import { renderProfileList } from './components/pickers/profilePicker';
-import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateStatus } from './components/status/statusBar';
+import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
+import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
-import { afterHistoryRestored, applyViewerSurfaceRole } from './components/viewer/historyViewer';
+import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
 import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
@@ -39,6 +41,10 @@ export function init(): void {
                     // The card belongs above the question it was attached to, which is where the
                     // stored transcript puts it; appending would read differently after a reload.
                     insertBeforeLastUser('history', msg.text, { history: msg.history });
+                    break;
+                }
+                if (msg.role === 'peer') {
+                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history });
                     break;
                 }
                 if (msg.role === 'assistant') {
@@ -68,6 +74,13 @@ export function init(): void {
                 } else {
                     appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
+                break;
+
+            case 'loadProgress':
+                if (!isMessageForActiveSession(msg)) {
+                    break;
+                }
+                updateLoadProgress(msg.received);
                 break;
 
             case 'status':
@@ -146,6 +159,21 @@ export function init(): void {
                 }
                 document.body.classList.toggle('surface-rail', msg.role === 'rail');
                 document.body.classList.toggle('surface-notabs', !!msg.hideTabs);
+                if (msg.bodyRole) {
+                    document.body.dataset.role = msg.bodyRole;
+                }
+                break;
+
+            case 'peerActionResult':
+                applyPeerState(msg.envelopeId, msg.state);
+                break;
+
+            case 'setOtherPaneLive':
+                applyOtherPaneProfile(msg.profile, msg.live);
+                break;
+
+            case 'openProfilePicker':
+                openProfilePicker();
                 break;
 
             case 'focusComposer':
@@ -164,6 +192,14 @@ export function init(): void {
             case 'restoreHistory':
                 restoreHistory(msg.messages, msg.localHistoryOnly);
                 afterHistoryRestored(msg.messages, msg.sessionId);
+                break;
+
+            case 'historyFetchEmpty':
+                showViewerEmpty();
+                break;
+
+            case 'historyFetchFailed':
+                showViewerFetchFailed(msg.reason);
                 break;
 
             case 'detectEnvironmentStart':

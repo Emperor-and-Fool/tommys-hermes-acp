@@ -1,5 +1,6 @@
 import { byId, inputEl } from '../../dom';
 import { post } from '../../post';
+import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';
 import { escapeHtml } from '../../util/html';
 import { syncInputHeightFromContent, updateQuickActionBtns } from '../composer/composer';
@@ -9,6 +10,12 @@ import { COPY_ICON_SVG, getGroupMarkdownText } from './markdown';
 
 
 const SELECT_ICON_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M2 2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2zm0 4.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V7zm0 4.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2z"/><path d="M3.15 4.85l.7-.7 1 1 2-2 .7.7-2.7 2.7-1.7-1.7z"/><path d="M3.15 9.35l.7-.7 1 1 2-2 .7.7-2.7 2.7-1.7-1.7z"/><path d="M7.5 3h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1 0-1zm0 4.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1 0-1zm0 4.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1 0-1z"/></svg>';
+
+/** Arrow leaving a box: "this goes somewhere else", not "copy" and not "select". */
+const FORWARD_ICON_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M8.5 2v6.3l-1.9-1.9-.7.7 2.6 2.6.1.1.1-.1 2.6-2.6-.7-.7-1.9 1.9V2h-1z"/><path d="M3 9v3.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V9h-1v3H4V9H3z"/><path d="M6 4H3.5a.5.5 0 0 0-.5.5V7h1V5h2V4z"/></svg>';
+
+/** The other pane's profile, as last heard from the host. Empty when it is not running. */
+let otherPaneProfile = '';
 
 const CHEVRON_DOWN_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 6 8 9.5 11.5 6l.7.7L8 10.9l-4.2-4.2.7-.7z"/></svg>';
 
@@ -37,6 +44,36 @@ export function attachMessageActions(group, inner) {
     });
     actions.appendChild(copyBtn);
 
+    const forwardBtn = document.createElement('button');
+    forwardBtn.type = 'button';
+    forwardBtn.className = 'forward-btn action-btn';
+    forwardBtn.title = forwardTitle();
+    forwardBtn.innerHTML = FORWARD_ICON_SVG;
+    forwardBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const text = getGroupMarkdownText(group).trim();
+        if (!text) return;
+        // In the read-only viewer the host owns the transcript, so the click names the message by
+        // index and the host attaches the session ref itself — the same card, envelope included,
+        // as forwarding from the live conversation.
+        if (document.body.classList.contains('is-viewer') && state.viewerSessionId) {
+            const index = Number(group.dataset && group.dataset.sessionIndex);
+            if (Number.isInteger(index) && index >= 0) {
+                post({ type: 'historyForwarded', sessionId: state.viewerSessionId, indices: [index] });
+                return;
+            }
+        }
+        post({
+            type: 'forwardMessage',
+            text: text,
+            sourceMessageId: group.dataset && group.dataset.messageId ? group.dataset.messageId : undefined,
+            // A session-memory card forwards its ref: the other pane draws the envelope from it
+            // instead of reading a description of itself.
+            history: group._historyRef || undefined
+        });
+    });
+    actions.appendChild(forwardBtn);
+
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'select-btn action-btn';
@@ -49,6 +86,23 @@ export function attachMessageActions(group, inner) {
     actions.appendChild(selectBtn);
 
     inner.appendChild(actions);
+}
+
+/** Set by the router when the other pane appears or goes away. */
+export function applyOtherPaneProfile(profile: string, live: boolean): void {
+    otherPaneProfile = live ? profile : '';
+    document.body.dataset.otherPaneLive = live ? 'true' : 'false';
+    const title = forwardTitle();
+    document.querySelectorAll('.message-actions .forward-btn').forEach(function(btn) {
+        (btn as HTMLElement).title = title;
+    });
+}
+
+function forwardTitle(): string {
+    if (!otherPaneProfile) {
+        return locale.otherPaneNotLive;
+    }
+    return (locale.forwardToOtherPane || 'Forward to {0}').replace('{0}', otherPaneProfile);
 }
 
 function attachCopyButton(group) {

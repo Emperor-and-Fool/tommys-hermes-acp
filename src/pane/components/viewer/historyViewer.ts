@@ -2,31 +2,69 @@
 import { historyRoleReload, multiSelectAttachConfirmBtn, multiSelectExitBtn } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
+import { hideLoadingBlock, showLoadingBlock } from '../status/statusBar';
 import { enterMultiSelectMode, getSelectedMessageIndices } from '../multiSelect';
 
 /** The session this tab is showing, as the host named it; it comes back with the ticks. */
 let viewerSessionId = '';
 
-/** `surfaceRole` with role 'viewer': this page is the viewer, not a chat surface. */
+/**
+ * `surfaceRole` with role 'viewer': this page is the viewer, not a chat surface.
+ *
+ * The transcript is fetched from Hermes, so the first thing the panel shows is the same loading
+ * block the conversation uses — not a sentence about a local copy that no longer exists.
+ */
 export function applyViewerSurfaceRole(): void {
     document.body.classList.add('is-viewer');
+    showLoadingBlock({ title: locale.historyViewerLoading || 'Loading conversation…', counter: false });
 }
 
 /**
  * The transcript arrived. The viewer's only interaction is ticking messages for a history attach,
- * so multi-select starts as soon as there is something to show. An empty local copy says so in
- * one line and still offers Cancel.
+ * so multi-select starts as soon as there is something to show.
+ *
+ * An empty list here means "not yet": the host sends the transcript on `ready`, which happens
+ * before the fetch has had a chance to answer. Calling that "nothing to show" was the lie.
  */
 export function afterHistoryRestored(messages: any[], sessionId?: string): void {
     if (!document.body.classList.contains('is-viewer')) {
         return;
     }
     viewerSessionId = sessionId || '';
+    // The per-message forward button asks the host for this session's slice by index.
+    state.viewerSessionId = viewerSessionId;
     if (!messages || messages.length === 0) {
-        state.placeholder.style.display = 'block';
-        state.placeholder.textContent = locale.historyViewerUnavailable || 'Not available locally.';
+        return;
     }
+    hideLoadingBlock();
     enterMultiSelectMode(null, 'historyPick');
+}
+
+/** Hermes has the session and sent nothing: an answer, not a failure. */
+export function showViewerEmpty(): void {
+    if (!document.body.classList.contains('is-viewer')) {
+        return;
+    }
+    hideLoadingBlock();
+    if (state.placeholder) {
+        state.placeholder.style.display = 'block';
+        state.placeholder.textContent = locale.historyViewerEmpty || 'This conversation has no messages.';
+    }
+}
+
+/** The fetch itself failed; `reason` goes on the tooltip, the host log keeps the detail. */
+export function showViewerFetchFailed(reason?: string): void {
+    if (!document.body.classList.contains('is-viewer')) {
+        return;
+    }
+    hideLoadingBlock();
+    if (state.placeholder) {
+        state.placeholder.style.display = 'block';
+        state.placeholder.textContent = locale.historyViewerFetchFailed || 'Could not read this conversation from Hermes.';
+        if (reason) {
+            state.placeholder.title = reason;
+        }
+    }
 }
 
 /** The viewer's own page, rather than a chat surface that happens to be in multi-select. */

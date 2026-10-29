@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
@@ -31,6 +32,8 @@ export interface ProfilesHost {
     log(line: string): void;
     post(msg: HostToPane): void;
     globalState: vscode.Memento;
+    /** The profile the picker must not offer: the primary's, when this is the secondant. */
+    excludedProfile?: () => string | undefined;
 }
 
 /**
@@ -71,7 +74,7 @@ export class Profiles {
     }
 
     resolveTarget(selectionId?: string): ConnectionTarget {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const configPath = config.get<string>('path') || undefined;
         const configCwd = config.get<string>('cwd') || undefined;
         const configProfile = config.get<string>('profile') || undefined;
@@ -121,7 +124,7 @@ export class Profiles {
             return;
         }
         this.discovery = (async () => {
-            const config = vscode.workspace.getConfiguration('tommys');
+            const config = vscode.workspace.getConfiguration(settingsSection());
             const hermesPath = config.get<string>('path') || undefined;
             try {
                 this.discovered = await discoverHermesProfiles(hermesPath);
@@ -140,18 +143,20 @@ export class Profiles {
 
     entries(): ProfileListEntry[] {
         const agents = this.readAgentConfigs();
-        if (agents.length > 0) {
-            return agents.map(a => ({ id: a.name, label: a.name }));
-        }
-        const profiles = this.discovered ?? ['default'];
-        return profiles.map(p => ({
-            id: p,
-            label: this.labelFor(p),
-        }));
+        const list: ProfileListEntry[] = agents.length > 0
+            ? agents.map(a => ({ id: a.name, label: a.name }))
+            : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
+
+        // The secondant may not offer the profile the primary is on: it is not a preference,
+        // it is the rule the two extensions live by.
+        const excluded = this._host.excludedProfile?.();
+        return excluded
+            ? list.filter(entry => entry.id !== excluded && entry.label !== excluded)
+            : list;
     }
 
     readAgentConfigs(): HermesAgentConfig[] {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const raw = config.get<unknown>('agents');
         if (!Array.isArray(raw)) {
             return [];

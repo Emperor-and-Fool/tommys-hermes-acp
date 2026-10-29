@@ -56,6 +56,14 @@ export function blockMessageLines(ref: HistoryRef, messages: ChatMessage[]): str
 }
 
 /**
+ * A picked slice as the body of a forwarded card: the same per-message lines, spaced apart.
+ * The card above it draws the envelope from the ref, so the body does not repeat the header.
+ */
+export function historySliceBody(ref: HistoryRef, messages: ChatMessage[]): string {
+    return blockMessageLines(ref, messages).join('\n\n');
+}
+
+/**
  * The block the composer sends in front of the prompt.
  *
  * Not an embedded resource: Hermes advertises image support only. The Session line is the handle

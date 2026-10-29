@@ -11,8 +11,8 @@ import type {
  * Merge Hermes' catalog into the local index.
  *
  * Hermes owns the sessions; this index only remembers what it cannot know: which local tab
- * belongs to which session, and the view flags the user set (pin, model snapshot, cwd). Ten of
- * these fields are carried forward from the previous record, which is why the merge is a
+ * belongs to which session, and the view flags the user set (pin, model snapshot, cwd). Every
+ * other field is carried forward from the previous record, which is why the merge is a
  * function rather than a loop buried in the panel: it can be read, and it can be tested.
  */
 export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<T>): ApplyCatalogResult<T> {
@@ -38,20 +38,20 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
             title: row.title || prior?.title || row.sessionId.slice(0, 8),
             createdAt: prior?.createdAt ?? (row.updatedAt || now),
             updatedAt: row.updatedAt || prior?.updatedAt || now,
-            messageCount: row.messageCount ?? prior?.messageCount ?? 0,
             pinned: prior?.pinned,
             modelId: prior?.modelId,
             modelLabel: prior?.modelLabel,
-            agentEngaged: prior?.agentEngaged ?? (row.messageCount ?? 0) > 0,
             hermesSessionId: row.sessionId,
             cwd: row.cwd ?? prior?.cwd,
         });
     }
 
     // A session created moments ago has no messages, so the catalog does not list it yet;
-    // keep the tab the user is sitting in until its first turn lands.
+    // keep the tab the user is sitting in until it is bound to a session the catalog knows.
+    // A linked tab Hermes still lists but does not hand back as an open row (it was closed
+    // elsewhere) is not kept: the catalog is the authority on what is open.
     const current = previousById.get(input.activeId);
-    if (current && !input.activeHasMessages && !sessions.some(record => record.id === input.activeId)) {
+    if (current && !input.activeLinked && !sessions.some(record => record.id === input.activeId)) {
         sessions.unshift(current);
     }
 

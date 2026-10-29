@@ -10,11 +10,11 @@
  * The flag guards one thing the whole file shares — a load the user asked for must not repaint
  * over a pending turn.
  */
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 import type { AcpClient, CatalogSession, ReplayMessage } from '../acp/AcpClient';
 import type { AttachmentStore } from '../cache/attachments';
 import { renameSession } from '../cache/catalog';
+import { countsTowardMessageCount, replayCountDiffers } from '../acp/replayProgress';
 import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
@@ -40,13 +40,11 @@ export interface TabLifecycleHost {
     saveCatalog(): boolean;
     saveCurrent(): void;
     ensureRegistered(): void;
-    msgPath(id: string): string;
     postSessionList(): void;
     /** Restate the active tab's staged history pick in the pane (or that it has none). */
     postHistoryState(tabId: string): void;
     /** Forget one tab's staged pick: the tab is gone. */
     dropHistoryStage(tabId: string): void;
-    loadHistory(): void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
     workspaceState: vscode.Memento;
 }
@@ -97,17 +95,23 @@ export class TabLifecycle {
             return;
         }
         await this.syncFromHermes(cwd);
-        const tabBound = this._host.session.tabs.find(rec => rec.id === this._host.session.activeId)?.hermesSessionId;
+        const session = this._host.session;
+        const tabBound = session.tabs.find(rec => rec.id === session.activeId)?.hermesSessionId;
         const target = tabBound || this._persistedHermesSessionId;
-        // First run / empty tab: open the most recent Hermes session rather than
+        // The catalog row is the link's proof: the id is bound, and Hermes still lists it.
+        // A pointer at a session Hermes no longer lists is not a link, and a load would only fail.
+        const row = session.catalogRow(target);
+        if (target && !row) {
+            this._host.log(`Tab points at ${target}, which this profile no longer lists; not resuming`);
+        }
+        // First run / unlinked tab: open the most recent Hermes session rather than
         // leaving the throwaway session `session/new` just created in front of the
         // user. This is what makes existing conversations reappear as tabs.
-        if (!target && this._host.session.messages.length === 0) {
-            const newest = this._host.session.tabs.find(rec => !!rec.hermesSessionId);
+        if (!target && !session.activeIsLinked()) {
+            const newest = session.tabs.find(rec => !!rec.hermesSessionId && !!session.catalogRow(rec.hermesSessionId));
             if (newest?.hermesSessionId) {
-                this._host.session.activeId = newest.id;
-                this._host.session.messages = [];
-                this._host.loadHistory();
+                session.activeId = newest.id;
+                session.messages = [];
                 this._host.post({ type: 'newChat' });
                 this._renderReplayOnLoad = true;
                 try {
@@ -121,8 +125,8 @@ export class TabLifecycle {
                 return;
             }
         }
-        if (target && target !== acp.activeSessionId) {
-            const targetCwd = this._host.session.tabs.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
+        if (target && row && target !== acp.activeSessionId) {
+            const targetCwd = session.tabs.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
             try {
                 this._renderReplayOnLoad = true;
                 try {
@@ -175,7 +179,23 @@ export class TabLifecycle {
         }
         // A send that died between the pane and the agent leaves a user message in the local
         // mirror that Hermes never received. Read it before the replay overwrites the file.
-        const undelivered = findUndelivered(lastUserMessageText(this._host.session.store.readMessages(localId)), messages);
+        const pending = this._host.session.pendingUsers.read(localId);
+        const undelivered = findUndelivered(lastUserMessageText(pending.map(user => ({ role: 'user', text: user.text, timestamp: user.savedAt }))), messages);
+        // Whatever the replay contains has arrived: keep only what it does not.
+        this._host.session.pendingUsers.retain(
+            localId,
+            pending.map(user => user.text).filter(text => findUndelivered(text, messages) !== null)
+        );
+        // More rows than Hermes counts means the two disagree. The pending user turns explain a
+        // little of it; beyond that it is a signal worth a line rather than something to hide.
+        const countedRows = replay.filter(row => countsTowardMessageCount(row.role)).length;
+        const sourceCount = this._host.session.catalogRow(hermesSessionId)?.messageCount ?? 0;
+        if (replayCountDiffers(countedRows, sourceCount, pending.length)) {
+            this._host.log(
+                `Replay for ${localId} carried ${countedRows} row(s) against the catalog's ${sourceCount} — ` +
+                    `Hermes' count and its replay disagree`
+            );
+        }
         // The replay is text-only, so refs are restored from the attachment sidecar: the agent's
         // sequence carries thought and tool records and rewrites this file, so neither position
         // nor the file itself can be trusted to still hold them.
@@ -189,14 +209,6 @@ export class TabLifecycle {
                 }
             }
         } catch { /* the transcript still restores, without the pictures */ }
-        this._host.session.store.writeReplayedMessages(localId, messages);
-        if (record) {
-            record.messageCount = messages.length;
-            record.agentEngaged = true;
-            try {
-                this._host.saveCatalog();
-            } catch { /* non-critical */ }
-        }
         this._host.log(`Replayed ${messages.length} messages for session ${localId}`);
         if (!this._renderReplayOnLoad || this._host.session.activeId !== localId) {
             // Cached only: the user is either elsewhere or mid-send in this tab.
@@ -261,7 +273,6 @@ export class TabLifecycle {
         this._host.saveCurrent();
         this._host.session.messages = [];
         this._host.session.activeId = Date.now().toString(36);
-        try { fs.unlinkSync(this._host.msgPath(this._host.session.activeId)); } catch { /* ignore */ }
         this._host.ensureRegistered();
         this._host.snapshotModelFromProfile();
         this._host.post({ type: 'newChat' });

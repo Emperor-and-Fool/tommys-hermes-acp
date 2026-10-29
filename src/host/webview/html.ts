@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
 import type { LocaleStrings } from '../../shared/i18n';
+import { identity } from '../../shared/extensionId';
 
 /** Everything the page needs as inputs; nothing here reads the provider or the vscode API. */
 export interface WebviewHtmlInput {
@@ -31,7 +32,15 @@ export function highlightSheetFor(themeKind: number): string {
 }
 
 /**
- * Build the webview document: `media/chat.html` with its eight placeholder slots filled.
+ * The artwork each identity loads while connecting: the secondant is orange by definition, the
+ * primary gets the full-colour art. One file per role, both resolved through the same slot.
+ */
+function loadingIconFor(role: 'primary' | 'secondant'): string {
+    return role === 'secondant' ? 'icon_orange.svg' : 'icon_fullcolor.png';
+}
+
+/**
+ * Build the webview document: `media/chat.html` with its placeholder slots filled.
  * Pure apart from reading that file.
  */
 export function buildWebviewHtml(input: WebviewHtmlInput): string {
@@ -41,7 +50,9 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
     if (!uri) {
         return html
             .replace('{{LOCALE_JSON}}', '{}')
-            .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
+            .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER)
+            .replace('{{SECONDANT_ICON_URI}}', '')
+            .replace('{{LOADING_ICON_URI}}', '');
     }
 
     // A rebuilt file must get a new URL: the webview caches what it loads, and a stable
@@ -64,6 +75,8 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
         .replace('{{PURIFY_URI}}', versioned('vendor/purify.min.js'))
         .replace('{{CHAT_CSS_URI}}', versioned('chat.css'))
         .replace('{{CHAT_JS_URI}}', versioned('pane.js'))
+        .replace('{{SECONDANT_ICON_URI}}', versioned('icon_orange.svg'))
+        .replace('{{LOADING_ICON_URI}}', versioned(loadingIconFor(identity().role)))
         .replace('{{LOCALE_JSON}}', JSON.stringify(input.locale).replace(/</g, '\\u003c'))
         .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
 }

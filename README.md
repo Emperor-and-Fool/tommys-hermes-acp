@@ -27,10 +27,9 @@ realising it is heading the wrong way and getting it back on track.
 
 With a turn in flight, type into the composer and **Stop becomes Steer**. Your words go
 into the turn — not as a new question, not as cancel-and-retry — as guidance the agent
-folds into what it is already doing. The transcript marks it with an orange **Steer** tag
-that survives reload. The turn keeps its identity, its tool calls, its context.
+folds into what it is already doing. The transcript marks it with an orange **Steer** tag. The turn keeps its identity, its tool calls, its context.
 
-It is the one workflow difference you will feel every day.
+It is a workflow difference you will feel every day.
 
 > **Roadmap:** time-limited auto-approve while a steered turn runs, so you can say
 > "go ahead with the next three" without clicking a card for each one.
@@ -142,6 +141,7 @@ The composer's `Aa` pill sets the transcript font size (10–28 px) and remember
 | No reply on the first message | Normal — Hermes may load plugins on the first turn |
 | Model not listed | Add entries under `tommys.models` |
 | An activity-bar icon is missing after an upgrade | Hide, then show the container from the activity-bar context menu |
+| Need to see what Hermes sends over ACP | Launch the editor with `HERMES_ACP_TRACE=1`; each `session/update` goes to the OutputChannel and to `~/.hermes/pane-mail/trace-<profile>.ndjson` |
 
 ## Known issues
 

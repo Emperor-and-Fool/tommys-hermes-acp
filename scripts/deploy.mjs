@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Compile, then copy the build into the extension copy VSCodium actually loads.
+ * Compile, then copy the build into every extension copy VSCodium actually loads.
  *
  * The installed directory is a third artefact: it does not follow the repo, and it does
  * not follow the VSIX either. Missing any of the three groups below fails silently —
@@ -8,21 +8,25 @@
  * longer registers, and a stale `media/` leaves the webview running the previous UI while
  * the log says nothing. Copy all of them, then prove each file landed.
  *
+ * There can be two installed copies: the primary and the secondant. Which ones exist is read
+ * from the extensions folder itself — a scan, not a signal from either extension, so a copy
+ * someone installed by hand is served as well. Each gets the files its own identity declares:
+ * the primary's manifest for the primary, the retagged one from `packaging/secondant/` for the
+ * secondant, and the secondant's own icon in its `media/`.
+ *
  *   npm run deploy
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
 const repo = path.resolve(import.meta.dirname, '..');
+const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
-
-// VSCodium lowercases the publisher in the folder name.
-const folder = `${pkg.publisher.toLowerCase()}.${pkg.name}-${pkg.version}`;
-const target = path.join(homedir(), '.vscode-oss', 'extensions', folder);
 
 // Clean build first. tsc never deletes the output of a file that moved or went away, so a
 // stale .js left in out/ would be copied and kept — the exact failure the prune below exists
@@ -45,23 +49,6 @@ if (pane.status !== 0) {
 
 const dryRun = process.argv.includes('--dry-run');
 
-if (!existsSync(target)) {
-    if (dryRun) {
-        console.log(`deploy: (dry run) would target ${target}, which does not exist yet`);
-    } else {
-        console.error(`deploy: ${target} does not exist.`);
-        console.error('Install that version once first: codium --install-extension ./' + folder + '.vsix --force');
-        process.exit(1);
-    }
-}
-
-/** Every file the extension host or the webview reads at runtime. */
-const files = [
-    'package.json',
-    'package.nls.json',
-    'package.nls.zh-cn.json',
-];
-
 function walk(rel, out = []) {
     const abs = path.join(repo, rel);
     if (!existsSync(abs)) return out;
@@ -73,94 +60,202 @@ function walk(rel, out = []) {
     return out;
 }
 
-// out/ is compiled; skip the test harness, which is noise in the diff.
-for (const rel of walk('out')) {
-    if (rel.startsWith(path.join('out', 'tests'))) continue;
-    files.push(rel);
+/** Folders VS Code actually has registered; a folder missing here is loaded from stale metadata. */
+function registeredFolders() {
+    const file = path.join(extensionsDir, 'extensions.json');
+    if (!existsSync(file)) return new Set();
+    try {
+        const entries = JSON.parse(readFileSync(file, 'utf8'));
+        return new Set(
+            entries
+                .map(entry => entry?.location?.path || (typeof entry?.location === 'string' ? entry.location : ''))
+                .filter(Boolean)
+                .map(dir => path.resolve(dir))
+        );
+    } catch {
+        return new Set();
+    }
 }
-// media/ is copied whole, so the installed copy mirrors it and can be swept like out/.
-for (const rel of walk('media')) files.push(rel);
+
+/** Installed copies, by folder — VSCodium lowercases the publisher in the directory name. */
+const extensionsDir = path.join(homedir(), '.vscode-oss', 'extensions');
+function installed(prefix) {
+    if (!existsSync(extensionsDir)) return [];
+    return readdirSync(extensionsDir)
+        .filter(name => name.toLowerCase().startsWith(prefix.toLowerCase()))
+        .map(name => path.join(extensionsDir, name))
+        .filter(dir => statSync(dir).isDirectory());
+}
+
+const publisher = pkg.publisher.toLowerCase();
+const primaryDirs = installed(`${publisher}.${pkg.name}-`);
+const secondantDirs = installed(`${publisher}.tommys-hermes-secondant-`);
+
+const { PRIMARY } = require(path.join(repo, 'out', 'shared', 'extensionId.js'));
+
+// out/ is compiled; skip the test harness, which is noise in the diff. The secondant's icon is
+// packaging, not media, and it only belongs in the secondant's copy.
+const shared = [
+    ...walk('out').filter(rel => !rel.startsWith(path.join('out', 'tests'))),
+    ...walk('media').filter(rel => rel !== path.join('media', 'activitybar-secondant.svg')),
+];
+const bundledSecondant = walk('secondant');
+const secondantPackaging = path.join('packaging', 'secondant');
+
+/** dest (relative to the installed copy) -> absolute source. */
+function planFor(role) {
+    const plan = new Map(shared.map(rel => [rel, path.join(repo, rel)]));
+    if (role === 'primary') {
+        plan.set('package.json', path.join(repo, 'package.json'));
+        plan.set('package.nls.json', path.join(repo, 'package.nls.json'));
+        plan.set('package.nls.zh-cn.json', path.join(repo, 'package.nls.zh-cn.json'));
+        // secondant/ carries the secondant's own VSIX so "Install secondant" works from a
+        // deploy too, not only from a packaged build.
+        for (const rel of bundledSecondant) plan.set(rel, path.join(repo, rel));
+        return plan;
+    }
+    plan.set('package.json', path.join(repo, secondantPackaging, 'package.json'));
+    plan.set('package.nls.json', path.join(repo, secondantPackaging, 'package.nls.en.json'));
+    plan.set('package.nls.zh-cn.json', path.join(repo, secondantPackaging, 'package.nls.zh-cn.json'));
+    plan.set(
+        path.join('media', 'activitybar-secondant.svg'),
+        path.join(repo, secondantPackaging, 'activitybar-secondant.svg')
+    );
+    return plan;
+}
 
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
-let copied = 0;
-const mismatched = [];
 
-// The copy is additive, so a moved or deleted source leaves its old compiled twin behind — a
-// stale module in out/ is the same silent failure this script exists to prevent. Anything the
-// repo no longer compiles comes out of the installed copy, and empty directories with it.
-//
-// out/ and media/ are swept: both are copied whole, so whatever the installed copy holds
-// beyond them is a leftover — a retired script, a renamed stylesheet.
-const wanted = new Set(files);
-const pruned = [];
-function prune(relDir) {
-    const abs = path.join(target, relDir);
-    if (!existsSync(abs)) return;
-    for (const entry of readdirSync(abs)) {
-        const rel = path.join(relDir, entry);
-        const absEntry = path.join(target, rel);
-        if (statSync(absEntry).isDirectory()) {
-            prune(rel);
-            if (readdirSync(absEntry).length === 0) rmdirSync(absEntry);
-        } else if (!wanted.has(rel)) {
-            unlinkSync(absEntry);
-            pruned.push(rel);
-        }
-    }
-}
-
-if (dryRun) {
-    const present = files.filter((rel) => existsSync(path.join(repo, rel)));
-    const stale = [];
-    for (const root of ['out', 'media']) {
-        const sweep = (relDir) => {
-            const abs = path.join(target, relDir);
-            if (!existsSync(abs)) return;
-            for (const entry of readdirSync(abs)) {
-                const rel = path.join(relDir, entry);
-                const absEntry = path.join(target, rel);
-                if (statSync(absEntry).isDirectory()) sweep(rel);
-                else if (!wanted.has(rel)) stale.push(rel);
+/**
+ * The copy is additive, so a moved or deleted source leaves its old compiled twin behind — a
+ * stale module in out/ is the same silent failure this script exists to prevent. Anything the
+ * repo no longer compiles comes out of the installed copy, and empty directories with it.
+ */
+function pruneTarget(target, wanted, roots) {
+    const pruned = [];
+    const sweep = (relDir) => {
+        const abs = path.join(target, relDir);
+        if (!existsSync(abs)) return;
+        for (const entry of readdirSync(abs)) {
+            const rel = path.join(relDir, entry);
+            const absEntry = path.join(target, rel);
+            if (statSync(absEntry).isDirectory()) {
+                sweep(rel);
+                if (readdirSync(absEntry).length === 0) rmdirSync(absEntry);
+            } else if (!wanted.has(rel)) {
+                unlinkSync(absEntry);
+                pruned.push(rel);
             }
-        };
-        sweep(root);
+        }
+    };
+    for (const root of roots) sweep(root);
+    return pruned;
+}
+
+/** The manifest must name a file that exists, and the view the host registers. */
+function checkTarget(target, role) {
+    const manifest = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
+    const viewIds = Object.values(manifest.contributes?.views ?? {}).flat().map(v => v.id);
+    const identity = role === 'primary' ? PRIMARY : require(path.join(repo, 'out', 'shared', 'extensionId.js')).SECONDANT;
+    const entryFile = (manifest.main || '').replace(/^\.\//, '');
+    const entryExists = !!entryFile && existsSync(path.join(target, entryFile));
+    const registersChat = readFileSync(path.join(target, 'out', 'host', 'activate.js'), 'utf8')
+        .includes('registerWebviewViewProvider(id.chatViewId');
+    const manifestMatches = viewIds.includes(identity.chatViewId);
+    const registered = registeredFolders().has(path.resolve(target));
+    const entryMatches = entryFile === (role === 'primary' ? 'out/host/extension.js' : 'out/host/extensionSecondant.js');
+
+    console.log(
+        `deploy: [${role}] ${path.basename(target)} — view '${identity.chatViewId}' ` +
+            `(declared: ${manifestMatches}, registered: ${registersChat}); ` +
+            `entry ${manifest.main || '(none)'} (present: ${entryExists}, expected: ${entryMatches})`
+    );
+    if (!manifestMatches || !registersChat || !entryExists || !entryMatches) {
+        console.error(`deploy: [${role}] manifest and host build disagree — this copy will not run`);
+        return false;
     }
-    console.log(`deploy: (dry run) ${present.length} files would be copied to ${target}`);
-    console.log(`deploy: (dry run) ${stale.length} stale files would be pruned${stale.length ? ': ' + stale.slice(0, 5).join(', ') + (stale.length > 5 ? ', …' : '') : ''}`);
-    process.exit(0);
+    if (!registered) {
+        console.error(
+            `deploy: [${role}] this folder is NOT in extensions.json — VS Code is running it from ` +
+                'stale metadata, so nothing copied here will show. Reinstall it from its VSIX.'
+        );
+        return false;
+    }
+    return true;
 }
 
-for (const rel of files) {
-    const from = path.join(repo, rel);
-    const to = path.join(target, rel);
-    if (!existsSync(from)) continue;
-    mkdirSync(path.dirname(to), { recursive: true });
-    copyFileSync(from, to);
-    copied += 1;
-    if (sha(from) !== sha(to)) mismatched.push(rel);
-}
+const targets = [
+    ...primaryDirs.map(dir => ({ role: 'primary', dir, roots: ['out', 'media', 'secondant'] })),
+    ...secondantDirs.map(dir => ({ role: 'secondant', dir, roots: ['out', 'media'] })),
+];
 
-for (const root of ['out', 'media']) prune(root);
-
-// The installed manifest must declare the views the JS registers.
-const installedPkg = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
-const views = Object.values(installedPkg.contributes?.views ?? {}).flat();
-const viewIds = views.map((v) => v.id);
-const chatView = 'tommysChat';
-// The view is registered in extension.ts, not in the provider.
-const entry = readFileSync(path.join(target, 'out', 'host', 'extension.js'), 'utf8');
-const registersChat = entry.includes(`registerWebviewViewProvider('${chatView}'`);
-
-console.log(`deploy: ${copied} files -> ${target}`);
-console.log(`deploy: pruned ${pruned.length} stale file(s)${pruned.length ? ': ' + pruned.slice(0, 5).join(', ') + (pruned.length > 5 ? `, … ${pruned.length - 5} more` : '') : ''}`);
-if (mismatched.length) {
-    console.error('deploy: these did not land byte-identical:\n  ' + mismatched.join('\n  '));
+if (targets.length === 0) {
+    console.error(`deploy: no installed copy found under ${extensionsDir}`);
+    console.error(`Install once first: codium --install-extension ./${pkg.name}-${pkg.version}.vsix --force`);
     process.exit(1);
 }
-console.log(`deploy: verified ${copied}/${files.length} files by sha256`);
-console.log(`deploy: manifest declares views [${viewIds.join(', ')}]; host registers '${chatView}': ${registersChat}`);
-if (viewIds.length === 0 || !registersChat) {
-    console.error('deploy: manifest and host build disagree about the view — the pane will not resolve');
+if (secondantDirs.length === 0) {
+    console.log('deploy: secondant not installed (scanned the extensions folder); only the primary will be updated');
+}
+
+let failures = 0;
+
+for (const { role, dir, roots } of targets) {
+    const plan = planFor(role);
+    const wanted = new Set(plan.keys());
+    console.log(`deploy: [${role}] ${plan.size} files -> ${dir}`);
+
+    if (dryRun) {
+        const stale = [];
+        for (const root of roots) {
+            const sweep = (relDir) => {
+                const abs = path.join(dir, relDir);
+                if (!existsSync(abs)) return;
+                for (const entry of readdirSync(abs)) {
+                    const rel = path.join(relDir, entry);
+                    const absEntry = path.join(dir, rel);
+                    if (statSync(absEntry).isDirectory()) sweep(rel);
+                    else if (!wanted.has(rel)) stale.push(rel);
+                }
+            };
+            sweep(root);
+        }
+        console.log(`deploy: [${role}] (dry run) ${stale.length} stale file(s) would be pruned`);
+        continue;
+    }
+
+    let copied = 0;
+    const mismatched = [];
+    for (const [rel, from] of plan) {
+        const to = path.join(dir, rel);
+        if (!existsSync(from)) continue;
+        mkdirSync(path.dirname(to), { recursive: true });
+        copyFileSync(from, to);
+        copied += 1;
+        if (sha(from) !== sha(to)) mismatched.push(rel);
+    }
+
+    const pruned = pruneTarget(dir, wanted, roots);
+    console.log(
+        `deploy: [${role}] verified ${copied}/${plan.size} files by sha256; ` +
+            `pruned ${pruned.length} stale file(s)` +
+            (pruned.length
+                ? ': ' + pruned.slice(0, 5).join(', ') + (pruned.length > 5 ? `, … ${pruned.length - 5} more` : '')
+                : '')
+    );
+    if (mismatched.length) {
+        console.error(`deploy: [${role}] these did not land byte-identical:\n  ` + mismatched.join('\n  '));
+        failures += 1;
+        continue;
+    }
+    if (!checkTarget(dir, role)) {
+        failures += 1;
+    }
+}
+
+if (failures > 0) {
     process.exit(1);
 }
-console.log('deploy: reload the window (Developer: Reload Window) to run it.');
+if (!dryRun) {
+    console.log('deploy: reload the window (Developer: Reload Window) to run it.');
+}

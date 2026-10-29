@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { t } from '../i18n';
+import { identity, setting, settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import {
     detectStepLabel,
@@ -74,8 +75,8 @@ export class EnvironmentDetection {
 
     private _setDetectContext(inProgress: boolean, reportAvailable: boolean): void {
         this._detectInProgress = inProgress;
-        void vscode.commands.executeCommand('setContext', 'tommysDetectInProgress', inProgress);
-        void vscode.commands.executeCommand('setContext', 'tommysDetectReportAvailable', reportAvailable);
+        void vscode.commands.executeCommand('setContext', `${identity().prefix}DetectInProgress`, inProgress);
+        void vscode.commands.executeCommand('setContext', `${identity().prefix}DetectReportAvailable`, reportAvailable);
     }
 
     dismiss(): void {
@@ -199,7 +200,7 @@ export class EnvironmentDetection {
             return;
         }
         this._host.log('Environment detection requested');
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const configuredPath = config.get<string>('path') || undefined;
         const report = await this.runWithUi(configuredPath, 'manual');
 
@@ -220,7 +221,7 @@ export class EnvironmentDetection {
         if (this._detectInProgress) {
             return;
         }
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         const systemEnv = this._getSystemPathEnvInfo();
         this._host.post({
             type: 'configureEnvironmentOpen',
@@ -410,7 +411,7 @@ export class EnvironmentDetection {
         if (!this.pickBestExecutable(report)) {
             return false;
         }
-        const workspaceConfig = vscode.workspace.getConfiguration('tommys');
+        const workspaceConfig = vscode.workspace.getConfiguration(settingsSection());
         const configuredPath = workspaceConfig.get<string>('path')?.trim();
         const pluginConfigValid = !!configuredPath && report.executables.some(
             (item) => item.source === 'config' && item.verified,
@@ -501,9 +502,9 @@ export class EnvironmentDetection {
         executable: string,
         options?: { notify?: boolean },
     ): Promise<void> {
-        const config = vscode.workspace.getConfiguration('tommys');
+        const config = vscode.workspace.getConfiguration(settingsSection());
         await config.update('path', executable, vscode.ConfigurationTarget.Global);
-        this._host.log(`Configured tommys.path: ${executable}`);
+        this._host.log(`Configured ${setting('path')}: ${executable}`);
         if (options?.notify !== false) {
             void vscode.window.showInformationMessage(t('detectEnvironmentPluginConfigured', executable));
         }

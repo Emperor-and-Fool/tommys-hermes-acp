@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { setting } from '../../shared/extensionId';
 
 export function resolveDefaultHermesHome(): string {
     const fromEnv = process.env.HERMES_HOME?.trim();
@@ -127,7 +128,7 @@ export function hermesNotFoundMessage(): string {
         return (
             'Hermes not found. Install:\n' +
             '  iex (irm https://hermes-agent.nousresearch.com/install.ps1)\n\n' +
-            `Or set tommys.path in Settings (e.g. ${example})`
+            `Or set ${setting('path')} in Settings (e.g. ${example})`
         );
     }
     return (

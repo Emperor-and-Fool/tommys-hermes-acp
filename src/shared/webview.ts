@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, HistoryRef, SessionInfo } from './chat';
+import type { ChatMessage, HistoryRef, PeerRef, PeerState, SessionInfo } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -17,12 +17,18 @@ import type { LocaleStrings } from './i18n';
 /** Host → pane: every message the extension posts, in the same one place. */
 export type HostToPane =
     // Chrome: which renderer, locale, settings, identity.
-    | { type: 'surfaceRole'; role: 'chat' | 'rail' | 'viewer'; hideTabs: boolean }
+    | { type: 'surfaceRole'; role: 'chat' | 'rail' | 'viewer'; hideTabs: boolean; bodyRole?: 'primary' | 'secondant' }
     | { type: 'setLocale'; locale: LocaleStrings }
     | { type: 'config'; showThoughts: boolean; showToolCalls: boolean }
     | { type: 'pluginInfo'; displayName: string; version: string; publisher: string; description?: string; repository?: string; iconUri?: string }
     | { type: 'activeAgent'; name: string }
     | { type: 'profileList'; profiles: Array<{ id: string; label: string }> }
+    /** The other pane's presence changed: its profile, or nothing when it is gone. */
+    | { type: 'setOtherPaneLive'; live: boolean; profile: string }
+    /** The answer to Deliver or Dismiss: the card settles into this state. */
+    | { type: 'peerActionResult'; envelopeId: string; state: 'delivered' | 'dismissed' }
+    /** The profile this pane had is gone: open the dropdown so another can be picked. */
+    | { type: 'openProfilePicker' }
     | { type: 'log'; line: string; level: string }
     | { type: 'openAbout' }
     | { type: 'openHelp' }
@@ -32,10 +38,12 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
+    | { type: 'loadProgress'; received: number; sessionId?: string }
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
-    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
     | { type: 'insertInput'; text: string }
@@ -60,6 +68,10 @@ export type HostToPane =
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
     | { type: 'historyCleared' }
+    /** The viewer's fetch finished with nothing to show: Hermes returned no messages. */
+    | { type: 'historyFetchEmpty' }
+    /** The viewer's fetch failed; `reason` is for the tooltip and the log, not the sentence. */
+    | { type: 'historyFetchFailed'; reason?: string }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironmentStart'; mode: 'connect' | 'manual' | 'configure' }
@@ -126,6 +138,15 @@ export type PaneToHost =
     | { type: 'switchModel'; configId: string; valueId: string }
     | { type: 'getModels' }
     | { type: 'getProfiles' }
+    /** Forward this message to the other pane; the host decides who that is. */
+    | { type: 'forwardMessage'; text: string; sourceMessageId?: string; history?: HistoryRef }
+    /** Deliver a peer card to the agent as a real user turn. */
+    | { type: 'deliverPeer'; envelopeId: string }
+    /** Throw a peer card away: no turn, nothing sent. */
+    | { type: 'dismissPeer'; envelopeId: string }
+    /** The same two decisions for a whole stack of pending peer cards. */
+    | { type: 'deliverAllPeers' }
+    | { type: 'dismissAllPeers' }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironment' }
@@ -147,6 +168,8 @@ export type PaneToHost =
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
     | { type: 'historyPicked'; sessionId: string; indices: number[] }
+    /** Send the ticked slice to the sibling pane as a peer card, its envelope included. */
+    | { type: 'historyForwarded'; sessionId: string; indices: number[] }
     | { type: 'historyViewerCancel' }
     /** Re-send the transcript: the viewer's own re-render, after its role filter changed. */
     | { type: 'reloadHistoryViewer' }

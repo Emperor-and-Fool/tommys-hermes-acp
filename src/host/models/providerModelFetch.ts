@@ -1,4 +1,5 @@
 /** Fetch model ids from an OpenAI-compatible ``/v1/models`` endpoint. */
+import { identity } from '../../shared/extensionId';
 export async function fetchOpenAiCompatibleModels(
     apiKey: string,
     baseUrl: string,
@@ -19,7 +20,7 @@ export async function fetchOpenAiCompatibleModels(
         try {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), timeoutMs);
-            const headers: Record<string, string> = { 'User-Agent': 'tommys-hermes-acp' };
+            const headers: Record<string, string> = { 'User-Agent': identity().extensionId };
             if (apiKey) {
                 headers.Authorization = `Bearer ${apiKey}`;
             }
