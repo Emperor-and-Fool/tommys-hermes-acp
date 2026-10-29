@@ -96,11 +96,9 @@ export class Sessions {
                 updatedAt: Date.now(),
             });
         }
-        try {
-            if (this.saveCatalog()) {
-                this.saveActive();
-            }
-        } catch { /* non-critical */ }
+        if (this.saveCatalog()) {
+            this.saveActive();
+        }
         this.postList();
     }
 
@@ -113,9 +111,7 @@ export class Sessions {
             return;
         }
         this.tabs = next;
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
     }
 
     postList(): void {
@@ -140,7 +136,11 @@ export class Sessions {
      * Returns whether the write happened, for the one caller that does more on success.
      */
     saveCatalog(): boolean {
-        return this.store.writeCatalog(this.tabs);
+        const ok = this.store.writeCatalog(this.tabs);
+        if (!ok) {
+            this.host.log(`sessions.json write failed: ${this.store.catalogPath}`);
+        }
+        return ok;
     }
 
     private loadCatalog(): void {
@@ -175,9 +175,7 @@ export class Sessions {
         }
         this.tabs = result.sessions;
         this.hiddenSessions = result.hiddenRows;
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
         this.postHidden();
     }
@@ -434,9 +432,7 @@ export class Sessions {
         }
         this.tabs = next;
         this.host.log(`Reorder sessions: ${this.tabs.map(s => s.id).join(', ')}`);
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
     }
 
@@ -448,9 +444,7 @@ export class Sessions {
         this.tabs = next;
         const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
         this.host.log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
     }
 

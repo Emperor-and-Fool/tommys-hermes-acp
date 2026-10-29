@@ -265,7 +265,7 @@ export class Connection {
                 this._host.post({ type: 'finishAssistantBubble', sessionId: this._host.session.activeId });
             },
             (cwd) => {
-                const servers = resolveMcpServersForSession(cwd);
+                const servers = resolveMcpServersForSession(cwd, (line) => this._host.log(line));
                 if (servers.length > 0) {
                     this._host.log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
                 }

@@ -80,7 +80,10 @@ export function getMcpConfigPaths(workspaceCwd: string): string[] {
     ];
 }
 
-export function readMcpConfigFile(filePath: string): Record<string, EditorMcpServerConfig> {
+export function readMcpConfigFile(
+    filePath: string,
+    log?: (line: string) => void,
+): Record<string, EditorMcpServerConfig> {
     try {
         if (!fs.existsSync(filePath)) {
             return {};
@@ -90,7 +93,9 @@ export function readMcpConfigFile(filePath: string): Record<string, EditorMcpSer
             return {};
         }
         return raw.mcpServers;
-    } catch {
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        log?.(`MCP config not read (${filePath}): ${reason}`);
         return {};
     }
 }
@@ -101,9 +106,12 @@ export function mergeMcpServerMaps(
     return Object.assign({}, ...maps);
 }
 
-export function loadMergedMcpServers(workspaceCwd: string): Record<string, EditorMcpServerConfig> {
+export function loadMergedMcpServers(
+    workspaceCwd: string,
+    log?: (line: string) => void,
+): Record<string, EditorMcpServerConfig> {
     const paths = getMcpConfigPaths(workspaceCwd);
-    const maps = paths.map(readMcpConfigFile);
+    const maps = paths.map(filePath => readMcpConfigFile(filePath, log));
     return mergeMcpServerMaps(...maps);
 }
 
@@ -148,8 +156,11 @@ export function toSessionMcpServer(
 }
 
 /** Resolve editor MCP config into ACP `session/new` mcpServers array. */
-export function resolveMcpServersForSession(workspaceCwd: string): SessionMcpServer[] {
-    const merged = loadMergedMcpServers(workspaceCwd);
+export function resolveMcpServersForSession(
+    workspaceCwd: string,
+    log?: (line: string) => void,
+): SessionMcpServer[] {
+    const merged = loadMergedMcpServers(workspaceCwd, log);
     const servers: SessionMcpServer[] = [];
     for (const [name, cfg] of Object.entries(merged)) {
         const server = toSessionMcpServer(name, cfg, workspaceCwd);

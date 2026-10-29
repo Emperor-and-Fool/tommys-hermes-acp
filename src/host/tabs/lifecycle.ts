@@ -241,9 +241,7 @@ export class TabLifecycle {
         const rec = this._host.session.tabs.find(item => item.id === this._host.session.activeId);
         if (rec && rec.hermesSessionId !== hermesSessionId) {
             rec.hermesSessionId = hermesSessionId;
-            try {
-                this._host.saveCatalog();
-            } catch { /* non-critical */ }
+            this._host.saveCatalog();
         }
         void this._host.workspaceState.update('hermesSessionId', hermesSessionId);
     }
