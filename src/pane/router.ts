@@ -20,10 +20,10 @@ import { clearSwitchQueued } from './components/modals/switchSession';
 import { renderClosedList } from './components/pickers/closedSessions';
 import { renderModelList } from './components/pickers/modelPicker';
 import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
-import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateStatus } from './components/status/statusBar';
+import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
-import { afterHistoryRestored, applyViewerSurfaceRole } from './components/viewer/historyViewer';
+import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
 import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
@@ -74,6 +74,13 @@ export function init(): void {
                 } else {
                     appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
+                break;
+
+            case 'loadProgress':
+                if (!isMessageForActiveSession(msg)) {
+                    break;
+                }
+                updateLoadProgress(msg.received);
                 break;
 
             case 'status':

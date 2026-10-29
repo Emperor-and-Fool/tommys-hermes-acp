@@ -38,6 +38,8 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
+    | { type: 'loadProgress'; received: number; sessionId?: string }
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }

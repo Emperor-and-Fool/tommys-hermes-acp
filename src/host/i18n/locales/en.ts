@@ -117,6 +117,7 @@ export const en: LocaleStrings = {
     statusReady: 'Ready',
     statusThinking: 'Thinking...',
     statusThinkingProvider: '{provider} engaged',
+    loadingMessageChunks: 'Message chunks: {0}',
     statusError: 'Error',
     connectionLostRetrying: 'Connection to Hermes lost. Reconnecting…',
     retry: 'Retry',

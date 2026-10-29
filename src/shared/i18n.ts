@@ -119,6 +119,8 @@ export interface LocaleStrings {
     statusReady: string;
     statusThinking: string;
     statusThinkingProvider: string;
+    /** The loading block's counter: `{0}` content chunks received while the replay streams. */
+    loadingMessageChunks: string;
     statusError: string;
     connectionLostRetrying: string;
     retry: string;

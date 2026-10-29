@@ -269,6 +269,11 @@ export class Connection {
         this.acp!.onSteerNotice = (text: string) => {
             this._host.steerNotice(text);
         };
+        // The loading state shows how many replay chunks have arrived. Display only: the gate is
+        // `session/load` resolving, which `handleHistoryReplay` already follows.
+        this.acp!.onReplayProgress = (received: number) => {
+            this._host.post({ type: 'loadProgress', received, sessionId: this._host.session.activeId });
+        };
         this.deferReadyUntilSessionSetup = true;
         try {
             await this.acp!.start(cwd, resolvedPath, target.cliProfile);

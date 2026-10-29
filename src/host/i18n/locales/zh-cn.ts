@@ -117,6 +117,7 @@ export const zhCn: LocaleStrings = {
     statusReady: '就绪',
     statusThinking: '思考中…',
     statusThinkingProvider: '{provider} 已接入',
+    loadingMessageChunks: '消息块：{0}',
     statusError: '错误',
     connectionLostRetrying: '与 Hermes 的连接已断开，正在重新连接…',
     retry: '重新连接',

@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import { buildWebviewHtml, highlightSheetFor } from '../../host/webview/html';
 import { en } from '../../host/i18n/locales/en';
+import { PRIMARY, SECONDANT, setActiveIdentity } from '../../shared/extensionId';
 
 // vscode.ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4.
 const repoRoot = path.resolve(__dirname, '../../..');
@@ -20,11 +21,26 @@ describe('webviewHtml', () => {
 
     it('fills every resource slot when a webview is available', () => {
         const html = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale: en });
-        for (const slot of ['MARKED_URI', 'HIGHLIGHT_URI', 'HIGHLIGHT_CSS_URI', 'PURIFY_URI', 'CHAT_CSS_URI', 'CHAT_JS_URI', 'LOCALE_JSON', 'LOCALE_HELPER']) {
+        for (const slot of ['MARKED_URI', 'HIGHLIGHT_URI', 'HIGHLIGHT_CSS_URI', 'PURIFY_URI', 'CHAT_CSS_URI', 'CHAT_JS_URI', 'LOADING_ICON_URI', 'LOCALE_JSON', 'LOCALE_HELPER']) {
             assert.strictEqual(html.includes('{{' + slot + '}}'), false, slot + ' was not replaced');
         }
         assert.ok(html.includes('file:///media/vendor/highlight.min.js'));
         assert.ok(html.includes('file:///media/pane.js'));
+    });
+
+    it('gives the loading block the identity\'s own icon', () => {
+        try {
+            setActiveIdentity(PRIMARY);
+            const primary = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale: en });
+            assert.ok(primary.includes('file:///media/icon_fullcolor.png?v='), 'the primary loads the full-colour art');
+
+            setActiveIdentity(SECONDANT);
+            const secondant = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale: en });
+            assert.ok(secondant.includes('file:///media/icon_orange.svg?v='), 'the secondant loads the orange art');
+            assert.strictEqual(secondant.includes('icon_fullcolor.png'), false, 'only one of the two files is referenced');
+        } finally {
+            setActiveIdentity(PRIMARY);
+        }
     });
 
     it('escapes "<" in the locale payload so it cannot close the script tag', () => {

@@ -2148,6 +2148,81 @@ body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
     line-height: 1.8;
 }
 
+/* The loading state, in place of the placeholder: the identity's icon, the status, and a chunk
+   counter that climbs while the replay streams. No denominator: Hermes' message_count counts
+   rows the pane never renders (empty-content tool carriers), so "n of m" would misreport a
+   finished load as incomplete. */
+.loading-block {
+    /* Over the message area, not inside it: `resetChatView` rewrites #messages.innerHTML and would
+       take the block with it. Absolute inside `.chat-body`, which is already position: relative. */
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--dim);
+    background: var(--bg);
+}
+.loading-block[hidden] {
+    display: none;
+}
+.loading-icon {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    animation: loading-pulse 1.6s ease-in-out infinite;
+}
+.loading-title {
+    color: var(--fg);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.loading-count {
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
+    font-size: 12px;
+    /* Tabular numerals: the counter must not jitter as the digits change. */
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    opacity: 0.85;
+}
+@keyframes loading-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(0.96); }
+    50% { opacity: 1; transform: scale(1.04); }
+}
+/*
+ * The icon is a progress indicator, not decoration: its motion is the only thing saying "still
+ * working" while a load is in flight. Under reduced motion it keeps breathing, but opacity only,
+ * slower, and without the scale — a small scale pulse is the part a vestibular-sensitive user
+ * feels. Nothing enforces this media feature (MDN: it is a query the page reads, not a switch the
+ * engine throws), so this rule is what decides.
+ */
+@keyframes loading-breathe {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+/*
+ * The secondant's mark is hairline art: at the same opacity swing the full-colour whale reads as
+ * breathing and the outline barely flickers. Same motion, deeper floor.
+ */
+@keyframes loading-breathe-line {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .loading-icon {
+        animation: loading-breathe 2.4s ease-in-out infinite;
+    }
+    body[data-role='secondant'] .loading-icon {
+        animation-name: loading-breathe-line;
+    }
+}
+
 /* Input area */
 #input-area {
     --input-max-height: 120px;

@@ -67,6 +67,14 @@
 <div id="tab-bar"></div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">
+    <!-- The loading state: the identity's icon over the status and a chunk counter. It lives
+         OUTSIDE #messages on purpose — the transcript reset rebuilds that container's innerHTML,
+         which would delete anything inside it on the first newChat. -->
+    <div class="loading-block" id="loadingBlock" hidden>
+        <img class="loading-icon" src="{{LOADING_ICON_URI}}" alt="" aria-hidden="true">
+        <div class="loading-title" id="loadingTitle"></div>
+        <div class="loading-count" id="loadingCount"></div>
+    </div>
 <div id="messages">
     <div class="placeholder" id="placeholder"></div>
 </div>
