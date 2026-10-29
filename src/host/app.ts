@@ -285,6 +285,7 @@ export class App implements vscode.WebviewViewProvider {
             postHistoryState: (tabId) => this._postHistoryState(tabId),
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             activate: (id, options) => this._session.activate(id, options),
+            reinjectOpenPeers: () => this._mail?.inbox.reinjectOpen(),
             workspaceState: context.workspaceState,
         });
         this._connection = new Connection({
@@ -1040,6 +1041,7 @@ export class App implements vscode.WebviewViewProvider {
             envelope.body,
             envelope.history
         );
+        this._log(`Peer card received: ${envelope.id} (tab ${this._session.activeId})`);
         this._postMessage({
             type: 'addMessage',
             role: 'peer',
@@ -1075,6 +1077,7 @@ export class App implements vscode.WebviewViewProvider {
         if (!this._session.setPeerState(envelopeId, state)) {
             return;
         }
+        this._mail?.inbox.acknowledge(envelopeId);
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
         const turn = peerTurnBlock({
             fromProfile: stored.peer.fromProfile,
@@ -1091,6 +1094,7 @@ export class App implements vscode.WebviewViewProvider {
         if (!this._session.setPeerState(envelopeId, state)) {
             return;
         }
+        this._mail?.inbox.acknowledge(envelopeId);
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
     }
 
@@ -1118,6 +1122,7 @@ export class App implements vscode.WebviewViewProvider {
             if (!this._session.setPeerState(id, 'delivered')) {
                 return false;
             }
+            this._mail?.inbox.acknowledge(id);
             this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'delivered' });
             return true;
         });
@@ -1134,6 +1139,7 @@ export class App implements vscode.WebviewViewProvider {
             if (!this._session.setPeerState(id, 'dismissed')) {
                 continue;
             }
+            this._mail?.inbox.acknowledge(id);
             this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'dismissed' });
         }
     }

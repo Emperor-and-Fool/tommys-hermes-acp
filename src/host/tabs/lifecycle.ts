@@ -45,6 +45,8 @@ export interface TabLifecycleHost {
     postHistoryState(tabId: string): void;
     /** Forget one tab's staged pick: the tab is gone. */
     dropHistoryStage(tabId: string): void;
+    /** Draw the undecided forwarded cards again: reloads and tab switches rebuild the transcript. */
+    reinjectOpenPeers?: () => void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
     workspaceState: vscode.Memento;
 }
@@ -216,16 +218,14 @@ export class TabLifecycle {
             return;
         }
         this._host.session.messages = messages;
-        const restoredPeers = this._host.session.mergePendingPeers();
-        if (restoredPeers.length) {
-            this._host.log(`Restored ${restoredPeers.length} pending forwarded draft(s) for ${localId}`);
-        }
         this._host.post({ type: 'newChat' });
         this._host.post({
             type: 'restoreHistory',
             messages: this._host.attachments.hydrateImages(this._host.session.messages),
             localHistoryOnly: false,
         });
+        // Hermes' replay never contains a card it was never sent; the inbox still holds it.
+        this._host.reinjectOpenPeers?.();
         this._host.postSessionList();
         if (undelivered) {
             this._host.log(`Undelivered message offered back to the composer: ${localId}`);
@@ -249,9 +249,6 @@ export class TabLifecycle {
     }
 
     restoreMessages(target?: ChatSurface): void {
-        // Drafts waiting on a decision are not Hermes' — a replay will never bring them back —
-        // so they are merged in before anything is painted or measured.
-        this._host.session.mergePendingPeers();
         if (this._host.session.messages.length === 0) {
             // Nothing to repaint, but the chip still belongs to the tab now on screen.
             this.postHistoryState();
@@ -325,6 +322,9 @@ export class TabLifecycle {
             // The replay repaints this tab when it arrives; the chip is this tab's already.
             this.postHistoryState();
         }
+        // A forward is addressed to the agent, not to a conversation: whatever is still undecided
+        // belongs in the tab now on screen.
+        this._host.reinjectOpenPeers?.();
         await this._host.syncModelStateForCurrentSession();
         this._host.syncPromptUiIfReturningToOwner();
     }
@@ -364,9 +364,8 @@ export class TabLifecycle {
     async hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
         const acp = this._host.acp();
         for (const id of toHide) {
-            // A closed tab's staged pick and undecided drafts have nowhere to go.
+            // A closed tab's staged pick has nowhere to go; it must not outlive the tab.
             this._host.dropHistoryStage(id);
-            this._host.session.pendingPeers.clear(id);
             if (acp) {
                 try {
                     await acp.setSessionHidden(id, true);

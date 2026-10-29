@@ -4,7 +4,6 @@ import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
-import { PendingPeerStore } from './pendingPeers';
 import {
     normalizePinnedOrder,
     pinSession,
@@ -43,9 +42,6 @@ export class Sessions {
     /** Last few user turns: the one state Hermes cannot hold for us. */
     pendingUsers: PendingUserStore;
 
-    /** Forwarded drafts not yet decided: not Hermes' until delivered, so kept here. */
-    pendingPeers: PendingPeerStore;
-
     constructor(
         private readonly historyDir: string,
         scopeKey: string,
@@ -54,7 +50,6 @@ export class Sessions {
         this.scopeKey = scopeKey;
         this.store = new SessionStore(this.historyDir, this.scopeKey);
         this.pendingUsers = new PendingUserStore(this.historyDir);
-        this.pendingPeers = new PendingPeerStore(this.historyDir);
     }
 
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
@@ -264,41 +259,6 @@ export class Sessions {
         }
         this.messages.push(record);
         this.persistMessages();
-        this.pendingPeers.append(this.activeId, {
-            envelopeId: record.peer!.envelopeId,
-            text,
-            peer: record.peer!,
-            history,
-            savedAt: record.timestamp,
-        });
-    }
-
-    /**
-     * Bring back the drafts this tab still holds open.
-     *
-     * The pane repaints from Hermes, which never saw a pending card, so the cards have to be
-     * merged in on the way: deduped by envelope id, still `pending`, in arrival order.
-     */
-    mergePendingPeers(): ChatMessage[] {
-        const added: ChatMessage[] = [];
-        for (const entry of this.pendingPeers.read(this.activeId)) {
-            if (this.messages.some(m => m.role === 'peer' && m.peer?.envelopeId === entry.envelopeId)) {
-                continue;
-            }
-            const record: ChatMessage = {
-                role: 'peer',
-                text: entry.text,
-                timestamp: entry.savedAt,
-                peer: entry.peer,
-                peerState: 'pending',
-            };
-            if (entry.history) {
-                record.history = entry.history;
-            }
-            this.messages.push(record);
-            added.push(record);
-        }
-        return added;
     }
 
     /** Deliver or Dismiss: the first decision stands, and it survives a reload. */
@@ -309,7 +269,6 @@ export class Sessions {
         }
         stored.peerState = state;
         this.persistMessages();
-        this.pendingPeers.remove(this.activeId, envelopeId);
         return true;
     }
 

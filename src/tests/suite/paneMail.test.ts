@@ -91,17 +91,25 @@ describe('pane mail', () => {
         assert.strictEqual(inbox.drain(), 0);
     });
 
-    it('does not re-deliver after a reload: the cursor is in state', () => {
+    it('a card comes back after a reload until it is decided', () => {
         const outbox = new PaneMailOutbox(host() as never);
-        outbox.send(newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'once only' }));
+        const envelope = newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'still open' });
+        outbox.send(envelope);
 
         const first = new PaneMailInbox(host() as never);
         assert.strictEqual(first.drain(), 1);
 
-        // A fresh instance is what a reload looks like: same state, new objects.
+        // A reload is a fresh instance over the same state. The cursor stopped at the card, so
+        // it is drawn again — that is the whole point: nothing was written off on the way in.
         const second = new PaneMailInbox(host() as never);
-        assert.strictEqual(second.drain(), 0);
-        assert.strictEqual(received.length, 1);
+        assert.strictEqual(second.drain(), 1);
+        assert.strictEqual(received.length, 2);
+
+        // Only a decision retires it.
+        second.acknowledge(envelope.id);
+        const third = new PaneMailInbox(host() as never);
+        assert.strictEqual(third.drain(), 0);
+        assert.strictEqual(received.length, 2);
     });
 
     it('leaves a half-written line unread until it is complete', () => {
@@ -144,9 +152,10 @@ describe('pane mail', () => {
 
         const before = new PaneMailInbox(host() as never);
         assert.strictEqual(before.drain(), 1);
+        before.acknowledge(envelope.id);
 
-        // A roll replays the same bytes and the cursor starts over; the id is what stops the
-        // moderator seeing the same card twice.
+        // A roll replays the same bytes and the cursor starts over; the decided id is what stops
+        // the moderator seeing a card she already answered a second time.
         fs.writeFileSync(paneMailPaths().log, '');
         outbox.send(envelope);
 
