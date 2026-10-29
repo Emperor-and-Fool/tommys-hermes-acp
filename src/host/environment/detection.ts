@@ -24,7 +24,7 @@ import {
 } from './detectFormat';
 import { detectHermesEnvironment } from './hermesEnvironmentDetect';
 import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from './hermesPathSetup';
-import { accessExecutable, venvHermesCandidates } from './hermesPaths';
+import { accessExecutable, agentVenv, venvHermesCandidates } from './hermesPaths';
 import type {
     HermesDetectProgressEvent,
     HermesDetectSource,
@@ -307,12 +307,7 @@ export class EnvironmentDetection {
             }
         }
         if (path.basename(fsPath) === 'hermes-agent') {
-            const venvCandidates = process.platform === 'win32'
-                ? [
-                    path.join(fsPath, 'venv', 'Scripts', 'hermes.exe'),
-                    path.join(fsPath, 'venv', 'Scripts', 'hermes.cmd'),
-                ]
-                : [path.join(fsPath, 'venv', 'bin', 'hermes')];
+            const venvCandidates = agentVenv(path.dirname(fsPath), 'hermes');
             for (const candidate of venvCandidates) {
                 if (await accessExecutable(candidate)) {
                     return candidate;

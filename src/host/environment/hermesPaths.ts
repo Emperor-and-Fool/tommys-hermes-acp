@@ -19,23 +19,21 @@ export function resolveDefaultHermesHome(): string {
     return path.join(os.homedir(), '.hermes');
 }
 
-export function venvHermesCandidates(hermesHome: string): string[] {
-    const agentDir = path.join(hermesHome, 'hermes-agent');
+/** The binaries inside `<home>/hermes-agent/venv`; on Windows each name also gets an extension. */
+export function agentVenv(home: string, binary: string, windowsExtensions: string[] = ['exe', 'cmd']): string[] {
+    const venv = path.join(home, 'hermes-agent', 'venv');
     if (process.platform === 'win32') {
-        return [
-            path.join(agentDir, 'venv', 'Scripts', 'hermes.exe'),
-            path.join(agentDir, 'venv', 'Scripts', 'hermes.cmd'),
-        ];
+        return windowsExtensions.map(ext => path.join(venv, 'Scripts', `${binary}.${ext}`));
     }
-    return [path.join(agentDir, 'venv', 'bin', 'hermes')];
+    return [path.join(venv, 'bin', binary)];
+}
+
+export function venvHermesCandidates(hermesHome: string): string[] {
+    return agentVenv(hermesHome, 'hermes');
 }
 
 export function venvPythonCandidates(hermesHome: string): string[] {
-    const agentDir = path.join(hermesHome, 'hermes-agent');
-    if (process.platform === 'win32') {
-        return [path.join(agentDir, 'venv', 'Scripts', 'python.exe')];
-    }
-    return [path.join(agentDir, 'venv', 'bin', 'python')];
+    return agentVenv(hermesHome, 'python', ['exe']);
 }
 
 /** Ordered Hermes executable candidates for auto-detection. */
@@ -117,14 +115,10 @@ export function normalizeExecutableKey(filePath: string): string {
 
 export function hermesNotFoundMessage(): string {
     if (process.platform === 'win32') {
-        const example = path.join(
-            process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+        const example = agentVenv(
+            path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes'),
             'hermes',
-            'hermes-agent',
-            'venv',
-            'Scripts',
-            'hermes.exe',
-        );
+        )[0];
         return (
             'Hermes not found. Install:\n' +
             '  iex (irm https://hermes-agent.nousresearch.com/install.ps1)\n\n' +
