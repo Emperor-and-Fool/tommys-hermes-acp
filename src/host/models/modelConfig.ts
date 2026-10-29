@@ -294,7 +294,7 @@ export function buildModelListStateFromCatalog(
         });
     }
 
-    const flatModels = flattenGroupedModels(groups);
+    const flatModels = flattenGroupModels(groups);
     if (!flatModels.length) {
         return agentState;
     }
@@ -354,7 +354,7 @@ function resolveCurrentModelSelection(
     return { valueId: fallback.valueId, label: fallback.name };
 }
 
-function flattenGroupedModels(groups: ModelProviderGroup[]): ModelListItem[] {
+export function flattenGroupModels(groups: ModelProviderGroup[]): ModelListItem[] {
     const flat: ModelListItem[] = [];
     const seen = new Set<string>();
     for (const group of groups) {

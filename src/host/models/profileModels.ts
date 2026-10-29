@@ -7,6 +7,7 @@ import {
     type ProfileDefaultModel,
     type ProfileModelCatalog,
     encodeHermesModelValueId,
+    flattenGroupModels,
 } from './modelConfig';
 import { fetchOpenAiCompatibleModels } from './providerModelFetch';
 
@@ -290,21 +291,6 @@ function mergeModelNames(primary: string[], extra: string[]): string[] {
         }
     }
     return merged;
-}
-
-function flattenGroupModels(groups: ModelProviderGroup[]): ModelListItem[] {
-    const flat: ModelListItem[] = [];
-    const seen = new Set<string>();
-    for (const group of groups) {
-        for (const model of group.models) {
-            if (seen.has(model.valueId)) {
-                continue;
-            }
-            seen.add(model.valueId);
-            flat.push(model);
-        }
-    }
-    return flat;
 }
 
 function readDiscoverModels(content: string, section?: string): boolean {
