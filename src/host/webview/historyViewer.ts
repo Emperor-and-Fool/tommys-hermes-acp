@@ -15,7 +15,7 @@ import type { HistoryRef, SessionInfo, ChatMessage } from '../../shared/chat';
 import type { HostToPane, PaneToHost } from '../../shared/webview';
 import { anchorFor } from '../chat/historyAttach';
 
-/** Its own viewType, deliberately not `CHAT_PANEL_VIEW_TYPE`. */
+/** Its own viewType, deliberately not `chatPanelViewType()`. */
 export function historyViewerViewType(): string {
     return identity().historyViewerType;
 }
@@ -42,7 +42,7 @@ export interface HistoryViewerHost {
     loadRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]>;
     /** The sibling pane as the host knows it: the viewer needs it to show a forward button. */
     otherPane(): { live: boolean; profile: string };
-    /** The ticks, resolved: Phase 4 stages this. */
+    /** The ticked messages, handed to the host to stage in this tab's composer. */
     onPicked(pick: HistoryPick): void;
     /** The same ticks, sent to the sibling pane instead of into this composer. */
     onForwarded(pick: HistoryPick): void;

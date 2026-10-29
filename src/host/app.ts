@@ -38,16 +38,6 @@ import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './e
 import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
-/**
- * `onNewSession` is a Rina-era name kept for settings compatibility. A tab no longer gets a new
- * session behind its back; the picker shows when a tab's transcript is restored, until the
- * first reply.
- */
-
-/** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
-
-/** The key an attachment is filed under: the message text, markers and spacing removed. */
-
 
 export class App implements vscode.WebviewViewProvider {
 
@@ -398,10 +388,6 @@ export class App implements vscode.WebviewViewProvider {
 
 
 
-
-    /** Point the *live* session at another model. No session/new: Hermes' set_session_model
-     *  swaps the agent in place, and a fresh session here would silently drop the tab's
-     *  conversation (and leave an empty row in the catalog). */
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         // The tab whose pane sent this. Captured before any await: `promptSessionId` is only set
@@ -862,7 +848,7 @@ export class App implements vscode.WebviewViewProvider {
         return rec?.title || t('newChat');
     }
 
-    /** One automatic reconnect after the process dies; the Retry button covers the rest. */
+    /** Clear the title the detection state put on the view. */
     private _resetViewTitleToDefault(): void {
         const view = this._surfaces.view;
         if (!view) {

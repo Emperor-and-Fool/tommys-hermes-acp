@@ -318,6 +318,7 @@ export class Connection {
         }
     }
 
+    /** One automatic reconnect after the process dies; the Retry button covers the rest. */
     private async reconnectAfterLoss(): Promise<void> {
         if (this.disposed || this.reconnectAttempts >= 1) {
             return;

@@ -231,6 +231,11 @@ export class ModelState {
         }
     }
 
+    /**
+     * Point the live session at another model. No session/new: Hermes' set_session_model swaps
+     * the agent in place, and a fresh session would silently drop the tab's conversation (and
+     * leave an empty row in the catalog).
+     */
     private async _switchModel(configId: string, valueId: string): Promise<void> {
         const state = this._modelState ?? this._buildFallbackModelList();
         const effectiveConfigId = configId || state?.configId || '';
