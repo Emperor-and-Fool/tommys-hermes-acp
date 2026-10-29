@@ -10,7 +10,7 @@ import {
     registerSession,
     reorderSessions,
 } from '../tabs/tabs';
-import { canAggregateToolTexts, rebuildAggregatedToolText } from '../chat/toolAggregate';
+import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';
 import { t } from '../i18n';
 
