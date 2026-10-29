@@ -68,6 +68,10 @@ export type HostToPane =
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
     | { type: 'historyCleared' }
+    /** The viewer's fetch finished with nothing to show: Hermes returned no messages. */
+    | { type: 'historyFetchEmpty' }
+    /** The viewer's fetch failed; `reason` is for the tooltip and the log, not the sentence. */
+    | { type: 'historyFetchFailed'; reason?: string }
 
     // Environment detection and the configure panel.
     | { type: 'detectEnvironmentStart'; mode: 'connect' | 'manual' | 'configure' }
@@ -164,6 +168,8 @@ export type PaneToHost =
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
     | { type: 'historyPicked'; sessionId: string; indices: number[] }
+    /** Send the ticked slice to the sibling pane as a peer card, its envelope included. */
+    | { type: 'historyForwarded'; sessionId: string; indices: number[] }
     | { type: 'historyViewerCancel' }
     /** Re-send the transcript: the viewer's own re-render, after its role filter changed. */
     | { type: 'reloadHistoryViewer' }

@@ -27,6 +27,8 @@ export const state: any = {
     isPrompting: false,
     lastActiveSessionId: '',
     lastModelPayload: null,
+    /** The session the read-only viewer is showing: its per-message Forward needs it. */
+    viewerSessionId: '',
     lastSelectionQuote: null,
     lastSessions: [],
     logScrollIdleTimer: null,

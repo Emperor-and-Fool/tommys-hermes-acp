@@ -24,9 +24,35 @@ export interface MessageIdMatch {
 }
 
 /**
+ * Hermes' export rows as transcript messages.
+ *
+ * The window is Hermes' own: whatever the export returns is what the viewer shows, because there
+ * is no local copy to bound it to any more.
+ *
+ * `timestamp` is seconds in Hermes and milliseconds here; permission rows are cards, not
+ * messages, and take no part in a history attach.
+ */
+export function toChatMessages(exported: ExportedMessage[]): ChatMessage[] {
+    const messages: ChatMessage[] = [];
+    for (const item of exported) {
+        const role = typeof item.role === 'string' ? item.role.trim() : '';
+        if (!role || role === 'permission') {
+            continue;
+        }
+        const text = flattenContent(item.content);
+        if (!text) {
+            continue;
+        }
+        const seconds = typeof item.timestamp === 'number' ? item.timestamp : 0;
+        messages.push({ role, text, timestamp: seconds ? seconds * 1000 : Date.now() });
+    }
+    return messages;
+}
+
+/**
  * The export's content is a string or a list of parts; flatten it exactly as Hermes' replay does
- * (`_flatten_history_text`): parts trimmed, empty ones dropped, joined by newlines. The local copy
- * holds the replayed text, so any other join would never match a message sent in several parts.
+ * (`_flatten_history_text`): parts trimmed, empty ones dropped, joined by newlines. Anything else
+ * would never match a message the agent sent in several parts.
  */
 export function flattenContent(content: unknown): string {
     if (typeof content === 'string') {

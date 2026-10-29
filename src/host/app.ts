@@ -15,6 +15,8 @@ import type { PrimaryProfileSource } from './activate';
 import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
 import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
+import type { ChatMessage, HistoryRef } from '../shared/chat';
+import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
 import { buildWebviewHtml } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -28,8 +30,8 @@ import { Profiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './tabs/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
-import { HistoryStages, blockMessageLines } from './chat/historyAttach';
-import { exportSessionMessages, matchMessageIds } from './chat/historyLookup';
+import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
+import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
 import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './environment/approvalMode';
@@ -189,9 +191,14 @@ export class App implements vscode.WebviewViewProvider {
         html: (webview) => this._getHtml(webview),
         localResourceRoots: () => [this._extensionUri],
         tabs: () => this._session.tabs,
-        readMessages: (localId) => this._session.store.readMessages(localId),
         profile: () => this._profiles.resolveTarget().cliProfile,
+        otherPane: () => {
+            const other = this._mail?.presence.other();
+            return { live: !!other, profile: other ? other.profile : '' };
+        },
+        loadRemote: (hermesSessionId, profile) => this._loadHistoryRemote(hermesSessionId, profile),
         onPicked: (pick) => { this._stageHistory(pick); },
+        onForwarded: (pick) => { this._forwardHistoryPick(pick); },
         focusComposer: () => this._postMessage({ type: 'focusComposer' }),
         log: (line) => this._log(line),
     });
@@ -610,12 +617,45 @@ export class App implements vscode.WebviewViewProvider {
         this._historyViewer.open(hermesSessionId, title);
     }
 
+    /**
+     * A session with no tab here: read it from Hermes, never cache it.
+     *
+     * The three outcomes are logged apart — no Hermes, export failed, export empty — because they
+     * read the same on screen and mean three different things. Failure throws: the viewer has to be
+     * able to say "could not read it" rather than show an empty transcript and call it a day.
+     */
+    private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            this._log('History viewer: no Hermes executable found; cannot fetch the transcript');
+            throw new Error('no Hermes executable found');
+        }
+        const exported = await exportSessionMessages(executable, profile, hermesSessionId);
+        const messages = toChatMessages(exported);
+        this._log(
+            `History viewer: export for ${hermesSessionId} returned ${exported.length} row(s), ` +
+                `${messages.length} usable`
+        );
+        return messages;
+    }
+
     /** The viewer came back with ticks: the chip first, the real ids when the lookup answers. */
     private _stageHistory(pick: HistoryPick): void {
         const tabId = this._session.activeId;
         const staged = this._historyStages.stage(tabId, pick.ref, pick.messages);
         this._postMessage({ type: 'historyStaged', ref: staged.ref, pending: true });
         this._historyStages.begin(tabId, this._lookupHistoryIds(tabId, pick));
+    }
+
+    /**
+     * A slice ticked in the viewer, sent to the sibling pane instead of into this composer.
+     *
+     * It lands there as a draft card — envelope plus body — and nothing reaches either agent until
+     * that pane's user delivers it. The ref travels as data, so the card draws its envelope rather
+     * than reading a description of itself.
+     */
+    private _forwardHistoryPick(pick: HistoryPick): void {
+        this.forwardMessage(historySliceBody(pick.ref, pick.messages), undefined, pick.ref);
     }
 
     /**
@@ -831,6 +871,11 @@ export class App implements vscode.WebviewViewProvider {
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
+        // The viewer is a webview too, and it draws a forward button whose tooltip names the
+        // sibling pane: presence has to reach it or the button lies about what it can do.
+        if (msg.type === 'setOtherPaneLive') {
+            this._historyViewer.postToPanel(msg);
+        }
         if (msg.type === 'permissionRequest') {
             // The card is about to ask for a decision; its switch needs the current mode now.
             this._postApprovalMode();

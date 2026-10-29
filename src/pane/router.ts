@@ -194,6 +194,14 @@ export function init(): void {
                 afterHistoryRestored(msg.messages, msg.sessionId);
                 break;
 
+            case 'historyFetchEmpty':
+                showViewerEmpty();
+                break;
+
+            case 'historyFetchFailed':
+                showViewerFetchFailed(msg.reason);
+                break;
+
             case 'detectEnvironmentStart':
                 initDetectEnvironmentStart(msg.mode || 'manual');
                 if (state.placeholder) state.placeholder.style.display = 'none';

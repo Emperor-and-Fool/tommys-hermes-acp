@@ -293,7 +293,12 @@ export interface LocaleStrings {
     /** The pick button: "{0} ticked of {1}". */
     historyAttachCount: string;
     historyViewerCancel: string;
-    historyViewerUnavailable: string;
+    /** The viewer while its transcript is being fetched (no chunk counter: an export is one call). */
+    historyViewerLoading: string;
+    /** The viewer's fetch returned nothing: an answer, not a failure. */
+    historyViewerEmpty: string;
+    /** The viewer's fetch failed. `{0}` is not used; the reason stays in the tooltip and the log. */
+    historyViewerFetchFailed: string;
     /** The role filter on the history attach bar. */
     historyRoleUser: string;
     historyRoleAssistant: string;
