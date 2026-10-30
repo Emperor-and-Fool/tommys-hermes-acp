@@ -99,12 +99,13 @@ export class TabLifecycle {
         await this.syncFromHermes(cwd);
         const session = this._host.session;
         const tabBound = session.tabs.find(rec => rec.id === session.activeId)?.hermesSessionId;
-        const target = tabBound || this._persistedHermesSessionId;
-        // The catalog row is the link's proof: the id is bound, and Hermes still lists it.
-        // A pointer at a session Hermes no longer lists is not a link, and a load would only fail.
-        const row = session.catalogRow(target);
-        if (target && !row) {
-            this._host.log(`Tab points at ${target}, which this profile no longer lists; not resuming`);
+        const remembered = tabBound || this._persistedHermesSessionId;
+        // The catalog row is the link's proof: the id is bound, and Hermes still lists it. A
+        // pointer at a session Hermes no longer lists is not a target — treating it as one used to
+        // skip adoption and leave the throwaway session `session/new` created bound to the tab.
+        const target = remembered && session.catalogRow(remembered) ? remembered : undefined;
+        if (remembered && !target) {
+            this._host.log(`Tab points at ${remembered}, which this profile no longer lists; adopting instead`);
         }
         // First run / unlinked tab: open the most recent Hermes session rather than
         // leaving the throwaway session `session/new` just created in front of the
@@ -115,11 +116,12 @@ export class TabLifecycle {
                 session.activeId = newest.id;
                 session.messages = [];
                 this._host.post({ type: 'newChat' });
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(newest.cwd || cwd, newest.hermesSessionId);
-                } finally {
-                    this._renderReplayOnLoad = false;
+                if (!await this._loadForReplay(acp, newest.cwd || cwd, newest.hermesSessionId, 'Adopt')) {
+                    // The tab stays empty and this pane stays unbound: binding the throwaway would
+                    // present a session Hermes never had, and letting the error escape would send
+                    // it to Connection's catch, which disposes the whole client.
+                    this._host.postSessionList();
+                    return;
                 }
                 this.bindHermesSessionId(newest.hermesSessionId);
                 this._host.postSessionList();
@@ -127,24 +129,35 @@ export class TabLifecycle {
                 return;
             }
         }
-        if (target && row && target !== acp.activeSessionId) {
+        if (target && target !== acp.activeSessionId) {
             const targetCwd = session.tabs.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
-            try {
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(targetCwd, target);
-                } finally {
-                    this._renderReplayOnLoad = false;
-                }
+            if (await this._loadForReplay(acp, targetCwd, target, 'Resume')) {
                 this.bindHermesSessionId(target);
                 this._host.log(`Resumed Hermes session ${target}`);
                 return;
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._host.log(`Resume failed for ${target}: ${msg}`);
             }
         }
         this.bindHermesSessionId(acp.activeSessionId);
+    }
+
+    /** Load one session with the replay allowed to paint; false, with a log line, when it fails. */
+    private async _loadForReplay(
+        acp: AcpClient,
+        cwd: string,
+        hermesSessionId: string,
+        verb: string,
+    ): Promise<boolean> {
+        this._renderReplayOnLoad = true;
+        try {
+            await acp.loadSession(cwd, hermesSessionId);
+            return true;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._host.log(`${verb} failed for ${hermesSessionId}: ${msg}`);
+            return false;
+        } finally {
+            this._renderReplayOnLoad = false;
+        }
     }
 
     async resumeTabHermesSession(sessionId: string): Promise<boolean> {
