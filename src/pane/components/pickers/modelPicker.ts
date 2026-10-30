@@ -1,4 +1,4 @@
-import { byId, modelBtn, modelPicker } from '../../dom';
+import { byId, modelBtn, modelPicker, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -54,9 +54,9 @@ export function currentProviderVendor() {
     return prefix && prefix !== current ? vendorLabel(prefix) : '';
 }
 
-const modelLabelEl = byId('modelLabel');
+const modelLabelEl = required('modelLabel');
 
-const modelDropdown = byId('modelDropdown');
+const modelDropdown = required('modelDropdown');
 
 export function initModelBtnClick(): void {
     wirePickerButton(modelBtn, modelPicker, function() {
@@ -103,7 +103,7 @@ export function updateModelButtonDisplay(payload) {
 }
 
 export function renderModelList(payload) {
-    const list = byId('modelList');
+    const list = required('modelList');
     state.lastModelPayload = payload;
     state.modelConfigId = payload.configId || '';
     updateModelButtonDisplay(payload);

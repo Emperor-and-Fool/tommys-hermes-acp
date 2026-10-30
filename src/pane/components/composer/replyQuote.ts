@@ -1,26 +1,26 @@
-import { byId, inputEl, messagesEl } from '../../dom';
+import { byId, inputEl, messagesEl, required } from '../../dom';
 import { state } from '../../state';
 import { groupsInOrder, quoteSegmentForGroup } from '../messages/messageList';
 import { sendMessage, showComposerHint, syncInputHeightFromContent, updateQuickActionBtns } from './composer';
 
 
-const replyQuoteEl = byId('replyQuote');
+const replyQuoteEl = required('replyQuote');
 
-const replyQuoteTitle = byId('replyQuoteTitle');
+const replyQuoteTitle = required('replyQuoteTitle');
 
-const replyQuoteToggle = byId('replyQuoteToggle');
+const replyQuoteToggle = required('replyQuoteToggle');
 
-const replyQuoteClear = byId('replyQuoteClear');
+const replyQuoteClear = required('replyQuoteClear');
 
-const replyQuoteBody = byId('replyQuoteBody');
+const replyQuoteBody = required('replyQuoteBody');
 
-const undeliveredNotice = byId('undeliveredNotice');
+const undeliveredNotice = required('undeliveredNotice');
 
-const undeliveredNoticeText = byId('undeliveredNoticeText');
+const undeliveredNoticeText = required('undeliveredNoticeText');
 
-const undeliveredPrimaryBtn = byId('undeliveredPrimaryBtn');
+const undeliveredPrimaryBtn = required('undeliveredPrimaryBtn');
 
-const undeliveredDiscardBtn = byId('undeliveredDiscardBtn');
+const undeliveredDiscardBtn = required('undeliveredDiscardBtn');
 
 export function wrapTextRange(root, start, end, active) {
     if (!root || start >= end) return;
@@ -49,6 +49,7 @@ export function wrapTextRange(root, start, end, active) {
         mark.textContent = middle;
         frag.appendChild(mark);
         if (after) frag.appendChild(document.createTextNode(after));
+        if (!node.parentNode) break; // detached since the walk: nothing to replace
         node.parentNode.replaceChild(frag, node);
         break;
     }
@@ -111,18 +112,20 @@ export function initQuoteHook(): void {
 
 function ensureQuoteAction() {
     if (state.quoteActionEl) return state.quoteActionEl;
-    state.quoteActionEl = document.createElement('button');
-    state.quoteActionEl.type = 'button';
-    state.quoteActionEl.className = 'quote-action';
-    state.quoteActionEl.hidden = true;
-    state.quoteActionEl.addEventListener('click', function() {
+    const quoteButton = document.createElement('button');
+    state.quoteActionEl = quoteButton;
+    quoteButton.type = 'button';
+    quoteButton.className = 'quote-action';
+    quoteButton.hidden = true;
+    quoteButton.addEventListener('click', function() {
         const stash = state.lastSelectionQuote;
-        state.quoteActionEl.hidden = true;
+        quoteButton.hidden = true;
         if (!stash) {
             showComposerHint(locale.replySelectionLost);
             return;
         }
-        if (stash.blocked === 'streaming') {
+        // Any blocked reason means "not quotable yet"; the only one today is streaming.
+        if (stash.blocked !== undefined) {
             showComposerHint(locale.replyStreamingBlocked);
             return;
         }
@@ -162,7 +165,7 @@ function renderReplyQuote() {
         return;
     }
     const count = state.replyQuote.segments.length;
-    replyQuoteTitle.textContent = String(locale.replyTitle || '{count}').replace('{count}', count)
+    replyQuoteTitle.textContent = String(locale.replyTitle || '{count}').replace('{count}', String(count))
         + (state.replyQuote.truncated ? ' · ' + locale.replyTruncated : '');
     replyQuoteBody.innerHTML = '';
     state.replyQuote.segments.forEach(function(seg) {

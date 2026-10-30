@@ -1,4 +1,4 @@
-import { byId, detectEnvBtn, inputEl, retryBtn, statusText } from '../../dom';
+import { byId, detectEnvBtn, inputEl, retryBtn, statusText, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -8,10 +8,10 @@ import { profileDisplayName } from '../pickers/profilePicker';
 
 export const TOKEN_RING_RADIUS = 11;
 
-const statusDot = byId('statusDot');
-const loadingBlock = byId('loadingBlock');
-const loadingTitle = byId('loadingTitle');
-const loadingCount = byId('loadingCount');
+const statusDot = required('statusDot');
+const loadingBlock = required('loadingBlock');
+const loadingTitle = required('loadingTitle');
+const loadingCount = required('loadingCount');
 
 /**
  * The loading state: the identity's icon, a heading, and (in the conversation) a chunk counter.
@@ -104,7 +104,7 @@ export function emptyStateText() {
 }
 
 function syncEmptyState() {
-    const el = byId('placeholder');
+    const el = required('placeholder');
     if (el) el.textContent = emptyStateText();
 }
 

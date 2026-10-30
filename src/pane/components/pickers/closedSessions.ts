@@ -1,4 +1,4 @@
-import { byId, closedPicker, closedPickerBtn, closedPickerLabel, openTabBtn } from '../../dom';
+import { byId, closedPicker, closedPickerBtn, closedPickerLabel, openTabBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -6,9 +6,9 @@ import { newChat } from '../messages/messageList';
 import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';
 
 
-const closedDropdown = byId('closedDropdown');
+const closedDropdown = required('closedDropdown');
 
-const closedList = byId('closedList');
+const closedList = required('closedList');
 
 export function initOpenTabBtnClick(): void {
     openTabBtn.addEventListener('click', function() {
@@ -70,7 +70,7 @@ export function renderClosedList() {
             const picked = pickedId
                 ? state.closedSessions.find(function(s) { return s.sessionId === pickedId; })
                 : null;
-            state.pendingOpenSessionId = pickedId;
+            state.pendingOpenSessionId = pickedId ?? null;
             state.pendingOpenTitle = picked ? String(picked.title || picked.sessionId.slice(0, 8)) : '';
             state.pendingOpenCount = picked && picked.messageCount ? picked.messageCount : 0;
             setMenuOpen(closedPicker, false);

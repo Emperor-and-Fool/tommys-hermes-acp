@@ -1,27 +1,27 @@
-import { byId, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn } from '../../dom';
+import { byId, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { ensureDetectStepsList, formatDetectProgressDisplay, resetDetectStepsList, setDetectEnvIcon, updateDetectStepsList } from './detectPanel';
 
 
-const configureEnvDetectSection = byId('configureEnvDetectSection');
+const configureEnvDetectSection = required('configureEnvDetectSection');
 
-const configureEnvDetectCompactHint = byId('configureEnvDetectCompactHint');
+const configureEnvDetectCompactHint = required('configureEnvDetectCompactHint');
 
-const configureEnvDetectClose = byId('configureEnvDetectClose');
+const configureEnvDetectClose = required('configureEnvDetectClose');
 
-const configureEnvDetectDetails = byId('configureEnvDetectDetails');
+const configureEnvDetectDetails = required('configureEnvDetectDetails');
 
-const configureEnvDetectDetailsTitle = byId('configureEnvDetectDetailsTitle');
+const configureEnvDetectDetailsTitle = required('configureEnvDetectDetailsTitle');
 
-const configureEnvCandidatesSection = byId('configureEnvCandidatesSection');
+const configureEnvCandidatesSection = required('configureEnvCandidatesSection');
 
-const configureEnvCandidatesList = byId('configureEnvCandidatesList');
+const configureEnvCandidatesList = required('configureEnvCandidatesList');
 
-const configureEnvSystemHint = byId('configureEnvSystemHint');
+const configureEnvSystemHint = required('configureEnvSystemHint');
 
-const configureEnvCloseBtn = byId('configureEnvCloseBtn');
+const configureEnvCloseBtn = required('configureEnvCloseBtn');
 
 export function showConfigureEnvDetectPanel() {
     state.configureEnvDetectPanelVisible = true;

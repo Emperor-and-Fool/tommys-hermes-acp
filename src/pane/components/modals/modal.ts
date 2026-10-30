@@ -1,4 +1,4 @@
-import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu } from '../../dom';
+import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu, required } from '../../dom';
 import { state } from '../../state';
 import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';
@@ -29,15 +29,17 @@ export function openLogModal() {
 
 export function initDocumentClick(): void {
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.insert-dropdown')) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        if (!target.closest('.insert-dropdown')) {
             closeInsertDropdowns();
         }
-        if (tabContextMenu && !e.target.closest('.tab-context-menu')) {
+        if (tabContextMenu && !target.closest('.tab-context-menu')) {
             hideTabContextMenu();
         }
-        if (state.detectEnvDetailsOpen && !e.target.closest('.detect-env-bar')) {
+        if (state.detectEnvDetailsOpen && !target.closest('.detect-env-bar')) {
             setDetectEnvDetailsOpen(false);
-            const detectToggle = byId('detectEnvToggle');
+            const detectToggle = required('detectEnvToggle');
             if (detectToggle) detectToggle.setAttribute('aria-expanded', 'false');
         }
     });
@@ -50,7 +52,7 @@ export function initDocumentKeydown(): void {
         }
         if (e.key === 'Escape' && state.detectEnvDetailsOpen) {
             setDetectEnvDetailsOpen(false);
-            const detectToggle = byId('detectEnvToggle');
+            const detectToggle = required('detectEnvToggle');
             if (detectToggle) detectToggle.setAttribute('aria-expanded', 'false');
         }
         if (e.key === 'Escape' && state.configureEnvDetectDetailsOpen) {
@@ -95,10 +97,12 @@ export function wirePickerButton(button, picker, onOpen): void {
 
 export function initDocumentClickDocument(): void {
     document.addEventListener('click', function(e) {
-        if (e.target.closest('.picker')) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        if (target.closest('.picker')) {
             return;
         }
-        if (!e.target.closest('#input-area')) {
+        if (!target.closest('#input-area')) {
             hideFilePicker();
         }
         closeAllDropdowns();

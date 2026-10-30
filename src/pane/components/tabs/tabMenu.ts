@@ -58,7 +58,7 @@ export function showTabContextMenu(sessionId, clientX, clientY) {
         '<div class="tab-ctx-divider"></div>' +
         '<button type="button" class="tab-ctx-item" data-action="togglePin">' + escapeHtml(pinLabel) + '</button>';
 
-    tabContextMenu.querySelector('[data-action="copySid"]').addEventListener('click', function(e) {
+    tabContextMenu.querySelector('[data-action="copySid"]')?.addEventListener('click', function(e) {
         e.stopPropagation();
         copyToClipboard(sessionId);
     });

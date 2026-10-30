@@ -2,6 +2,7 @@ import { byId, tabBar } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
+import type { SessionInfo } from '../../../shared/chat';
 import { newChat } from '../messages/messageList';
 import { requestSwitchSession } from '../modals/switchSession';
 import { showTabContextMenu } from './tabMenu';
@@ -29,7 +30,7 @@ function reorderSessionTabs(fromId, toId) {
     }
     ids.splice(fromIdx, 1);
     ids.splice(toIdx, 0, fromId);
-    const byId: Record<string, unknown> = {};
+    const byId: Record<string, SessionInfo> = {};
     state.lastSessions.forEach(function(s) { byId[s.id] = s; });
     state.lastSessions = ids.map(function(id) { return byId[id]; }).filter(Boolean);
     renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
@@ -104,7 +105,7 @@ export function renderSessionTabs(sessions, activeId) {
     });
     tabBar.innerHTML = parts.join('');
 
-    tabBar.querySelectorAll('.session-tab').forEach(function(tab) {
+    tabBar.querySelectorAll<HTMLElement>('.session-tab').forEach(function(tab) {
         tab.addEventListener('click', function(e) {
             if (e.target && e.target.closest && e.target.closest('.tab-close')) {
                 return;
@@ -116,7 +117,7 @@ export function renderSessionTabs(sessions, activeId) {
                 requestSwitchSession(tab.dataset.id);
             }
         });
-        tab.addEventListener('contextmenu', function(e) {
+        tab.addEventListener('contextmenu', function(e: MouseEvent) {
             e.preventDefault();
             e.stopPropagation();
             showTabContextMenu(tab.dataset.id, e.clientX, e.clientY);

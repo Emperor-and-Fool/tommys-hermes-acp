@@ -1,4 +1,4 @@
-import { byId, cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn } from '../../dom';
+import { byId, cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { appendMessage, resetAutoScrollFollow } from '../messages/messageList';
@@ -10,15 +10,15 @@ import { renderPendingImagesBar } from './images';
 import { clearReplyQuote, withReplyQuote } from './replyQuote';
 
 
-const inputAreaEl = byId('input-area');
+const inputAreaEl = required('input-area');
 
-const inputCompositeEl = byId('inputComposite');
+const inputCompositeEl = required('inputComposite');
 /* The wrapper above #inputComposite. A lookup, so top level is fine. */
 const inputCompositeShellEl = inputCompositeEl ? inputCompositeEl.closest('.input-composite-shell') : null;
 
-const inputQuickPanel = byId('inputQuickPanel');
+const inputQuickPanel = required('inputQuickPanel');
 
-const composerHint = byId('composerHint');
+const composerHint = required('composerHint');
 
 const INPUT_HEIGHT_STORAGE_KEY = 'hermes-chat-input-max-height';
 
@@ -190,7 +190,7 @@ function updateStopButtonState(): void {
     }
     const steering = state.isPrompting && stopButtonIntent(inputEl.value) === 'steer';
     cancelBtn.classList.toggle('steer', steering);
-    const stopLabel = byId('stopBtnLabel');
+    const stopLabel = required('stopBtnLabel');
     if (stopLabel) {
         stopLabel.textContent = steering ? (locale.steer || 'Steer') : (locale.stop || 'Stop');
     }

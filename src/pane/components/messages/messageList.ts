@@ -1,4 +1,4 @@
-import { byId, messagesEl } from '../../dom';
+import { byId, messagesEl, required } from '../../dom';
 import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
@@ -428,7 +428,8 @@ export function appendMessage(role, text, options?) {
     if (!restoring && role === 'assistant' && state.streamingMessageId) {
         const last = document.getElementById(state.streamingMessageId);
         if (last) {
-            last.querySelector('.content').textContent = text;
+            const content = last.querySelector('.content');
+            if (content) content.textContent = text;
             last._rawText = text;
             if (chatSearchState.query) scheduleChatSearch();
             maybeScrollToBottom();
@@ -483,10 +484,10 @@ export function markMissingImages(root, hasImages) {
     const hits = [];
     let node;
     while ((node = walker.nextNode())) {
-        if (/\[(screenshot|image)\]/i.test(node.textContent)) hits.push(node);
+        if (/\[(screenshot|image)\]/i.test(node.textContent || '')) hits.push(node);
     }
     hits.forEach(function(textNode) {
-        const parts = textNode.textContent.split(/(\[(?:screenshot|image)\])/i);
+        const parts = (textNode.textContent || '').split(/(\[(?:screenshot|image)\])/i);
         const frag = document.createDocumentFragment();
         let lastNode: Node | null = null;
         const appendText = function(value) {
@@ -525,7 +526,7 @@ function resetChatView() {
     clearChatSearch();
     exitMultiSelectMode();
     messagesEl.innerHTML = '<div class="placeholder" id="placeholder">' + escapeHtml(emptyStateText()) + '</div>';
-    state.placeholder = byId('placeholder');
+    state.placeholder = required('placeholder') as HTMLElement;
     state.streamingMessageId = null;
     state.thoughtMsgId = null;
     state.toolCallMap = {};

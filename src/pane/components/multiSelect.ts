@@ -1,5 +1,5 @@
 import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
-import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn } from '../dom';
+import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, required } from '../dom';
 import { post } from '../post';
 import { state } from '../state';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
@@ -7,9 +7,9 @@ import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './
 import { reindexSessionIndices } from './messages/messageList';
 
 
-const multiSelectToolbar = byId('multiSelectToolbar');
+const multiSelectToolbar = required('multiSelectToolbar');
 
-const multiSelectCount = byId('multiSelectCount');
+const multiSelectCount = required('multiSelectCount');
 
 export function isSelectableRole(role) {
     return role === 'user' || role === 'assistant' || role === 'thought' || role === 'tool';

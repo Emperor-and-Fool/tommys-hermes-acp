@@ -16,7 +16,7 @@ export const COPY_ICON_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/
 
 /** One hit of the in-chat search: the message it sits in and the offset range inside it. */
 export interface ChatSearchMatch {
-    group: HTMLElement;
+    group: Element;
     start: number;
     end: number;
 }

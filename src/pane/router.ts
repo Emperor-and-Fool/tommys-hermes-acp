@@ -24,7 +24,7 @@ import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionError
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
-import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl } from './dom';
+import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
 import { copyToClipboard } from './util/clipboard';
@@ -350,7 +350,7 @@ export function init(): void {
 
             case 'activeAgent':
                 if (msg.name) {
-                    byId('profileLabel').textContent = msg.name;
+                    required('profileLabel').textContent = msg.name;
                     refreshRoleLabels();
                     applyInputPlaceholder();
                 }

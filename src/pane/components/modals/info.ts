@@ -1,4 +1,4 @@
-import { aboutModal, byId, faqModal, faqModalBody, helpModal } from '../../dom';
+import { aboutModal, byId, faqModal, faqModalBody, helpModal, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -34,7 +34,7 @@ export function buildFaqAccordion(container) {
             details.appendChild(summary);
             details.appendChild(body);
             wrapper.appendChild(details);
-        } else if (node.nodeType === 3 && !node.textContent.trim()) {
+        } else if (node.nodeType === 3 && !(node.textContent || '').trim()) {
             i += 1;
         } else {
             i += 1;
@@ -46,7 +46,7 @@ export function buildFaqAccordion(container) {
     }
 }
 
-const aboutContent = byId('aboutContent');
+const aboutContent = required('aboutContent');
 
 export function renderAboutContent() {
     const name = state.pluginInfo.displayName || 'Tommys Hermes ACP';
@@ -111,8 +111,8 @@ export function initFaqModalClick(): void {
 export function initFaqModalBodyToggle(): void {
     if (faqModalBody) {
         faqModalBody.addEventListener('toggle', function(e) {
-            const item = e.target;
-            if (!item.classList || !item.classList.contains('faq-item') || !item.open) {
+            const item = e.target instanceof HTMLDetailsElement ? e.target : null;
+            if (!item || !item.classList.contains('faq-item') || !item.open) {
                 return;
             }
             const list = item.closest('.faq-list');
@@ -126,7 +126,8 @@ export function initFaqModalBodyToggle(): void {
             });
         }, true);
         faqModalBody.addEventListener('click', function(e) {
-            const link = e.target.closest('a[data-url]');
+            const target = e.target instanceof Element ? e.target : null;
+            const link = target ? target.closest('a[data-url]') : null;
             if (!link) return;
             e.preventDefault();
             post({ type: 'openExternal', url: link.dataset.url });

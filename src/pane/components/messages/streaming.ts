@@ -33,11 +33,14 @@ export function finalizeAssistantBubble() {
         const el = group ? group.querySelector('.message') : null;
         if (el) {
             el.classList.remove('streaming');
-            const text = el.querySelector('.content').textContent;
-            if (group) group._rawText = text;
-            el.querySelector('.content').innerHTML = renderMarkdown(text);
-            setupContentBlocks(el.querySelector('.content'));
-            processFileRefs(el.querySelector('.content'));
+            const content = el.querySelector('.content');
+            if (content) {
+                const text = content.textContent || '';
+                if (group) group._rawText = text;
+                content.innerHTML = renderMarkdown(text);
+                setupContentBlocks(content);
+                processFileRefs(content);
+            }
         }
         state.streamingMessageId = null;
     }

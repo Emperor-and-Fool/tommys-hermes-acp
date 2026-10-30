@@ -1,15 +1,15 @@
-import { byId, chatSearchInput, chatSearchNext, chatSearchPrev, messagesEl } from '../dom';
+import { byId, chatSearchInput, chatSearchNext, chatSearchPrev, messagesEl, required } from '../dom';
 import { wrapTextRange } from './composer/replyQuote';
 import { chatSearchState } from './messages/markdown';
 import { getMessageContentEl, getMessagePlainText } from './messages/messageList';
 
 
-const chatSearchCount = byId('chatSearchCount');
+const chatSearchCount = required('chatSearchCount');
 
 function clearSearchMarks() {
     document.querySelectorAll('mark.search-mark').forEach(function(mark) {
         const text = document.createTextNode(mark.textContent);
-        mark.parentNode.replaceChild(text, mark);
+        mark.parentNode?.replaceChild(text, mark);
     });
     document.querySelectorAll('.message-group').forEach(function(group) {
         group.classList.remove('search-hit', 'search-hit-active');

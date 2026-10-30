@@ -1,10 +1,10 @@
-import { byId, tokenUsageRing } from '../../dom';
+import { byId, tokenUsageRing, required } from '../../dom';
 import { TOKEN_RING_RADIUS } from './statusBar';
 
 
-const tokenUsageArc = byId('tokenUsageArc');
+const tokenUsageArc = required('tokenUsageArc');
 
-const tokenUsagePct = byId('tokenUsagePct');
+const tokenUsagePct = required('tokenUsagePct');
 
 const TOKEN_RING_CIRCUMFERENCE = 2 * Math.PI * TOKEN_RING_RADIUS;
 

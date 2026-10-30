@@ -1,4 +1,4 @@
-import { byId, inputEl } from '../../dom';
+import { byId, inputEl, required } from '../../dom';
 import { hostLog } from '../../post';
 import { state } from '../../state';
 import { pendingImages } from './composer';
@@ -47,14 +47,14 @@ export function renderPendingImagesBar() {
     const first = bar.querySelector('img');
     const cs = getComputedStyle(bar);
     const r2 = (el) => { if (!el) return 'none'; const b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height) + '@' + Math.round(b.top); };
-    const area = byId('input-area');
-    const chatBody = byId('chat-body');
+    const area = required('input-area');
+    const chatBody = required('chat-body');
     const scroller = document.scrollingElement || document.body;
     hostLog('[paste-bar] mount parent=' + (bar.parentElement && bar.parentElement.id)
         + ' dupIds=' + document.querySelectorAll('#inputComposite').length
         + ' inInputArea=' + !!(area && area.contains(bar))
         + ' area=' + r2(area) + ' areaDisplay=' + (area ? getComputedStyle(area).display : 'none')
-        + ' chatBody=' + r2(chatBody) + ' msgs=' + r2(byId('messages'))
+        + ' chatBody=' + r2(chatBody) + ' msgs=' + r2(required('messages'))
         + ' scrollTop=' + Math.round(scroller.scrollTop) + ' scrollHeight=' + Math.round(scroller.scrollHeight));
     hostLog('[paste-bar] box=' + Math.round(rect.width) + 'x' + Math.round(rect.height)
         + ' top=' + Math.round(rect.top) + ' display=' + cs.display + ' vis=' + cs.visibility

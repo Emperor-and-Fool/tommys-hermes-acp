@@ -1,4 +1,4 @@
-import { byId, detectEnvBtn, detectEnvToggle } from '../../dom';
+import { byId, detectEnvBtn, detectEnvToggle, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { doDetectEnvironment } from '../status/statusBar';
@@ -72,7 +72,7 @@ export function formatDetectProgressDisplay(brief) {
 }
 
 export function setDetectEnvDetailsTitle() {
-    const detailsTitle = byId('detectEnvDetailsTitle');
+    const detailsTitle = required('detectEnvDetailsTitle');
     if (!detailsTitle) return;
     detailsTitle.textContent = state.detectEnvFinished
         ? (locale.detectEnvironmentCompleteTitle || locale.detectEnvironmentStepSummary || '')
@@ -81,9 +81,9 @@ export function setDetectEnvDetailsTitle() {
 
 export function setDetectEnvDetailsOpen(open) {
     state.detectEnvDetailsOpen = !!open;
-    const details = byId('detectEnvDetails');
-    const hint = byId('detectEnvCompactHint');
-    const toggle = byId('detectEnvToggle');
+    const details = required('detectEnvDetails');
+    const hint = required('detectEnvCompactHint');
+    const toggle = required('detectEnvToggle');
     if (details) details.hidden = !state.detectEnvDetailsOpen;
     if (hint) hint.classList.toggle('is-open', state.detectEnvDetailsOpen);
     if (toggle) {
@@ -162,7 +162,7 @@ export function updateDetectStepsList(msg, stepIdPrefix, compactIconEl, compactT
 }
 
 function ensureDetectEnvironmentPanel() {
-    const list = byId('detectEnvSteps');
+    const list = required('detectEnvSteps');
     ensureDetectStepsList(list, 'detectStep-');
     if (!state.detectEnvPanelReady && list) {
         state.detectEnvPanelReady = true;
@@ -171,20 +171,20 @@ function ensureDetectEnvironmentPanel() {
 
 function showDetectEnvironmentBar() {
     ensureDetectEnvironmentPanel();
-    const bar = byId('detectEnvBar');
+    const bar = required('detectEnvBar');
     if (bar) bar.hidden = false;
 }
 
 function hideDetectEnvironmentBar() {
     state.detectEnvFinished = false;
     setDetectEnvDetailsOpen(false);
-    const bar = byId('detectEnvBar');
+    const bar = required('detectEnvBar');
     if (bar) bar.hidden = true;
 }
 
 function setDetectEnvironmentCompact(brief, status) {
-    setDetectEnvIcon(byId('detectEnvCompactIcon'), status);
-    const textEl = byId('detectEnvCompactText');
+    setDetectEnvIcon(required('detectEnvCompactIcon'), status);
+    const textEl = required('detectEnvCompactText');
     if (textEl) {
         textEl.textContent = brief || '';
         textEl.title = brief || '';
@@ -196,8 +196,8 @@ export function updateDetectEnvironmentStep(msg) {
     updateDetectStepsList(
         msg,
         'detectStep-',
-        byId('detectEnvCompactIcon'),
-        byId('detectEnvCompactText'),
+        required('detectEnvCompactIcon'),
+        required('detectEnvCompactText'),
     );
 }
 
@@ -206,7 +206,7 @@ export function initDetectEnvironmentStart(mode) {
     showDetectEnvironmentBar();
     setDetectEnvDetailsOpen(false);
     setDetectEnvDetailsTitle();
-    const toggle = byId('detectEnvToggle');
+    const toggle = required('detectEnvToggle');
     if (toggle) {
         toggle.setAttribute('aria-expanded', 'false');
         toggle.title = locale.detectEnvironmentViewDetails || '';
@@ -248,7 +248,7 @@ export function initDetectEnvToggleClick(): void {
     }
 }
 
-const detectEnvCloseBtn = byId('detectEnvClose');
+const detectEnvCloseBtn = required('detectEnvClose');
 
 export function initDetectEnvCloseBtnClick(): void {
     if (detectEnvCloseBtn) {

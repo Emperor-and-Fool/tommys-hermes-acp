@@ -122,7 +122,7 @@ export function handleToolMessage(text, toolCallId) {
         const group = document.getElementById(state.toolAggregateGroupId);
         if (group && group._auxState && canAggregateToolTexts(group._auxState.rawText || '', text)) {
             ensureAggregateEntries(group);
-            group._auxState.aggregatedTools.push({ toolCallId: toolCallId, text: text });
+            group._auxState.aggregatedTools?.push({ toolCallId: toolCallId, text: text });
             rebuildAggregateToolContent(group);
             state.toolCallMap[toolCallId] = state.toolAggregateGroupId;
             setAuxMessageLive(group, true);  // already live from ensureAggregateEntries path

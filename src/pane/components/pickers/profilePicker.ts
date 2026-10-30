@@ -1,16 +1,16 @@
-import { byId, profileBtn, profilePicker } from '../../dom';
+import { byId, profileBtn, profilePicker, required } from '../../dom';
 import { post } from '../../post';
 import { escapeHtml } from '../../util/html';
 import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';
 
 
 export function profileDisplayName() {
-    const el = byId('profileLabel');
+    const el = required('profileLabel');
     const text = el && el.textContent ? el.textContent.trim() : '';
     return text || 'hermes';
 }
 
-const profileDropdown = byId('profileDropdown');
+const profileDropdown = required('profileDropdown');
 
 /** Opened by the host: the profile this pane was using is not available any more. */
 export function openProfilePicker(): void {
@@ -30,8 +30,8 @@ export function initProfileDropdownClick(): void {
 }
 
 export function renderProfileList(profiles) {
-    const list = byId('profileList');
-    const current = byId('profileLabel').textContent;
+    const list = required('profileList');
+    const current = required('profileLabel').textContent;
     const entries = (profiles || []).map(function(item) {
         if (item && typeof item === 'object' && item.id) {
             return { id: String(item.id), label: String(item.label || item.id) };
