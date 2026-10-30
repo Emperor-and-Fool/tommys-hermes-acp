@@ -21,21 +21,32 @@ const TOOL_COLLAPSED_LINES = 3;
 
 const AUX_LINE_HEIGHT_EM = 1.35;
 
-function getAuxCollapsedLines(role) {
+/** The element handles buildAuxiliaryMessage hands back for wiring. */
+export interface AuxParts {
+    div: HTMLElement;
+    scrollEl: HTMLElement;
+    contentEl: HTMLElement;
+    moreBtn: HTMLElement;
+    lessBtn: HTMLElement;
+    role: string;
+    rawText: string;
+}
+
+function getAuxCollapsedLines(role: string): number {
     return role === 'thought' ? THOUGHT_COLLAPSED_LINES : TOOL_COLLAPSED_LINES;
 }
 
-function getAuxCollapsedMaxHeight(role) {
+function getAuxCollapsedMaxHeight(role: string): string {
     return (AUX_LINE_HEIGHT_EM * getAuxCollapsedLines(role)) + 'em';
 }
 
-function auxDetailOverflows(scrollEl, text, maxLines) {
+function auxDetailOverflows(scrollEl: HTMLElement, text: string, maxLines: number): boolean {
     if (!scrollEl) return false;
     if (text && text.split('\n').length > maxLines) return true;
     return scrollEl.scrollHeight > scrollEl.clientHeight + 1;
 }
 
-export function syncAuxiliaryDetailView(group) {
+export function syncAuxiliaryDetailView(group: Element) {
     const aux = group._auxState;
     if (!aux || !aux.scrollEl) return;
     const maxLines = getAuxCollapsedLines(aux.role);
@@ -64,10 +75,12 @@ export function syncAuxiliaryDetailView(group) {
     aux.lessBtn.hidden = !aux.detailExpanded || !overflow;
 }
 
-function rebuildAggregateToolContent(group) {
+function rebuildAggregateToolContent(group: Element) {
     const state = group._auxState;
     if (!state || !state.aggregatedTools || !state.aggregatedTools.length) return;
-    const merged = state.aggregatedTools
+    // Captured: narrowing is lost inside the callback below.
+    const entries = state.aggregatedTools;
+    const merged = entries
         .map(function(entry) { return entry.text.trim(); })
         .filter(Boolean)
         .join(TOOL_AGGREGATE_SEPARATOR);
@@ -78,24 +91,26 @@ export function resetToolAggregation() {
     state.toolAggregateGroupId = null;
 }
 
-function ensureAggregateEntries(group) {
-    const state = group._auxState;
-    if (!state) return;
-    if (state.aggregatedTools && state.aggregatedTools.length) return;
+function ensureAggregateEntries(group: Element) {
+    // This used to be called `state`, shadowing the module's: the two reads below are the
+    // global toolCallMap, and on the aux object they were undefined — Object.keys threw.
+    const aux = group._auxState;
+    if (!aux) return;
+    if (aux.aggregatedTools && aux.aggregatedTools.length) return;
     let firstId: string | null = null;
-    let firstText = state.rawText || '';
+    const firstText = aux.rawText || '';
     Object.keys(state.toolCallMap).forEach(function(id) {
         if (state.toolCallMap[id] === group.id && !firstId) {
             firstId = id;
         }
     });
-    state.aggregatedTools = [{
+    aux.aggregatedTools = [{
         toolCallId: firstId || ('tool_' + group.id),
         text: firstText,
     }];
 }
 
-export function handleToolMessage(text, toolCallId) {
+export function handleToolMessage(text: string, toolCallId: string) {
     if (state.toolCallMap[toolCallId]) {
         const group = document.getElementById(state.toolCallMap[toolCallId]);
         if (group && group._auxState) {
@@ -135,10 +150,11 @@ export function handleToolMessage(text, toolCallId) {
     const id = appendMessage('tool', text);
     state.toolCallMap[toolCallId] = id;
     state.toolAggregateGroupId = id;
-    setAuxMessageLive(document.getElementById(id), true);
+    const liveGroup = document.getElementById(id);
+    if (liveGroup) setAuxMessageLive(liveGroup, true);
 }
 
-export function setAuxiliaryContent(group, text) {
+export function setAuxiliaryContent(group: Element, text: string) {
     const state = group._auxState;
     if (!state) return;
     state.rawText = text || '';
@@ -152,7 +168,7 @@ export function setAuxiliaryContent(group, text) {
     syncAuxiliaryDetailView(group);
 }
 
-export function buildAuxiliaryMessage(role, text) {
+export function buildAuxiliaryMessage(role: string, text: string) {
     const div = document.createElement('div');
     div.className = 'message ' + role;
 
@@ -193,7 +209,7 @@ export function buildAuxiliaryMessage(role, text) {
     return { div: div, scrollEl: scrollEl, contentEl: contentEl, moreBtn: moreBtn, lessBtn: lessBtn, role: role, rawText: text || '' };
 }
 
-export function wireAuxiliaryMessage(group, parts, deferMarkdown) {
+export function wireAuxiliaryMessage(group: Element, parts: AuxParts, deferMarkdown?: boolean) {
     const state = {
         role: parts.role,
         rawText: parts.rawText,
@@ -222,12 +238,12 @@ export function wireAuxiliaryMessage(group, parts, deferMarkdown) {
     }
 }
 
-export function finalizeAuxiliaryBubble(group) {
+export function finalizeAuxiliaryBubble(group: HTMLElement) {
     if (!group || !group._auxState) return;
     setAuxiliaryContent(group, group._auxState.rawText);
 }
 
-function toolNameFromAuxText(text) {
+function toolNameFromAuxText(text: string | undefined): string {
     const lines = String(text || '').split('\n');
     let first = '';
     for (let i = 0; i < lines.length; i++) {
@@ -240,7 +256,7 @@ function toolNameFromAuxText(text) {
     return name || '';
 }
 
-export function auxiliaryRoleLabel(role, text?) {
+export function auxiliaryRoleLabel(role: string, text?: string) {
     const profile = profileDisplayName();
     if (role === 'thought') return profile + ' thinking';
     // older cards (and updates that carry no title) fall back to the literal 'Tool'
@@ -257,7 +273,7 @@ export function clearAllToolLive() {
     });
 }
 
-export function setAuxMessageLive(group, live) {
+export function setAuxMessageLive(group: HTMLElement, live: boolean) {
     if (!group) return;
     const aux = group._auxState;
     const changed = !!aux && aux.isLive !== live;

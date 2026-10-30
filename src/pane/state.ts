@@ -60,10 +60,15 @@ export interface PluginInfo {
 
 /** What a message group carries beyond the DOM: its raw text and its aux body element. */
 export interface AuxState {
-    rawText?: string;
-    contentEl?: Element;
+    rawText: string;
+    contentEl: Element;
     aggregatedTools?: AggregatedTool[];
-    [key: string]: unknown;
+    detailExpanded: boolean;
+    isLive?: boolean;
+    lessBtn: HTMLElement;
+    moreBtn: HTMLElement;
+    role: string;
+    scrollEl: HTMLElement;
 }
 
 export interface PaneState {
@@ -157,7 +162,7 @@ export interface PermissionCardState {
 
 declare global {
     /** Booked onto message elements by the markdown, tool-card and permission renderers. */
-    interface HTMLElement {
+    interface Element {
         _auxState?: AuxState;
         _rawText?: string;
         _permissionState?: PermissionCardState;

@@ -28,7 +28,7 @@ export const chatSearchState = {
     timer: null as ReturnType<typeof setTimeout> | null,
 };
 
-export function getGroupMarkdownText(group) {
+export function getGroupMarkdownText(group: Element) {
     if (group._auxState && group._auxState.rawText) {
         return group._auxState.rawText;
     }
@@ -67,7 +67,7 @@ function hideSessionRenderBanner() {
     const banner = document.getElementById(SESSION_RENDER_BANNER_ID);
     if (!banner || banner.hidden || banner.classList.contains('is-hiding')) return;
     banner.classList.add('is-hiding');
-    const onExitEnd = function(e) {
+    const onExitEnd = function(e: AnimationEvent) {
         if (e.target !== banner || e.animationName !== 'session-render-exit') return;
         banner.removeEventListener('animationend', onExitEnd);
         banner.hidden = true;
@@ -109,7 +109,7 @@ function collectMarkdownRenderTargets() {
     return targets;
 }
 
-function renderMarkdownTarget(target) {
+function renderMarkdownTarget(target: MarkdownRenderTarget) {
     if (target.kind === 'assistant') {
         target.group._rawText = target.text;
         target.el.innerHTML = renderMarkdown(target.text);
@@ -165,7 +165,17 @@ export function scheduleSessionMarkdownRender() {
     requestAnimationFrame(runBatch);
 }
 
-export function renderMarkdown(text) {
+/** A marked token, as far as this file reads it (marked itself is untyped). */
+interface MdToken {
+    type?: string;
+    text?: string;
+    raw?: string;
+    tokens?: MdToken[];
+    items?: MdToken[];
+    [key: string]: unknown;
+}
+
+export function renderMarkdown(text: string): string {
     // A message is data, not markup. Raw HTML in it is turned into characters before
     // rendering, so nothing typed or echoed into the transcript — a tool result printing
     // the pane's own HTML included — can create elements the pane later looks up by id.
@@ -173,7 +183,7 @@ export function renderMarkdown(text) {
     let html;
     if (typeof marked.lexer === 'function' && typeof marked.parser === 'function') {
         const tokens = marked.lexer(String(text == null ? '' : text));
-        const scrubRawHtml = function(list) {
+        const scrubRawHtml = function(list: MdToken[]) {
             for (const token of list) {
                 if (!token) continue;
                 if (token.type === 'html') {
@@ -210,7 +220,7 @@ export function renderMarkdown(text) {
     return div.innerHTML;
 }
 
-function addBlockActions(container, getText, copyPayload?, copyTitle?) {
+function addBlockActions(container: Element, getText: () => string, copyPayload?: () => string, copyTitle?: string) {
     if (container.querySelector('.block-actions')) return;
     const actions = document.createElement('div');
     actions.className = 'block-actions';
@@ -224,7 +234,7 @@ function addBlockActions(container, getText, copyPayload?, copyTitle?) {
     container.appendChild(actions);
 }
 
-function tableToMarkdown(table) {
+function tableToMarkdown(table: Element): string {
     const rows: string[][] = [];
     table.querySelectorAll('tr').forEach(function(tr) {
         const cells: string[] = [];
@@ -239,7 +249,7 @@ function tableToMarkdown(table) {
             return (row[index] || '').length;
         }));
     });
-    const formatRow = function(row) {
+    const formatRow = function(row: string[]) {
         return '| ' + row.map(function(cell, index) {
             return (cell || '').padEnd(widths[index], ' ');
         }).join(' | ') + ' |';
@@ -252,11 +262,12 @@ function tableToMarkdown(table) {
     return [header, divider].concat(body).join('\n');
 }
 
-function setupTableBlock(table) {
+function setupTableBlock(table: Element) {
     if (!table || table.dataset.blockReady) return;
     table.dataset.blockReady = '1';
     const wrap = document.createElement('div');
     wrap.className = 'block-actions-wrap';
+    if (!table.parentNode) return; // detached: nothing to wrap
     table.parentNode.insertBefore(wrap, table);
     wrap.appendChild(table);
     addBlockActions(wrap, function() {
@@ -264,7 +275,7 @@ function setupTableBlock(table) {
     });
 }
 
-function setupCodeBlock(codeBlock) {
+function setupCodeBlock(codeBlock: Element) {
     const pre = codeBlock.closest('pre');
     if (!pre || pre.dataset.blockReady) return;
     pre.dataset.blockReady = '1';
@@ -272,6 +283,7 @@ function setupCodeBlock(codeBlock) {
     const lang = (codeBlock.className.match(/language-(\w+)/) || [])[1] || '';
     const wrap = document.createElement('div');
     wrap.className = 'block-actions-wrap';
+    if (!pre.parentNode) return;
     pre.parentNode.insertBefore(wrap, pre);
     wrap.appendChild(pre);
     // Copy hands over the code itself: a shell command with a fence around it is not
@@ -288,7 +300,7 @@ function setupCodeBlock(codeBlock) {
     }, locale.copyCode);
 }
 
-export function setupContentBlocks(container) {
+export function setupContentBlocks(container: Element) {
     if (!container) return;
     container.querySelectorAll('pre code').forEach(function(block) {
         setupCodeBlock(block);
@@ -298,7 +310,7 @@ export function setupContentBlocks(container) {
     });
 }
 
-export function downloadSessionMarkdown(markdown, filename) {
+export function downloadSessionMarkdown(markdown: string, filename: string) {
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
