@@ -1093,6 +1093,8 @@ export class App implements vscode.WebviewViewProvider {
             fromHost: stored.peer.fromHost,
             body: stored.text,
             history: stored.history,
+            // A forward to our own profile is a handover, not a grant: no cross-profile note.
+            readerProfile: this._ownProfile(),
         });
         this._enqueueChatOp(() => this._handleUserMessage(turn));
     }
@@ -1124,6 +1126,7 @@ export class App implements vscode.WebviewViewProvider {
                 fromHost: message.peer!.fromHost,
                 body: message.text,
                 history: message.history,
+                readerProfile: this._ownProfile(),
             }))
         );
         const settled = pending.filter(message => {
