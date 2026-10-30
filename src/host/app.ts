@@ -18,6 +18,7 @@ import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
 import { buildWebviewHtml, identityArtwork } from './webview/html';
+import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
@@ -837,9 +838,14 @@ export class App implements vscode.WebviewViewProvider {
         return {
             log: (line) => this._log(line),
             openExternal: (url) => {
-                if (url) {
-                    void vscode.env.openExternal(vscode.Uri.parse(url));
+                // The pane checks markdown hrefs, but a message body reaches the host through the
+                // same channel: `command:` or `file:` here would turn text into an action.
+                if (!url) { return; }
+                if (!isExternalLinkAllowed(url)) {
+                    this._log(`openExternal refused: ${url.slice(0, 60)}`);
+                    return;
                 }
+                void vscode.env.openExternal(vscode.Uri.parse(url));
             },
             ready: () => this._onWebviewReady(surface),
             enqueueChatOp: (op) => this._enqueueChatOp(op),
