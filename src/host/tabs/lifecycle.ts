@@ -361,15 +361,19 @@ export class TabLifecycle {
 
     async hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
         const acp = this._host.acp();
+        const tabs = this._host.session.tabs;
         for (const id of toHide) {
             // A closed tab's staged pick has nowhere to go; it must not outlive the tab.
             this._host.dropHistoryStage(id);
-            if (acp) {
+            // The strip's id is only the tab's until the catalog lists it. A tab that was never
+            // bound has no Hermes session to hide, so the local removal is the whole close.
+            const bound = tabs.find(tab => tab.id === id)?.hermesSessionId;
+            if (acp && bound) {
                 try {
-                    await acp.setSessionHidden(id, true);
+                    await acp.setSessionHidden(hermesSessionIdFor(tabs, id), true);
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    this._host.log(`Hide failed for ${id}: ${msg}`);
+                    this._host.log(`Hide failed for ${bound}: ${msg}`);
                 }
             }
         }
