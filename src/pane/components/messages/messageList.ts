@@ -7,6 +7,31 @@ import { setInputMode, updateQuickActionBtns } from '../composer/composer';
 import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
 
+import type { ChatMessage, HistoryRef, PeerRef, PeerState } from '../../../shared/chat';
+import type { HostToPane } from '../../../shared/webview';
+
+/** What a caller can pass when adding a message; mirrors the addMessage payload's extras. */
+export interface MessageOptions {
+    /** Inline bytes when the pane has them; restored messages carry refs, which the loop skips. */
+    images?: ReadonlyArray<unknown>;
+    history?: HistoryRef;
+    peer?: PeerRef;
+    peerState?: PeerState;
+    restore?: boolean;
+    steer?: boolean;
+    deferMarkdown?: boolean;
+}
+
+/** The pieces buildCard/buildMessage hand to mountMessage. */
+export interface BuiltMessage {
+    card: HTMLElement;
+    auxParts?: {
+        div: HTMLElement; scrollEl: HTMLElement; contentEl: HTMLElement;
+        moreBtn: HTMLElement; lessBtn: HTMLElement; role: string; rawText: string;
+    } | null;
+    historyParts?: { div: HTMLElement; scrollEl: HTMLElement; moreBtn: HTMLElement | null } | null;
+}
+
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
@@ -32,7 +57,7 @@ function isMessagesAtBottom() {
     return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <= SCROLL_BOTTOM_THRESHOLD;
 }
 
-export function maybeScrollToBottom(force?) {
+export function maybeScrollToBottom(force?: boolean) {
     if (!messagesEl) {
         return;
     }
@@ -83,12 +108,12 @@ export function resetAutoScrollFollow() {
     }
 }
 
-export function getMessageContentEl(group) {
+export function getMessageContentEl(group: Element) {
     const bubble = group.querySelector('.message') || group;
     return bubble.querySelector('.content') || bubble.querySelector('.aux-body-content');
 }
 
-function assignSessionIndex(group) {
+function assignSessionIndex(group: Element) {
     group.dataset.sessionIndex = String(state.sessionMsgCounter++);
 }
 
@@ -99,7 +124,7 @@ export function reindexSessionIndices() {
     });
 }
 
-export function getGroupRoleLabel(group) {
+export function getGroupRoleLabel(group: Element) {
     if (group.classList.contains('user')) return locale.roleYou;
     if (group.classList.contains('assistant')) return assistantRoleLabel();
     if (group.classList.contains('thought')) return auxiliaryRoleLabel('thought');
@@ -111,7 +136,7 @@ export function groupsInOrder() {
     return Array.from(messagesEl.querySelectorAll('.message-group'));
 }
 
-export function quoteSegmentForGroup(group, range) {
+export function quoteSegmentForGroup(group: Element, range: Range) {
     // Clip against the card's body, never the record: the record also holds the role
     // label and the action chrome, and a quote must not carry either.
     const bubble = group.querySelector('.message') || group;
@@ -143,7 +168,7 @@ export function initDocumentVisibilitychange(): void {
     });
 }
 
-export function getMessagePlainText(group) {
+export function getMessagePlainText(group: Element) {
     const bubble = group.querySelector('.message') || group;
     const content = bubble.querySelector('.content');
     if (content) return content.textContent || '';
@@ -156,7 +181,7 @@ function newMessageId() {
     return 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 }
 
-function buildSelectWrap(group) {
+function buildSelectWrap(group: Element) {
     const selectWrap = document.createElement('label');
     selectWrap.className = 'msg-select-wrap';
     const checkbox = document.createElement('input');
@@ -171,7 +196,7 @@ function buildSelectWrap(group) {
     return selectWrap;
 }
 
-export function createGroup(role, id?) {
+export function createGroup(role: string, id?: string) {
     const group = document.createElement('div');
     group.className = 'message-group ' + role;
     group.id = id || newMessageId();
@@ -184,7 +209,7 @@ export function createGroup(role, id?) {
     return group;
 }
 
-function buildMessage(role, text, options) {
+function buildMessage(role: string, text: string, options?: MessageOptions) {
     const card = document.createElement('div');
     card.className = 'message ' + role;
     const label = document.createElement('div');
@@ -200,7 +225,8 @@ function buildMessage(role, text, options) {
     if (role === 'user' && Array.isArray(images) && images.length > 0) {
         const gallery = document.createElement('div');
         gallery.className = 'message-image-gallery';
-        for (const img of images) {
+        for (const entry of images) {
+            const img = entry as { mimeType?: string; data?: string } | null;
             if (!img || !img.data) continue;
             const el = document.createElement('img');
             el.className = 'message-image';
@@ -228,7 +254,7 @@ function buildMessage(role, text, options) {
     return card;
 }
 
-function buildCard(role, text, options) {
+function buildCard(role: string, text: string, options?: MessageOptions) {
     if (role === 'peer') {
         return { card: buildPeerCard(text, options), auxParts: null };
     }
@@ -254,7 +280,7 @@ function buildCard(role, text, options) {
  * A forwarded session-memory pick also carries its ref, which draws as the attach flow's envelope
  * card (title, session handle, span, count) above the body. The body is that peer's text either way.
  */
-function buildPeerCard(text, options) {
+function buildPeerCard(text: string, options?: MessageOptions) {
     const peer = (options && options.peer) || null;
     const state = (options && options.peerState) || 'pending';
     const card = document.createElement('div');
@@ -323,7 +349,7 @@ function buildPeerCard(text, options) {
 }
 
 /** Deliver or Dismiss came back: settle the card, no re-render. */
-export function applyPeerState(envelopeId, state) {
+export function applyPeerState(envelopeId: string, state: PeerState) {
     const group = document.querySelector('.message-group.peer[data-envelope-id="' + envelopeId + '"]');
     if (!group) return;
     group.dataset.peerState = state;
@@ -344,7 +370,7 @@ export function applyPeerState(envelopeId, state) {
  * the last card. A new pending card after a settled one starts a fresh stack, so a delivered
  * conversation never grows a rail over what came before it.
  */
-function pendingInStack(card) {
+function pendingInStack(card: Element): Element[] {
     const stack = card.closest('.peer-stack');
     if (!stack) {
         return [];
@@ -354,7 +380,7 @@ function pendingInStack(card) {
     );
 }
 
-function appendPeerToStack(group) {
+function appendPeerToStack(group: Element) {
     const last = messagesEl.lastElementChild;
     // Only a stack that still has a pending card takes another one: a queue that has been
     // answered is closed, and a new card after it starts its own rail.
@@ -375,7 +401,7 @@ function appendPeerToStack(group) {
 }
 
 /** Only the last pending card in a stack offers Deliver/Dismiss. */
-function syncPeerStackDecisions(stack) {
+function syncPeerStackDecisions(stack: Element) {
     const items = Array.prototype.slice.call(stack.querySelectorAll(':scope > .message-group.peer'));
     items.forEach(function(item, index) {
         const last = index === items.length - 1;
@@ -384,7 +410,7 @@ function syncPeerStackDecisions(stack) {
     });
 }
 
-function mountMessage(group, built, options) {
+function mountMessage(group: Element, built: BuiltMessage, options?: MessageOptions) {
     const restoring = options && options.restore;
     const role = group.classList[1];
     const container = document.createElement('div');
@@ -420,7 +446,7 @@ function mountMessage(group, built, options) {
     return group.id;
 }
 
-export function appendMessage(role, text, options?) {
+export function appendMessage(role: string, text: string, options?: MessageOptions) {
     const restoring = options && options.restore;
     state.placeholder.style.display = 'none';
 
@@ -478,7 +504,7 @@ export function appendMessage(role, text, options?) {
     return id;
 }
 
-export function markMissingImages(root, hasImages) {
+export function markMissingImages(root: Element, hasImages: boolean) {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const hits = [];
@@ -490,7 +516,7 @@ export function markMissingImages(root, hasImages) {
         const parts = (textNode.textContent || '').split(/(\[(?:screenshot|image)\])/i);
         const frag = document.createDocumentFragment();
         let lastNode: Node | null = null;
-        const appendText = function(value) {
+        const appendText = function(value: string) {
             if (!value) return;
             let text = value;
             // Only fold the space when the previous sibling is text: a red statement in
@@ -543,7 +569,7 @@ export function newChat() {
     resetChatView();
 }
 
-export function restoreHistory(messages, localHistoryOnly) {
+export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolean) {
     cancelSessionMarkdownRender();
     // A freshly restored transcript opens at its end; a pin left over from the previous
     // page would otherwise keep the pane wherever it happened to be.
@@ -573,7 +599,6 @@ export function restoreHistory(messages, localHistoryOnly) {
                 appendMessage(m.role, m.text, {
                     restore: true,
                     deferMarkdown: true,
-                    images: m.images,
                     history: m.history,
                     steer: m.steer === true,
                     peer: m.peer,
@@ -592,7 +617,7 @@ export function restoreHistory(messages, localHistoryOnly) {
     requestAnimationFrame(appendRestoreBatch);
 }
 
-export function isMessageForActiveSession(msg) {
+export function isMessageForActiveSession(msg: { sessionId?: string }) {
     return !msg.sessionId || msg.sessionId === state.lastActiveSessionId;
 }
 
@@ -603,7 +628,7 @@ export function isMessageForActiveSession(msg) {
  * reads that way; appending it live would put it below. Indices are then reassigned in DOM order,
  * which is the same order the stored messages have.
  */
-export function insertBeforeLastUser(role, text, options?) {
+export function insertBeforeLastUser(role: string, text: string, options?: MessageOptions) {
     const users = messagesEl.querySelectorAll('.message-group.user');
     const lastUser = users.length ? users[users.length - 1] : null;
     if (!lastUser || !lastUser.parentNode) {
