@@ -16,17 +16,28 @@ License: GPL-3+
  On Debian systems, the complete text of the GNU General Public License
  version 3 can be found in /usr/share/common-licenses/GPL-3.
 
-Files: src extension package.json media/chat.html media/icon.png media/activitybar.svg
+Files: src extension package.json media/chat.html
 Copyright: 2026 jove-rina
 License: MIT
- Retained in LICENSES/MIT-jove-rina.txt.
+ Retained in LICENSES/MIT-jove-rina.txt. The src/ tree was jove-rina's at the point of
+ the fork; today roughly 5% of its lines sit in files that existed then, and those have
+ been rewritten too. The upstream notice is retained in full.
+
+Files: media/icon.png media/icon.svg media/icon_fullcolor.png media/icon_orange.svg media/icon_SECONDANT.svg media/activitybar.svg
+Copyright: Magnific (via Flaticon)
+License: Flaticon-Free-Attribution
+ Attribution is required, in this form: "designed by Magnific from Flaticon", linking
+ https://www.flaticon.com/ . Recolouring and derivative works are permitted;
+ sublicensing, selling, or redistributing the artwork on its own is not. These files are
+ therefore excluded from the GPL grant above.
+ License text: https://media.flaticon.com/license/license.pdf
 
 Files: media/vendor/marked.min.js
 Copyright: 2011-2024 Christopher Jeffrey
 License: MIT
 
 Files: media/vendor/highlight.min.js media/vendor/github-dark.min.css
-Copyright: highlight.js contributors
+Copyright: 2006 Ivan Sagalaev and highlight.js contributors
 License: BSD-3-Clause
 
 Files: media/vendor/purify.min.js

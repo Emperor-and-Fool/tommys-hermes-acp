@@ -310,6 +310,13 @@ Bundled components keep their own licences: `@agentclientprotocol/sdk` and
 `github-dark.min.css` (highlight.js) BSD-3-Clause; `media/vendor/marked.min.js` MIT.
 
 Neither MIT nor the GPL grant trademark rights: the upstream name "Rina Hermes ACP", the
-`jove-rina` name and the upstream marketplace identity are not used by this project. The
-icon and activity-bar glyph under `media/` are inherited upstream artwork — redistributable,
-but they are not Emperor & Fool branding.
+`jove-rina` name and the upstream marketplace identity are not used by this project.
+
+**The artwork is not ours, and the GPL does not cover it.** The whale under `media/` —
+`icon.png`, `icon.svg`, `icon_fullcolor.png`, `icon_orange.svg`, `icon_SECONDANT.svg` — and
+the activity-bar glyph `activitybar.svg` are *designed by Magnific from Flaticon*, used under
+the [Flaticon Free License](https://media.flaticon.com/license/license.pdf). That licence
+requires attribution, permits recolouring and derivative works, and does not permit
+sublicensing or redistributing the artwork on its own. So it is excluded from the GPL grant
+above: you may redistribute this extension, not the artwork separately, and you may not
+relicense it.

@@ -50,9 +50,21 @@ upstream project's name, logo or marketplace identity. "Rina Hermes ACP", "jove-
 the publisher id JoveRina and the upstream marketplace listings are not used by this
 fork; the extension id is emperorandfool.tommys-hermes-acp.
 
-The files media/icon.png and media/activitybar.svg are inherited upstream artwork.
-They are redistributable under the MIT licence, but they are not Emperor & Fool
-branding and should be replaced before this fork is published as a distinct product.
+Artwork is not GPL, and not ours
+--------------------------------
+The whale under media/ (icon.png, icon.svg, icon_fullcolor.png, icon_orange.svg,
+icon_SECONDANT.svg) and the activity-bar glyph activitybar.svg are designed by
+Magnific from Flaticon, used under the Flaticon Free License.
+
+That licence requires the attribution "designed by Magnific from Flaticon" with a link
+to flaticon.com, permits recolouring and derivative works, and forbids sublicensing,
+selling or redistributing the artwork on its own. These files are therefore excluded
+from the GPL-3.0-or-later grant that covers the rest of this project: a recipient may
+redistribute the extension, not the artwork separately, and may not relicense it.
+
+Earlier revisions of this file called that artwork "inherited upstream artwork,
+redistributable under the MIT licence". That was wrong and is corrected here.
+Full licence text: https://media.flaticon.com/license/license.pdf
 
 Bundled third-party components
 ------------------------------
