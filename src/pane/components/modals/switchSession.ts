@@ -4,7 +4,7 @@ import { state } from '../../state';
 import { hideModal, showModal } from './modal';
 
 
-function openSwitchSessionModal(sessionId) {
+function openSwitchSessionModal(sessionId: string) {
     state.pendingSwitchSessionId = sessionId;
     const titleEl = required('switchSessionModalTitle');
     const bodyEl = required('switchSessionModalBody');
@@ -22,7 +22,7 @@ function closeSwitchSessionModal() {
     hideModal(switchSessionModal);
 }
 
-function markSwitchQueued(sessionId) {
+function markSwitchQueued(sessionId: string) {
     state.switchQueuedFor = sessionId;
     const titleEl = required('switchSessionModalTitle');
     const bodyEl = required('switchSessionModalBody');
@@ -56,7 +56,7 @@ export function clearSwitchQueued() {
     state.pendingSwitchSessionId = null;
 }
 
-export function requestSwitchSession(sessionId) {
+export function requestSwitchSession(sessionId: string) {
     if (!sessionId || sessionId === state.activeSessionId) {
         return;
     }

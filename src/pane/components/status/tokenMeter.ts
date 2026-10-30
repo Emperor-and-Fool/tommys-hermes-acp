@@ -8,7 +8,7 @@ const tokenUsagePct = required('tokenUsagePct');
 
 const TOKEN_RING_CIRCUMFERENCE = 2 * Math.PI * TOKEN_RING_RADIUS;
 
-function formatTokenCount(n) {
+function formatTokenCount(n: number): string {
     const value = Number(n) || 0;
     if (value >= 1_000_000) {
         return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -22,7 +22,7 @@ function formatTokenCount(n) {
     return String(value);
 }
 
-export function updateTokenUsage(used, size) {
+export function updateTokenUsage(used: number, size: number) {
     if (!tokenUsageRing || !tokenUsageArc) return;
     const usedTokens = Math.max(0, Number(used) || 0);
     const totalTokens = Math.max(0, Number(size) || 0);

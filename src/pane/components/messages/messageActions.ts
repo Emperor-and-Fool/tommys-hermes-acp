@@ -46,7 +46,7 @@ export function createCopyButton(options: { className: string; getText: () => st
 
 const CHEVRON_DOWN_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 6 8 9.5 11.5 6l.7.7L8 10.9l-4.2-4.2.7-.7z"/></svg>';
 
-export function attachMessageActions(group, inner) {
+export function attachMessageActions(group: Element, inner: Element) {
     const actions = document.createElement('div');
     actions.className = 'message-actions';
     actions.addEventListener('click', function(e) { e.stopPropagation(); });
@@ -118,7 +118,7 @@ function forwardTitle(): string {
     return (locale.forwardToOtherPane || 'Forward to {0}').replace('{0}', otherPaneProfile);
 }
 
-function appendToInput(text) {
+function appendToInput(text: string) {
     if (!text) return;
     hideFilePicker();
     const val = inputEl.value;
@@ -133,7 +133,7 @@ function appendToInput(text) {
     }
 }
 
-export function insertIntoInput(text) {
+export function insertIntoInput(text: string) {
     if (!text) return;
     hideFilePicker();
     const val = inputEl.value;
@@ -149,19 +149,19 @@ export function insertIntoInput(text) {
     }
 }
 
-function insertToEditor(text) {
+function insertToEditor(text: string) {
     if (!text) return;
     post({ type: 'insertEditor', text: text });
 }
 
-export function closeInsertDropdowns(except?) {
+export function closeInsertDropdowns(except?: Element) {
     document.querySelectorAll('.insert-dropdown.is-open').forEach(function(dropdown) {
         if (except && dropdown === except) return;
         dropdown.classList.remove('is-open');
     });
 }
 
-export function createInsertDropdown(getText) {
+export function createInsertDropdown(getText: () => string) {
     const dropdown = document.createElement('div');
     dropdown.className = 'insert-dropdown';
 

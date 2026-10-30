@@ -1,4 +1,4 @@
-export function copyToClipboard(text) {
+export function copyToClipboard(text: string): Promise<void> {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         return navigator.clipboard.writeText(text).catch(function() {
             fallbackCopyToClipboard(text);
@@ -8,7 +8,7 @@ export function copyToClipboard(text) {
     return Promise.resolve();
 }
 
-function fallbackCopyToClipboard(text) {
+function fallbackCopyToClipboard(text: string) {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';

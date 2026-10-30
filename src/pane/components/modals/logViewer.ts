@@ -21,7 +21,7 @@ function isLogAtBottom() {
     return logContent.scrollHeight - logContent.scrollTop - logContent.clientHeight <= LOG_SCROLL_BOTTOM_THRESHOLD;
 }
 
-export function maybeScrollLogToBottom(force?) {
+export function maybeScrollLogToBottom(force?: boolean) {
     if (!logContent) {
         return;
     }

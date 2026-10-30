@@ -36,7 +36,7 @@ export function applyLocale() {
     if (modelBtnEl) modelBtnEl.title = locale.switchModel;
     const modelsHeader = required('modelsHeader');
     if (modelsHeader) modelsHeader.textContent = locale.models;
-    updateModelButtonDisplay(state.lastModelPayload);
+    if (state.lastModelPayload) updateModelButtonDisplay(state.lastModelPayload);
     applyHistoryPickerLocale();
     const openTabLabelFull = required('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;

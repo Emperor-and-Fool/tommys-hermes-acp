@@ -1,5 +1,6 @@
 import { byId, inputEl, messagesEl, required } from '../../dom';
 import { state } from '../../state';
+import type { SelectionCapture } from '../../state';
 import { groupsInOrder, quoteSegmentForGroup } from '../messages/messageList';
 import { sendMessage, showComposerHint, syncInputHeightFromContent, updateQuickActionBtns } from './composer';
 
@@ -22,7 +23,7 @@ const undeliveredPrimaryBtn = required('undeliveredPrimaryBtn');
 
 const undeliveredDiscardBtn = required('undeliveredDiscardBtn');
 
-export function wrapTextRange(root, start, end, active) {
+export function wrapTextRange(root: Element, start: number, end: number, active: boolean) {
     if (!root || start >= end) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let offset = 0;
@@ -138,7 +139,7 @@ function ensureQuoteAction() {
     return state.quoteActionEl;
 }
 
-function updateQuoteAction(stash) {
+function updateQuoteAction(stash: SelectionCapture | null) {
     const el = ensureQuoteAction();
     const sel = window.getSelection();
     if (!stash || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
@@ -185,7 +186,7 @@ function renderReplyQuote() {
     updateQuickActionBtns();
 }
 
-export function offerUndeliveredMessage(text) {
+export function offerUndeliveredMessage(text: string) {
     const value = (text || '').trim();
     if (!value || !undeliveredNotice) return;
     state.undeliveredText = text;
@@ -203,7 +204,7 @@ export function offerUndeliveredMessage(text) {
     undeliveredPrimaryBtn.focus();
 }
 
-function closeUndeliveredNotice(clearComposer) {
+function closeUndeliveredNotice(clearComposer: boolean) {
     if (clearComposer && state.undeliveredFilledComposer) {
         inputEl.value = '';
         syncInputHeightFromContent();
@@ -261,7 +262,7 @@ export function initReplyQuoteClearClick(): void {
     }
 }
 
-export function withReplyQuote(text) {
+export function withReplyQuote(text: string) {
     if (!state.replyQuote || !state.replyQuote.segments.length) return text;
     const lines = ['[replying-to]'];
     state.replyQuote.segments.forEach(function(seg) {

@@ -70,7 +70,8 @@ export function init(): void {
                     }
                     const id = appendMessage('thought', msg.text);
                     state.thoughtMsgId = id;
-                    setAuxMessageLive(document.getElementById(id), true);
+                    const liveGroup = document.getElementById(id);
+                    if (liveGroup) setAuxMessageLive(liveGroup, true);
                 } else {
                     appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
@@ -371,8 +372,8 @@ export function init(): void {
                 if (previewRequests.has(msg.requestId)) {
                     const anchor = previewRequests.get(msg.requestId);
                     previewRequests.delete(msg.requestId);
-                    showFilePreview(msg.path || '', msg.content, msg.error);
-                    positionFilePreview(anchor);
+                    showFilePreview(msg.path || '', msg.content || '', msg.error);
+                    if (anchor) positionFilePreview(anchor);
                 }
                 break;
 

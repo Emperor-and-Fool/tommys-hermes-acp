@@ -20,8 +20,10 @@ export function finalizeThoughtSegment() {
         return;
     }
     const thoughtGroup = document.getElementById(state.thoughtMsgId);
-    setAuxMessageLive(thoughtGroup, false);
-    finalizeAuxiliaryBubble(thoughtGroup);
+    if (thoughtGroup) {
+        setAuxMessageLive(thoughtGroup, false);
+        finalizeAuxiliaryBubble(thoughtGroup);
+    }
     state.thoughtMsgId = null;
 }
 

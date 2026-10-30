@@ -54,7 +54,11 @@ export interface DeferredTabsRender {
 /** The about panel's payload; the host decides what it carries beyond these. */
 export interface PluginInfo {
     name?: string;
+    displayName?: string;
     version?: string;
+    publisher?: string;
+    repository?: string;
+    iconUri?: string;
     [key: string]: unknown;
 }
 

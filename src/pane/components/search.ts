@@ -48,12 +48,14 @@ function applyChatSearchHighlight() {
     const active = chatSearchState.matches[chatSearchState.current];
     active.group.classList.add('search-hit-active');
 
-    const byRoot = new Map();
+    const byRoot = new Map<Element, Array<{ start: number; end: number; active: boolean }>>();
     chatSearchState.matches.forEach(function(match, idx) {
         const contentEl = getMessageContentEl(match.group);
         if (!contentEl) return;
         if (!byRoot.has(contentEl)) byRoot.set(contentEl, []);
-        byRoot.get(contentEl).push({
+        const bucket = byRoot.get(contentEl);
+        if (!bucket) return;
+        bucket.push({
             start: match.start,
             end: match.end,
             active: idx === chatSearchState.current,
@@ -124,7 +126,7 @@ export function clearChatSearch() {
     updateChatSearchUI();
 }
 
-function gotoChatSearchMatch(delta) {
+function gotoChatSearchMatch(delta: number) {
     const total = chatSearchState.matches.length;
     if (!total) return;
     chatSearchState.current = (chatSearchState.current + delta + total) % total;

@@ -16,7 +16,7 @@ export function hideTabContextMenu() {
     }
 }
 
-function positionTabContextMenu(x, y) {
+function positionTabContextMenu(x: number, y: number) {
     if (!tabContextMenu) return;
     tabContextMenu.hidden = false;
     tabContextMenu.style.left = '0px';
@@ -28,7 +28,7 @@ function positionTabContextMenu(x, y) {
     tabContextMenu.style.top = Math.min(y, maxTop) + 'px';
 }
 
-export function showTabContextMenu(sessionId, clientX, clientY) {
+export function showTabContextMenu(sessionId: string, clientX: number, clientY: number) {
     const session = state.lastSessions.find(function(s) { return s.id === sessionId; });
     if (!session || !tabContextMenu) {
         return;
@@ -91,7 +91,7 @@ export function showTabContextMenu(sessionId, clientX, clientY) {
     positionTabContextMenu(clientX, clientY);
 }
 
-function startTabRename(sessionId) {
+function startTabRename(sessionId: string) {
     if (!sessionId) {
         return;
     }
@@ -120,7 +120,7 @@ function startTabRename(sessionId) {
     input.spellcheck = false;
     input.setAttribute('aria-label', locale.tabContextRename);
     let finished = false;
-    function finish(commit) {
+    function finish(commit: boolean) {
         if (finished) {
             return;
         }

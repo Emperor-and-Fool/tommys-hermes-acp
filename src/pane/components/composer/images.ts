@@ -46,7 +46,7 @@ export function renderPendingImagesBar() {
     const rect = bar.getBoundingClientRect();
     const first = bar.querySelector('img');
     const cs = getComputedStyle(bar);
-    const r2 = (el) => { if (!el) return 'none'; const b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height) + '@' + Math.round(b.top); };
+    const r2 = (el: Element | null) => { if (!el) return 'none'; const b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height) + '@' + Math.round(b.top); };
     const area = required('input-area');
     const chatBody = required('chat-body');
     const scroller = document.scrollingElement || document.body;

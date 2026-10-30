@@ -2,6 +2,7 @@ import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
 import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, required } from '../dom';
 import { post } from '../post';
 import { state } from '../state';
+import type { SessionExportAction } from '../../shared/webview';
 import { sendMessage, updateQuickActionBtns } from './composer/composer';
 import { hideFilePicker, selectFileMention, updateFilePickerHighlight } from './composer/fileMention';
 import { reindexSessionIndices } from './messages/messageList';
@@ -11,7 +12,7 @@ const multiSelectToolbar = required('multiSelectToolbar');
 
 const multiSelectCount = required('multiSelectCount');
 
-export function isSelectableRole(role) {
+export function isSelectableRole(role: string): boolean {
     return role === 'user' || role === 'assistant' || role === 'thought' || role === 'tool';
 }
 
@@ -62,7 +63,7 @@ function atHistoryPickLimit(): boolean {
     return isHistoryPick() && getSelectedGroups().length >= MAX_HISTORY_MESSAGES;
 }
 
-function selectableForPurpose(group) {
+function selectableForPurpose(group: Element): boolean {
     if (!isHistoryPick()) {
         return true;
     }
@@ -90,11 +91,11 @@ function getSelectedGroups() {
     });
 }
 
-function getGroupCheckbox(group) {
+function getGroupCheckbox(group: Element): HTMLInputElement | null {
     return group.querySelector('.msg-select-wrap input[type="checkbox"]');
 }
 
-export function setGroupSelected(group, selected) {
+export function setGroupSelected(group: Element, selected: boolean) {
     if (!group.classList.contains('selectable')) {
         return;
     }
@@ -112,7 +113,7 @@ export function setGroupSelected(group, selected) {
     updateMultiSelectToolbar();
 }
 
-export function setGroupsSelected(updates) {
+export function setGroupsSelected(updates: Array<{ group: Element; selected: boolean }>) {
     updates.forEach(function(entry) {
         if (entry.selected && atHistoryPickLimit() && !entry.group.classList.contains('is-selected')) {
             return;
@@ -124,13 +125,13 @@ export function setGroupsSelected(updates) {
     updateMultiSelectToolbar();
 }
 
-function areAllSelectableGroupsSelected(groups) {
+function areAllSelectableGroupsSelected(groups: Element[]): boolean {
     return groups.length > 0 && groups.every(function(group) {
         return group.classList.contains('is-selected');
     });
 }
 
-function toggleGroupSelection(group) {
+function toggleGroupSelection(group: Element) {
     setGroupSelected(group, !group.classList.contains('is-selected'));
 }
 
@@ -223,7 +224,7 @@ function syncHistoryRoleBoxes() {
     }
 }
 
-export function enterMultiSelectMode(initialGroup, purpose?) {
+export function enterMultiSelectMode(initialGroup?: Element | null, purpose?: string) {
     state.multiSelectPurpose = purpose || 'normal';
     if (state.multiSelectMode) {
         if (initialGroup) {
@@ -262,7 +263,7 @@ export function exitMultiSelectMode() {
     updateMultiSelectToolbar();
 }
 
-export function wireSelectableGroup(group) {
+export function wireSelectableGroup(group: Element) {
     if (group.dataset.selectWired) return;
     group.dataset.selectWired = '1';
     group.addEventListener('click', function(e) {
@@ -270,7 +271,8 @@ export function wireSelectableGroup(group) {
         if (isHistoryPick() && !selectableForPurpose(group)) {
             return;
         }
-        if (e.target.closest('.message-actions, .block-actions, .insert-dropdown, .insert-dropdown-menu, .msg-select-wrap')) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (target && target.closest('.message-actions, .block-actions, .insert-dropdown, .insert-dropdown-menu, .msg-select-wrap')) {
             return;
         }
         e.preventDefault();
@@ -278,7 +280,7 @@ export function wireSelectableGroup(group) {
     });
 }
 
-export function getSelectedMessageIndices(groups?) {
+export function getSelectedMessageIndices(groups?: Element[]): number[] {
     return (groups || getSelectedGroups()).map(function(group) {
         return parseInt(group.dataset.sessionIndex || '', 10);
     }).filter(function(index) {
@@ -286,7 +288,7 @@ export function getSelectedMessageIndices(groups?) {
     });
 }
 
-export function requestSessionExport(action, indices?, sessionId?) {
+export function requestSessionExport(action: SessionExportAction, indices?: number[], sessionId?: string) {
     const sid = sessionId || state.lastActiveSessionId;
     if (!sid) return;
     post({

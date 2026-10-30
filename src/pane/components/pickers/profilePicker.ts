@@ -29,7 +29,7 @@ export function initProfileDropdownClick(): void {
     profileDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
 }
 
-export function renderProfileList(profiles) {
+export function renderProfileList(profiles: Array<{ label?: string; name?: string; id?: string }>) {
     const list = required('profileList');
     const current = required('profileLabel').textContent;
     const entries = (profiles || []).map(function(item) {

@@ -5,7 +5,7 @@ import { escapeHtml } from '../../util/html';
 import { hideModal } from './modal';
 
 
-export function buildFaqAccordion(container) {
+export function buildFaqAccordion(container: HTMLElement) {
     if (!container || container.querySelector('.faq-list')) {
         return;
     }

@@ -1,3 +1,21 @@
+import type { HostToPane } from '../../../shared/webview';
+
+/** The fields every detect-progress message carries, whichever flow sent it. */
+interface DetectProgressFields {
+    step: string;
+    status: string;
+    brief: string;
+    detail?: string;
+    paths?: string[];
+    count?: number;
+    verifiedCount?: number;
+    totalCount?: number;
+    reportStatus?: string;
+}
+
+type DetectProgressMsg = Extract<HostToPane, { type: 'detectEnvironmentProgress' }>;
+type DetectEndMsg = Extract<HostToPane, { type: 'detectEnvironmentEnd' }>;
+
 import { byId, detectEnvBtn, detectEnvToggle, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
@@ -21,19 +39,19 @@ const DETECT_STEP_LOCALE_KEYS: Record<string, string> = {
     summary: 'detectEnvironmentStepSummary',
 };
 
-export function detectStepLabel(stepId) {
+export function detectStepLabel(stepId: string): string {
     const key = DETECT_STEP_LOCALE_KEYS[stepId];
     return key ? (locale[key] || stepId) : stepId;
 }
 
-function formatDetectStepDetail(msg) {
+function formatDetectStepDetail(msg: DetectProgressFields): string {
     if (msg.status === 'running') return '…';
     if (msg.status === 'skip') return locale.detectEnvironmentStepSkipped || 'Skipped';
     if (msg.step === 'verify') {
         return localeText(
             'detectEnvironmentStepVerifyCount',
-            msg.verifiedCount != null ? msg.verifiedCount : 0,
-            msg.totalCount != null ? msg.totalCount : 0,
+            String(msg.verifiedCount != null ? msg.verifiedCount : 0),
+            String(msg.totalCount != null ? msg.totalCount : 0),
         );
     }
     if (msg.step === 'acp_check') {
@@ -50,8 +68,8 @@ function formatDetectStepDetail(msg) {
         if (msg.reportStatus === 'broken') return locale.detectEnvironmentSummaryBroken || '';
         return locale.detectEnvironmentSummaryInstall || locale.detectEnvironmentSummaryNotFound || '';
     }
-    if (msg.count > 0) {
-        const summary = localeText('detectEnvironmentStepFoundCount', msg.count);
+    if ((msg.count ?? 0) > 0) {
+        const summary = localeText('detectEnvironmentStepFoundCount', String(msg.count));
         if (msg.detail) return summary + '\n' + msg.detail;
         return summary;
     }
@@ -59,14 +77,14 @@ function formatDetectStepDetail(msg) {
     return locale.detectEnvironmentStepNotFound || 'Not found';
 }
 
-export function setDetectEnvIcon(el, status) {
+export function setDetectEnvIcon(el: Element | null, status: string) {
     if (!el) return;
     const keepStep = el.classList.contains('detect-env-step-icon');
     el.className = (keepStep ? 'detect-env-step-icon ' : '') + 'detect-env-icon ' + (status || 'running');
     el.textContent = '';
 }
 
-export function formatDetectProgressDisplay(brief) {
+export function formatDetectProgressDisplay(brief: string) {
     if (!brief) return '';
     return localeText('detectEnvironmentProgressPrefix', brief);
 }
@@ -79,7 +97,7 @@ export function setDetectEnvDetailsTitle() {
         : (locale.detectEnvironmentDetectTitle || locale.detectEnvironment || '');
 }
 
-export function setDetectEnvDetailsOpen(open) {
+export function setDetectEnvDetailsOpen(open: boolean) {
     state.detectEnvDetailsOpen = !!open;
     const details = required('detectEnvDetails');
     const hint = required('detectEnvCompactHint');
@@ -94,7 +112,7 @@ export function setDetectEnvDetailsOpen(open) {
     }
 }
 
-function buildDetectStepRow(stepId, rowId) {
+function buildDetectStepRow(stepId: string, rowId: string): HTMLElement {
     const li = document.createElement('li');
     li.className = 'detect-env-step';
     li.id = rowId;
@@ -115,7 +133,7 @@ function buildDetectStepRow(stepId, rowId) {
     return li;
 }
 
-export function ensureDetectStepsList(listEl, stepIdPrefix) {
+export function ensureDetectStepsList(listEl: HTMLElement, stepIdPrefix: string) {
     if (!listEl || listEl.dataset.ready === '1') {
         return;
     }
@@ -126,7 +144,7 @@ export function ensureDetectStepsList(listEl, stepIdPrefix) {
     listEl.dataset.ready = '1';
 }
 
-export function refreshDetectStepLabels(listEl, stepIdPrefix) {
+export function refreshDetectStepLabels(listEl: HTMLElement, stepIdPrefix: string) {
     if (!listEl) return;
     DETECT_STEP_IDS.forEach(function(stepId) {
         const label = listEl.querySelector('#' + stepIdPrefix + stepId + ' .detect-env-step-label');
@@ -134,7 +152,7 @@ export function refreshDetectStepLabels(listEl, stepIdPrefix) {
     });
 }
 
-export function resetDetectStepsList(stepIdPrefix) {
+export function resetDetectStepsList(stepIdPrefix: string) {
     DETECT_STEP_IDS.forEach(function(stepId) {
         const row = document.getElementById(stepIdPrefix + stepId);
         if (!row) return;
@@ -145,7 +163,7 @@ export function resetDetectStepsList(stepIdPrefix) {
     });
 }
 
-export function updateDetectStepsList(msg, stepIdPrefix, compactIconEl, compactTextEl) {
+export function updateDetectStepsList(msg: DetectProgressFields, stepIdPrefix: string, compactIconEl?: HTMLElement, compactTextEl?: HTMLElement) {
     const row = document.getElementById(stepIdPrefix + msg.step);
     if (row) {
         row.style.display = '';
@@ -182,7 +200,7 @@ function hideDetectEnvironmentBar() {
     if (bar) bar.hidden = true;
 }
 
-function setDetectEnvironmentCompact(brief, status) {
+function setDetectEnvironmentCompact(brief: string, status: string) {
     setDetectEnvIcon(required('detectEnvCompactIcon'), status);
     const textEl = required('detectEnvCompactText');
     if (textEl) {
@@ -191,7 +209,7 @@ function setDetectEnvironmentCompact(brief, status) {
     }
 }
 
-export function updateDetectEnvironmentStep(msg) {
+export function updateDetectEnvironmentStep(msg: DetectProgressMsg) {
     ensureDetectEnvironmentPanel();
     updateDetectStepsList(
         msg,
@@ -201,7 +219,7 @@ export function updateDetectEnvironmentStep(msg) {
     );
 }
 
-export function initDetectEnvironmentStart(mode) {
+export function initDetectEnvironmentStart(mode: 'connect' | 'manual' | 'configure') {
     state.detectEnvFinished = false;
     showDetectEnvironmentBar();
     setDetectEnvDetailsOpen(false);
@@ -225,10 +243,11 @@ export function initDetectEnvironmentStart(mode) {
     );
 }
 
-export function finishDetectEnvironmentPanel(msg) {
+export function finishDetectEnvironmentPanel(msg: DetectEndMsg) {
     state.detectEnvFinished = true;
     setDetectEnvDetailsTitle();
-    const summaryMsg = {
+    const summaryMsg: DetectProgressMsg = {
+        type: 'detectEnvironmentProgress',
         step: 'summary',
         status: msg.summaryStatus || (msg.status === 'ready' ? 'ok' : 'fail'),
         reportStatus: msg.status,

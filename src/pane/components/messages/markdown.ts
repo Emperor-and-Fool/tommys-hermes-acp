@@ -188,7 +188,7 @@ export function renderMarkdown(text: string): string {
                 if (!token) continue;
                 if (token.type === 'html') {
                     const raw = token.text != null ? token.text : token.raw;
-                    token.text = escapeHtmlEntities(raw);
+                    token.text = escapeHtmlEntities(String(raw ?? ''));
                     token.raw = token.text;
                 }
                 if (Array.isArray(token.tokens)) scrubRawHtml(token.tokens);

@@ -61,7 +61,7 @@ export function syncInputHeightFromContent() {
     inputEl.style.overflowY = inputEl.scrollHeight > max ? 'auto' : 'hidden';
 }
 
-function setInputMaxHeight(px, options) {
+function setInputMaxHeight(px: number, options?: { animate?: boolean; persist?: boolean; explicit?: boolean }) {
     const opts = options || {};
     const clamped = Math.max(INPUT_HEIGHT_MIN, Math.min(px, getInputHeightCeiling()));
     inputAreaEl.style.setProperty('--input-max-height', clamped + 'px');
@@ -95,7 +95,7 @@ export function initInputResizeHandlePointerdown(): void {
         let startY = 0;
         let startHeight = 0;
 
-        function endDrag(e) {
+        function endDrag(e: PointerEvent) {
             if (!dragging) return;
             dragging = false;
             inputResizeHandle.classList.remove('dragging');
@@ -150,7 +150,7 @@ export interface PendingImage {
 
 export const pendingImages: PendingImage[] = [];
 
-export function executeSendMessage(text) {
+export function executeSendMessage(text: string) {
     hideFilePicker();
     resetAutoScrollFollow();
     const outgoing = withReplyQuote(text);
@@ -197,7 +197,7 @@ function updateStopButtonState(): void {
     cancelBtn.title = steering ? (locale.steerHint || '') : (locale.cancelResponse || '');
 }
 
-export function setInputMode(mode) {
+export function setInputMode(mode: 'stop' | 'waiting' | 'send' | 'disabled') {
     const waiting = mode === 'stop' || mode === 'waiting';
     if (inputCompositeEl) {
         inputCompositeEl.classList.toggle('waiting', waiting);
@@ -225,7 +225,7 @@ export function setInputMode(mode) {
     updateStopButtonState();
 }
 
-function setQuickPanelOpen(open) {
+function setQuickPanelOpen(open: boolean) {
     if (!inputQuickPanel || !quickToggleBtn) return;
     inputQuickPanel.classList.toggle('open', open);
     inputQuickPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
@@ -250,7 +250,7 @@ export function updateQuickActionBtns() {
     else if (chatSearchInput && chatSearchInput.value.trim()) scheduleChatSearch();
 }
 
-function flashQuickActionBtn(btn, className?, duration?) {
+function flashQuickActionBtn(btn: HTMLElement, className?: string, duration?: number) {
     if (!btn) return;
     btn.classList.add(className || 'copied');
     setTimeout(function() {
@@ -258,7 +258,7 @@ function flashQuickActionBtn(btn, className?, duration?) {
     }, duration || 1500);
 }
 
-export function showComposerHint(message, seconds?) {
+export function showComposerHint(message: string, seconds?: number) {
     if (!composerHint) return;
     composerHint.textContent = message;
     composerHint.hidden = false;
@@ -328,7 +328,7 @@ export function sendMessage() {
  * Nothing is added to the transcript here: the host answers with the user row, marked as a
  * steer, because only it knows whether the steer was taken or had to go out as a message.
  */
-function steerMessage(text) {
+function steerMessage(text: string) {
     const body = (text || '').trim();
     if (!body) {
         return;
@@ -421,7 +421,7 @@ export function initFontSize(): void {
         ].join(';');
         pill.title = 'Chat font size';
 
-        function mkBtn(txt, fn) {
+        function mkBtn(txt: string, fn: () => void) {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = txt;
@@ -452,7 +452,7 @@ export function initFontSize(): void {
         pill.appendChild(plusBtn);
         target.appendChild(pill);
 
-        function apply(px) {
+        function apply(px: number) {
             size = Math.max(MIN, Math.min(MAX, px));
             document.documentElement.style.setProperty('--chat-fs', size + 'px');
             localStorage.setItem(KEY, String(size));
