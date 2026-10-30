@@ -127,11 +127,12 @@ editing-while-it-runs rhythm that most clients make you fight for.
 <li><code>_session/setHidden</code> — hide or unhide a session, which is what closing a tab does</li>
 <li><code>_session/setTitle</code> — rename a session as a user title</li>
 </ul>
-<p>Without them the sidebar cannot see sessions you have closed, a closed tab stays listed, and renaming a conversation does not survive. They are added by one patch, kept in this repository until it lands upstream:</p>
+<p>Without them the sidebar cannot see sessions you have closed, a closed tab stays listed, and renaming a conversation does not survive. They are added by two patches, kept in this repository until they land upstream:</p>
 <pre><code class="language-bash">cd ~/.hermes/hermes-agent
 git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0001-acp-session-catalog-hidden-title.patch
+git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0002-acp-gateway-ext-methods.patch
 </code></pre>
-<p>It touches only <code>acp_adapter/server.py</code> and <code>acp_adapter/session.py</code>, and only calls Hermes&rsquo; own database methods. It is based on hermes-agent <code>0.22.2</code>; re-apply it after any <code>hermes update</code> that drops it.</p>
+<p><code>0001</code> adds the three methods (base <code>0.22.2</code>); <code>0002</code> carries them onto <code>GatewayACPAgent</code>, the class <code>0.22.5</code> actually answers from, because <code>HermesACPAgent</code>&rsquo;s <code>__new__</code> returns one. On <code>0.22.5</code> and later both are required &mdash; <code>0001</code> alone still applies cleanly and changes nothing, which is what makes the failure quiet. They touch only <code>acp_adapter/server.py</code>, <code>acp_adapter/session.py</code> and <code>acp_adapter/gateway_server.py</code>, and only call Hermes&rsquo; own database methods. Re-apply both after any <code>hermes update</code> that drops them; <code>packaging/hermes-patches/CHANGELOG.md</code> records the bases and the symptom when one is missing.</p>
 <p><em>Tested on Ubuntu 24.04. Windows is untested &mdash; both the Hermes install location and <code>git apply</code> behave differently there. If you try it, please open an issue and say what happened; this section will then state it honestly rather than guess.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install

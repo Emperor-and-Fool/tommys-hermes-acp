@@ -1,0 +1,61 @@
+diff --git a/acp_adapter/gateway_server.py b/acp_adapter/gateway_server.py
+index d539cfead80..aea46ab7f83 100644
+--- a/acp_adapter/gateway_server.py
++++ b/acp_adapter/gateway_server.py
+@@ -150,6 +150,56 @@ class GatewayACPAgent(GatewayReplyMixin, acp.Agent):
+         from acp_adapter.server import HermesACPAgent
+         return await HermesACPAgent.authenticate(self, method_id, **kwargs)
+ 
++    # ---- Sidebar session extension methods ----------------------------------
++    #
++    # 0.22.5 routes ``HermesACPAgent()`` here: its ``__new__`` returns a GatewayACPAgent.
++    # The handlers for ``_session/catalog`` / ``setHidden`` / ``setTitle`` live on
++    # HermesACPAgent, so from the wire they are unreachable and the pane's catalogue read
++    # answers null (an empty tab list, and no closed sessions). Same three methods, same
++    # SessionManager calls, answered from this process: the viewer reads and writes the
++    # profile store directly, as the CLI does, instead of routing through the daemon.
++    _ext_manager = None
++
++    def _ext_session_manager(self):
++        if self._ext_manager is None:
++            from acp_adapter.session import SessionManager
++            self._ext_manager = SessionManager(agent_factory=object)
++        return self._ext_manager
++
++    async def ext_method(self, method: str, params: dict) -> dict:
++        from acp.exceptions import RequestError
++        manager = self._ext_session_manager()
++        if method == "session/catalog":
++            raw_cwd = params.get("cwd")
++            cwd = raw_cwd if isinstance(raw_cwd, str) and raw_cwd.strip() else None
++            return {"sessions": await asyncio.to_thread(manager.session_catalog, cwd)}
++        if method == "session/setHidden":
++            session_id = str(params.get("sessionId") or "").strip()
++            hidden = params.get("hidden")
++            if not session_id or not isinstance(hidden, bool):
++                raise RequestError.invalid_params(
++                    "session/setHidden needs {sessionId: string, hidden: boolean}")
++            ok = await asyncio.to_thread(manager.set_session_hidden, session_id, hidden)
++            if not ok:
++                raise RequestError.invalid_params(f"unknown session {session_id}")
++            logger.info("Session %s hidden=%s", session_id, hidden)
++            return {"ok": True, "sessionId": session_id, "hidden": hidden}
++        if method == "session/setTitle":
++            session_id = str(params.get("sessionId") or "").strip()
++            title = params.get("title")
++            if not session_id or not isinstance(title, str):
++                raise RequestError.invalid_params(
++                    {"reason": "session/setTitle needs {sessionId: string, title: string}"})
++            try:
++                ok = await asyncio.to_thread(manager.set_session_title, session_id, title)
++            except ValueError as exc:
++                raise RequestError.invalid_params({"reason": str(exc)}) from exc
++            if not ok:
++                raise RequestError.invalid_params({"reason": f"unknown session {session_id}"})
++            logger.info("Session %s retitled", session_id)
++            return {"ok": True, "sessionId": session_id, "title": title}
++        raise RequestError.method_not_found(f"_{method}")
++
+     async def _client(self):
+         async with self._connect_lock:
+             if self._failure is not None or self._transport_closed():

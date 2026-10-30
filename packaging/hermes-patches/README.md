@@ -10,10 +10,20 @@ Hermes's ACP adapter, which this extension uses:
 It only touches `acp_adapter/server.py` and `acp_adapter/session.py`, and only calls Hermes's own
 db methods.
 
-Base: NousResearch/hermes-agent `d923a5eb487a17c0a68801bba9ef0f56c81040a8` (Release 0.22.2).
+Bases: `d923a5eb487` (Release 0.22.2) for `0001`, `bf0203a794a` (0.22.5) for `0002`.
 
-Kept here until it lives on a hermes-agent fork branch with an upstream PR.
+Kept here until they live on a hermes-agent fork branch with an upstream PR.
 
-Apply after a `hermes update` that dropped it:
+`0002-acp-gateway-ext-methods.patch` carries the same three methods onto `GatewayACPAgent`, which
+is the class 0.22.5 actually answers from: `HermesACPAgent.__new__` returns a `GatewayACPAgent`, so
+`0001`'s handlers stop being reachable while the patch itself still applies cleanly. On 0.22.5 and
+later both are needed; `0001` alone fails silently.
 
-    cd ~/.hermes/hermes-agent && git apply --3way /path/to/0001-acp-session-catalog-hidden-title.patch
+Which one an install needs, the symptom when it is missing, and the release each was cut against are
+in [`CHANGELOG.md`](CHANGELOG.md).
+
+Apply after a `hermes update` that dropped them:
+
+    cd ~/.hermes/hermes-agent
+    git apply --3way /path/to/0001-acp-session-catalog-hidden-title.patch
+    git apply --3way /path/to/0002-acp-gateway-ext-methods.patch
