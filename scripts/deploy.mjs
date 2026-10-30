@@ -91,8 +91,31 @@ function registeredFolders() {
     }
 }
 
-/** Installed copies, by folder — VSCodium lowercases the publisher in the directory name. */
-const extensionsDir = path.join(homedir(), '.vscode-oss', 'extensions');
+/**
+ * Where installed extensions live. VSCodium defaults to ~/.vscode-oss, plain VS Code to
+ * ~/.vscode, and a portable or re-homed install says so in VSCODE_EXTENSIONS.
+ */
+function resolveExtensionsDir() {
+    const override = process.env.VSCODE_EXTENSIONS;
+    if (override) return { dir: path.resolve(override), source: 'VSCODE_EXTENSIONS' };
+    const codium = path.join(homedir(), '.vscode-oss', 'extensions');
+    if (existsSync(codium)) return { dir: codium, source: 'VSCodium default' };
+    const code = path.join(homedir(), '.vscode', 'extensions');
+    if (existsSync(code)) return { dir: code, source: 'VS Code default' };
+    return { dir: '', source: '' };
+}
+
+const { dir: extensionsDir, source: extensionsSource } = resolveExtensionsDir();
+if (!extensionsDir) {
+    console.error(
+        'deploy: no extension directory found — looked at ~/.vscode-oss/extensions and ' +
+        '~/.vscode/extensions. Set VSCODE_EXTENSIONS to the directory the editor loads from.'
+    );
+    process.exit(1);
+}
+console.log(`deploy: extensions in ${extensionsDir} (${extensionsSource})`);
+
+/** Installed copies, by folder — the editor lowercases the publisher in the directory name. */
 function installed(prefix) {
     if (!existsSync(extensionsDir)) return [];
     return readdirSync(extensionsDir)
