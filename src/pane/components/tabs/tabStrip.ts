@@ -85,7 +85,7 @@ export function renderSessionTabs(sessions, activeId) {
         state.pendingTabsRender = { sessions: sessions, activeId: activeId };
         return;
     }
-    const parts = [];
+    const parts: string[] = [];
     sessions.forEach(function(s, index) {
         const active = s.id === state.activeSessionId ? ' active' : '';
         const pinnedClass = s.pinned ? ' pinned' : '';

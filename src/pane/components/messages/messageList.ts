@@ -488,13 +488,13 @@ export function markMissingImages(root, hasImages) {
     hits.forEach(function(textNode) {
         const parts = textNode.textContent.split(/(\[(?:screenshot|image)\])/i);
         const frag = document.createDocumentFragment();
-        let lastNode = null;
+        let lastNode: Node | null = null;
         const appendText = function(value) {
             if (!value) return;
             let text = value;
             // Only fold the space when the previous sibling is text: a red statement in
             // between keeps the two words apart.
-            if (lastNode && lastNode.nodeType === 3 && /\s$/.test(lastNode.textContent) && /^\s/.test(text)) {
+            if (lastNode && lastNode.nodeType === 3 && /\s$/.test(lastNode.textContent || '') && /^\s/.test(text)) {
                 text = text.replace(/^\s+/, '');
             }
             if (!text) return;

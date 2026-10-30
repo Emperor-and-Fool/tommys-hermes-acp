@@ -96,7 +96,7 @@ function startTabRename(sessionId) {
         return;
     }
     const tabs = tabBar.querySelectorAll('.session-tab');
-    let tab = null;
+    let tab: Element | null = null;
     for (let i = 0; i < tabs.length; i++) {
         if (tabs[i].dataset.id === sessionId) {
             tab = tabs[i];
@@ -107,6 +107,9 @@ function startTabRename(sessionId) {
     if (!tab || !titleEl || tab.classList.contains('editing')) {
         return;
     }
+    // Bound for the nested finish(): narrowing does not survive into a closure.
+    const tabEl = tab;
+    const titleNode = titleEl;
     const record = state.lastSessions.find(function(s) { return s.id === sessionId; });
     const current = (record && record.title) || titleEl.textContent || '';
     const input = document.createElement('input');
@@ -122,9 +125,9 @@ function startTabRename(sessionId) {
             return;
         }
         finished = true;
-        tab.classList.remove('editing');
+        tabEl.classList.remove('editing');
         if (input.parentNode) {
-            input.parentNode.replaceChild(titleEl, input);
+            input.parentNode.replaceChild(titleNode, input);
         }
         const value = input.value.replace(/\s+/g, ' ').trim();
         if (commit && value && value !== current) {
@@ -149,7 +152,7 @@ function startTabRename(sessionId) {
     input.addEventListener('click', function(e) { e.stopPropagation(); });
     input.addEventListener('dblclick', function(e) { e.stopPropagation(); });
     tab.classList.add('editing');
-    titleEl.parentNode.replaceChild(input, titleEl);
+    titleNode.parentNode?.replaceChild(input, titleNode);
     input.focus();
     input.select();
 }

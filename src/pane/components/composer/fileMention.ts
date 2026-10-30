@@ -59,7 +59,7 @@ export function positionFilePreview(anchor) {
 function attachFileRefPreview(link) {
     if (link.dataset.previewReady) return;
     link.dataset.previewReady = '1';
-    let enterTimer = null;
+    let enterTimer: ReturnType<typeof setTimeout> | null = null;
     link.addEventListener('mouseenter', function () {
         enterTimer = setTimeout(function () {
             const filePath = link.dataset.path || link.textContent.replace(/^@/, '');
@@ -83,10 +83,12 @@ export function processFileRefs(container) {
         if (node.parentElement && node.parentElement.closest('pre, code, a.file-ref')) continue;
         const text = node.textContent || '';
         const refRegex = /@([\w./\\\-]+(?:\.[a-zA-Z0-9]+)?)/g;
-        let match;
+        let match: RegExpExecArray | null;
         let lastIdx = 0;
         const parts = [];
         while ((match = refRegex.exec(text)) !== null) {
+            // Captured per iteration: narrowing does not survive into the click handler.
+            const hit = match;
             const before = text.slice(lastIdx, match.index);
             if (before) parts.push(document.createTextNode(before));
             const link = document.createElement('a');
@@ -97,7 +99,7 @@ export function processFileRefs(container) {
             link.dataset.path = match[1];
             link.addEventListener('click', function (e) {
                 e.preventDefault();
-                post({ type: 'openFile', path: match[1] });
+                post({ type: 'openFile', path: hit[1] });
             });
             attachFileRefPreview(link);
             parts.push(link);

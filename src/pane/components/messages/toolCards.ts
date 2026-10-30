@@ -82,7 +82,7 @@ function ensureAggregateEntries(group) {
     const state = group._auxState;
     if (!state) return;
     if (state.aggregatedTools && state.aggregatedTools.length) return;
-    let firstId = null;
+    let firstId: string | null = null;
     let firstText = state.rawText || '';
     Object.keys(state.toolCallMap).forEach(function(id) {
         if (state.toolCallMap[id] === group.id && !firstId) {

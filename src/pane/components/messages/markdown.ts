@@ -84,8 +84,13 @@ export function cancelSessionMarkdownRender() {
     forceHideSessionRenderBanner();
 }
 
+/** A block that still needs markdown rendering; `el` exists on the assistant variant only. */
+type MarkdownRenderTarget =
+    | { kind: 'assistant'; group: Element; el: Element; text: string }
+    | { kind: 'aux'; group: Element; text: string };
+
 function collectMarkdownRenderTargets() {
-    const targets = [];
+    const targets: MarkdownRenderTarget[] = [];
     messagesEl.querySelectorAll('.message-group').forEach(function(group) {
         const assistantContent = group.querySelector('.message:is(.assistant, .peer) .content');
         if (assistantContent) {
@@ -220,9 +225,9 @@ function addBlockActions(container, getText, copyPayload?, copyTitle?) {
 }
 
 function tableToMarkdown(table) {
-    const rows = [];
+    const rows: string[][] = [];
     table.querySelectorAll('tr').forEach(function(tr) {
-        const cells = [];
+        const cells: string[] = [];
         tr.querySelectorAll('th, td').forEach(function(cell) {
             cells.push((cell.textContent || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim());
         });
