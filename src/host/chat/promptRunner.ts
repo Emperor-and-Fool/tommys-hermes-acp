@@ -36,6 +36,9 @@ export interface PromptHost {
     awaitSessionReady(): Promise<void>;
 }
 
+/** Whether a send may proceed, and whether the reader has already been told why not. */
+export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
+
 /**
  * State of the turn in flight, plus the code that acquires the session it runs on.
  *
@@ -44,9 +47,6 @@ export interface PromptHost {
  * first message; a tab that has history but lost its session is refused rather than
  * silently re-sessioned.
  */
-/** Whether a send may proceed, and whether the reader has already been told why not. */
-export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
-
 export class PromptRunner {
     promptSessionId: string | undefined;
     lastAssistantText = '';
