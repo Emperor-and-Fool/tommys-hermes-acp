@@ -142,7 +142,13 @@ export function maybeFocusInputAfterResponse() {
     });
 }
 
-export const pendingImages = [];
+/** A staged image: what the pane holds between paste and send. */
+export interface PendingImage {
+    mimeType: string;
+    data: string;
+}
+
+export const pendingImages: PendingImage[] = [];
 
 export function executeSendMessage(text) {
     hideFilePicker();

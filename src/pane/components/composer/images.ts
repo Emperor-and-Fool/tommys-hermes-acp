@@ -90,11 +90,11 @@ function bindImagePasteOnce() {
                 let bin = '';
                 const CHUNK = 0x8000;
                 for (let i = 0; i < bytes.length; i += CHUNK) {
-                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
                 }
                 pendingImages.push({ mimeType: f.type || 'image/png', data: btoa(bin) });
             } catch (err) {
-                hostLog('[paste] stage failed: ' + (err && err.message));
+                hostLog('[paste] stage failed: ' + (err instanceof Error ? err.message : String(err)));
                 console.error('[image-paste] stage failed', err);
             }
         }

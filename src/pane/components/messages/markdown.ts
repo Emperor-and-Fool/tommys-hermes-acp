@@ -14,11 +14,18 @@ const MARKDOWN_RENDER_BATCH_SIZE = 4;
 
 export const COPY_ICON_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4 2h8a1 1 0 0 1 1 1v1h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h0zm1 2v8h8V5H5zm-2 2h1v6h6v1H4a1 1 0 0 1-1-1V6h0z"/></svg>';
 
+/** One hit of the in-chat search: the message it sits in and the offset range inside it. */
+export interface ChatSearchMatch {
+    group: HTMLElement;
+    start: number;
+    end: number;
+}
+
 export const chatSearchState = {
     query: '',
-    matches: [],
+    matches: [] as ChatSearchMatch[],
     current: -1,
-    timer: null,
+    timer: null as ReturnType<typeof setTimeout> | null,
 };
 
 export function getGroupMarkdownText(group) {
