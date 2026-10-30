@@ -84,7 +84,8 @@ export class PaneMailPresence {
     private _lastLive = false;
     private _lastProfile = '';
 
-    constructor(private readonly _host: PaneMailHost) {}
+    /** `paths` is injectable so a test's heartbeats land in its own directory, not the user's. */
+    constructor(private readonly _host: PaneMailHost, private readonly _paths = paneMailPaths()) {}
 
     start(): void {
         this.beat();
@@ -92,7 +93,7 @@ export class PaneMailPresence {
     }
 
     beat(): void {
-        const paths = paneMailPaths();
+        const paths = this._paths;
         const profile = this._host.profile();
         if (!profile) {
             return;
@@ -117,8 +118,9 @@ export class PaneMailPresence {
      * it, and an envelope must be addressed with the first, not the second.
      */
     other(): { profile: string; address: string; host: string } | null {
-        const paths = paneMailPaths();
-        const mine = sanitize(this._host.profile());
+        const paths = this._paths;
+        const mineName = this._host.profile();
+        const mine = sanitize(mineName);
         let best: { profile: string; address: string; host: string; liveAt: number } | null = null;
         try {
             for (const name of fs.readdirSync(paths.dir)) {
@@ -133,11 +135,15 @@ export class PaneMailPresence {
                 const liveAt = typeof raw.liveAt === 'number' ? raw.liveAt : 0;
                 // The raw name lives in the file; the legacy form (name only) falls back to the
                 // sanitized part of the file name, minus the fingerprint when there is one.
-                const profile = typeof raw.profile === 'string' && raw.profile
-                    ? raw.profile
-                    : name.slice('presence-'.length, -'.json'.length).replace(/-[0-9a-f]{8}$/, '');
+                const recorded = typeof raw.profile === 'string' && raw.profile ? raw.profile : '';
+                const profile = recorded
+                    || name.slice('presence-'.length, -'.json'.length).replace(/-[0-9a-f]{8}$/, '');
                 const address = sanitize(profile);
-                if (address === mine) {
+                // Skip this pane's own heartbeat by its raw name: two profiles whose names
+                // sanitize alike share an address, and comparing addresses would hide each pane
+                // from the other. A legacy file never recorded a raw name, so its address is all
+                // there is to compare.
+                if (recorded ? profile === mineName : address === mine) {
                     continue;
                 }
                 if (!best || liveAt > best.liveAt) {

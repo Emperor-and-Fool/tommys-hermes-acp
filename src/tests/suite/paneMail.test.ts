@@ -192,6 +192,15 @@ describe('pane mail', () => {
     });
 });
 
+/** A presence host that only needs a name: the rest is unused by the heartbeat. */
+const presenceHost = (name: string) => ({
+    profile: () => name,
+    onPeer: () => undefined,
+    setOtherPaneLive: () => undefined,
+    state: new FakeState() as unknown as never,
+    log: () => undefined,
+}) as never;
+
 describe('peer card state', () => {
     it('delivers or dismisses a pending card', () => {
         assert.strictEqual(peerStateAfter('pending', 'deliver'), 'delivered');
@@ -205,27 +214,33 @@ describe('peer card state', () => {
     it('keeps two profiles apart when their names sanitize alike', () => {
         // "Work Laptop" and "Work_Laptop" both sanitize to `Work_Laptop`; one shared presence file
         // would let each pane mistake the other for itself.
-        const writer = (name: string) => ({
-            profile: () => name,
-            onPeer: () => undefined,
-            setOtherPaneLive: () => undefined,
-            state: new FakeState() as unknown as never,
-            log: () => undefined,
-        });
-        new PaneMailPresence(writer('Work Laptop') as never).beat();
-        new PaneMailPresence(writer('Work_Laptop') as never).beat();
+        const paths = paneMailPaths(fs.mkdtempSync(path.join(os.tmpdir(), 'presence-')));
+        new PaneMailPresence(presenceHost('Work Laptop'), paths).beat();
+        new PaneMailPresence(presenceHost('Work_Laptop'), paths).beat();
 
         // The file names carry a fingerprint of the raw name, so neither overwrites the other.
-        const a = paneMailPaths().presence('Work Laptop');
-        const b = paneMailPaths().presence('Work_Laptop');
+        const a = paths.presence('Work Laptop');
+        const b = paths.presence('Work_Laptop');
         assert.notStrictEqual(path.basename(a), path.basename(b));
         assert.ok(fs.existsSync(a) && fs.existsSync(b), 'both hearts survive');
 
-        const reader = new PaneMailPresence(writer('solo') as never);
-        const other = reader.other();
+        const other = new PaneMailPresence(presenceHost('solo'), paths).other();
         assert.ok(other, 'the other pane is visible');
         assert.strictEqual(other!.address, 'Work_Laptop', 'addressing uses the sanitized name');
         assert.ok(['Work Laptop', 'Work_Laptop'].includes(other!.profile), 'display uses the raw one');
+    });
+
+    it('lets two panes whose names sanitize alike see each other', () => {
+        const paths = paneMailPaths(fs.mkdtempSync(path.join(os.tmpdir(), 'presence-')));
+        new PaneMailPresence(presenceHost('Work Laptop'), paths).beat();
+        new PaneMailPresence(presenceHost('Work_Laptop'), paths).beat();
+
+        // Same address, different raw name. Comparing addresses to find "not me" would hide each
+        // pane from the other, and both would report that no other window is open.
+        const fromA = new PaneMailPresence(presenceHost('Work Laptop'), paths).other();
+        const fromB = new PaneMailPresence(presenceHost('Work_Laptop'), paths).other();
+        assert.strictEqual(fromA?.profile, 'Work_Laptop', 'the first pane sees the second');
+        assert.strictEqual(fromB?.profile, 'Work Laptop', 'the second pane sees the first');
     });
 
 });
