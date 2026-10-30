@@ -17,7 +17,7 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml } from './webview/html';
+import { buildWebviewHtml, identityArtwork } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
@@ -954,8 +954,10 @@ export class App implements vscode.WebviewViewProvider {
         let iconUri = '';
         const iconWebview = this._surfaces.iconWebview;
         if (iconWebview) {
+            // The identity's own mark: the secondant is orange by definition, so this must not be
+            // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
             iconUri = iconWebview.asWebviewUri(
-                vscode.Uri.joinPath(this._extensionUri, 'media', 'icon.png')
+                vscode.Uri.joinPath(this._extensionUri, 'media', identityArtwork(this._id.role))
             ).toString();
         }
         this._postMessage({
