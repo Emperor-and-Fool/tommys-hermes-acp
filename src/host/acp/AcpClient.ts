@@ -1103,8 +1103,11 @@ export class AcpClient {
     // ---- ACP session update handler ----
 
     private _handleSessionUpdate(notification: any): void {
+        // Guard against the session actually on the wire. `_session` is null for anything opened
+        // with `loadSession`, so testing it let a late chunk from the session we just left paint
+        // into the transcript we switched to.
         const sessionId = notification?.sessionId;
-        if (sessionId && this._session && sessionId !== this._session.sessionId) {
+        if (sessionId && this._activeSessionId && sessionId !== this._activeSessionId) {
             return;
         }
         const update = notification.update;
