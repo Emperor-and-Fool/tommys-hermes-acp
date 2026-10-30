@@ -23,6 +23,7 @@ import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
+import { sliceTextByLines } from './fsRead';
 import { shouldReportReplay } from './replayProgress';
 import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
@@ -75,6 +76,40 @@ interface TerminalInstance {
     exitSignal: string | null;
     exited: Promise<void>;
     resolveExit: () => void;
+    /** Asked for at create time; null means keep everything. */
+    outputByteLimit?: number;
+    /** True once any output was dropped, so a read can say so. */
+    truncated: boolean;
+}
+
+/** Keep the newest `limit` bytes: the tail is what a reader is looking for. */
+function trimToByteLimit(text: string, limit: number | undefined): { text: string; dropped: boolean } {
+    if (!limit || limit <= 0) {
+        return { text, dropped: false };
+    }
+    const bytes = Buffer.from(text, 'utf-8');
+    if (bytes.length <= limit) {
+        return { text, dropped: false };
+    }
+    return { text: bytes.subarray(bytes.length - limit).toString('utf-8'), dropped: true };
+}
+
+/** ACP sends terminal env as a list of {name, value} pairs; Node wants one object. */
+function terminalEnv(requested: unknown): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (Array.isArray(requested)) {
+        for (const entry of requested) {
+            const pair = entry as { name?: unknown; value?: unknown };
+            if (pair && typeof pair.name === 'string' && pair.name) {
+                env[pair.name] = typeof pair.value === 'string' ? pair.value : String(pair.value ?? '');
+            }
+        }
+        return env;
+    }
+    if (requested && typeof requested === 'object') {
+        Object.assign(env, requested as NodeJS.ProcessEnv);
+    }
+    return env;
 }
 
 function readTextFromContentBlock(block: unknown): string {
@@ -92,7 +127,7 @@ function readTextFromContentBlock(block: unknown): string {
     return '';
 }
 
-function extractPermissionDetail(toolCall: unknown): string | undefined {
+export function extractPermissionDetail(toolCall: unknown): string | undefined {
     if (!toolCall || typeof toolCall !== 'object') {
         return undefined;
     }
@@ -101,6 +136,14 @@ function extractPermissionDetail(toolCall: unknown): string | undefined {
     const rawInput = tc.rawInput ?? tc.raw_input;
     if (typeof rawInput === 'string' && rawInput.trim()) {
         parts.push(rawInput.trim());
+    } else if (rawInput && typeof rawInput === 'object') {
+        // Hermes sends the tool's input as an object for most calls. Showing it is the point of
+        // the card: without it an approval is granted without seeing the command it approves.
+        try {
+            parts.push(JSON.stringify(rawInput, null, 2));
+        } catch {
+            parts.push(String(rawInput));
+        }
     }
     const content = tc.content;
     if (typeof content === 'string' && content.trim()) {
@@ -445,7 +488,7 @@ export class AcpClient {
             // Register fs capability handlers
             this._app.onRequest(methods.client.fs.readTextFile as any, async ({ params }: any) => {
                 const content = await this._onFileSystem.readTextFile(params.path);
-                return { content };
+                return { content: sliceTextByLines(content, params.line, params.limit) };
             });
 
             this._app.onRequest(methods.client.fs.writeTextFile as any, async ({ params }: any) => {
@@ -972,7 +1015,8 @@ export class AcpClient {
         const cmd = params.command;
         const args = params.args || [];
         const cwd = params.cwd || process.cwd();
-        const env = params.env ? { ...process.env, ...params.env } : process.env;
+        const env = terminalEnv(params.env);
+        const outputByteLimit = typeof params.outputByteLimit === 'number' ? params.outputByteLimit : undefined;
 
         this._onTerminal(cmd, args, cwd); // mirror to VS Code terminal
 
@@ -994,17 +1038,27 @@ export class AcpClient {
             exitSignal: null,
             exited,
             resolveExit,
+            outputByteLimit,
+            truncated: false,
         };
 
-        proc.stdout?.on('data', (chunk: Buffer) => {
-            term.stdout += chunk.toString();
-        });
-        proc.stderr?.on('data', (chunk: Buffer) => {
-            term.stderr += chunk.toString();
-        });
+        const append = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
+            const capped = trimToByteLimit(term[stream] + chunk.toString(), term.outputByteLimit);
+            term[stream] = capped.text;
+            term.truncated = term.truncated || capped.dropped;
+        };
+        proc.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
+        proc.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
         proc.on('exit', (code, sig) => {
             term.exitCode = code;
             term.exitSignal = sig === null ? null : sig;
+            resolveExit();
+        });
+        // An unknown executable raises 'error' and never 'exit'. Without this the request waiting
+        // on `exited` never resolves, and the host logs an unhandled error event.
+        proc.on('error', (err) => {
+            append('stderr', Buffer.from(`\n${err.message}`));
+            term.exitCode = term.exitCode ?? 127;
             resolveExit();
         });
 
@@ -1015,16 +1069,11 @@ export class AcpClient {
     private _handleTerminalOutput(params: any): any {
         const term = this._terminals.get(params.terminalId);
         if (!term) return { output: '', truncated: false, exitStatus: {} };
-        let output = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
-        const byteLimit = params.outputByteLimit;
-        let truncated = false;
-        if (byteLimit && Buffer.byteLength(output, 'utf-8') > byteLimit) {
-            output = Buffer.from(output, 'utf-8').subarray(0, byteLimit).toString('utf-8');
-            truncated = true;
-        }
+        const combined = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
+        const capped = trimToByteLimit(combined, term.outputByteLimit);
         return {
-            output,
-            truncated,
+            output: capped.text,
+            truncated: term.truncated || capped.dropped,
             exitStatus: term.exitCode !== null ? { exitCode: term.exitCode } : undefined,
         };
     }
