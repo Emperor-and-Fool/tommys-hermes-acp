@@ -1,10 +1,9 @@
 import { byId, chatBodyEl, messagesEl } from '../../dom';
 import { state } from '../../state';
-import { copyToClipboard } from '../../util/clipboard';
 import { escapeHtmlEntities } from '../../util/html';
 import { processFileRefs } from '../composer/fileMention';
 import { scheduleChatSearch } from '../search';
-import { createInsertDropdown } from './messageActions';
+import { createCopyButton, createInsertDropdown } from './messageActions';
 import { getMessagePlainText, markMissingImages, maybeScrollToBottom } from './messageList';
 import { setAuxiliaryContent } from './toolCards';
 
@@ -204,25 +203,11 @@ function addBlockActions(container, getText, copyPayload?, copyTitle?) {
     const actions = document.createElement('div');
     actions.className = 'block-actions';
 
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'block-btn';
-    const copyLabel = copyTitle || locale.copy;
-    copyBtn.title = copyLabel;
-    copyBtn.innerHTML = COPY_ICON_SVG;
-    copyBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        copyToClipboard((copyPayload || getText)()).then(function() {
-            copyBtn.classList.add('copied');
-            copyBtn.title = locale.copied;
-            setTimeout(function() {
-                copyBtn.classList.remove('copied');
-                copyBtn.title = copyLabel;
-            }, 1500);
-        });
-    });
-
-    actions.appendChild(copyBtn);
+    actions.appendChild(createCopyButton({
+        className: 'block-btn',
+        label: copyTitle,
+        getText: function() { return (copyPayload || getText)(); },
+    }));
     actions.appendChild(createInsertDropdown(getText));
     container.appendChild(actions);
 }
