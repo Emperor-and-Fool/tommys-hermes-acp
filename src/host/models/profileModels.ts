@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import { findHermesExecutable, runHermesCommand } from '../environment/profileDiscovery';
 import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import {
-    type ModelListItem,
     type ModelProviderGroup,
     type ProfileDefaultModel,
     type ProfileModelCatalog,
@@ -142,27 +141,6 @@ function alignGroupsWithProfileDefault(
             }
             return a.name.localeCompare(b.name);
         });
-}
-
-/** @deprecated Use discoverProfileModelCatalog; kept for tests. */
-export function parseModelsFromConfigYaml(content: string): ModelListItem[] {
-    const catalog = parseProviderDrafts(content);
-    const items: ModelListItem[] = [];
-    const seen = new Set<string>();
-    for (const draft of catalog) {
-        for (const name of draft.modelNames) {
-            const valueId = encodeHermesModelValueId(
-                draft.slug.startsWith('custom:') ? draft.slug : `custom:${draft.slug}`,
-                name
-            );
-            if (seen.has(valueId)) {
-                continue;
-            }
-            seen.add(valueId);
-            items.push({ valueId, name });
-        }
-    }
-    return items;
 }
 
 export function parseProviderDrafts(content: string): ProviderDraft[] {

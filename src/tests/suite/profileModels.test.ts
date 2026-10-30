@@ -4,7 +4,6 @@ import {
     buildProfileModelCatalog,
     formatProviderDisplayName,
     inferNameFromUrl,
-    parseModelsFromConfigYaml,
     parseProviderDrafts,
 } from '../../host/models/profileModels';
 
@@ -53,10 +52,10 @@ custom_providers:
 `;
 
 describe('profileModels', () => {
-    it('parseModelsFromConfigYaml collects primary, fallback, and custom provider models', () => {
-        const models = parseModelsFromConfigYaml(sampleDefaultConfig);
+    it('buildProfileModelCatalog collects primary, fallback, and custom provider models', async () => {
+        const catalog = await buildProfileModelCatalog(sampleDefaultConfig, { probeLive: false });
         assert.deepStrictEqual(
-            models.map(m => m.name).sort(),
+            catalog.flatModels.map(m => m.name).sort(),
             [
                 'agnes-2.0-flash',
                 'agnes-2.0-lite',
