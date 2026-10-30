@@ -38,13 +38,26 @@ export function paneMailPaths(hermesHome = resolveDefaultHermesHome()) {
     return {
         dir,
         log: path.join(dir, PANE_MAIL_LOG),
-        presence: (profile: string) => path.join(dir, `presence-${sanitize(profile)}.json`),
+        presence: (profile: string) =>
+            path.join(dir, `presence-${sanitize(profile)}-${presenceTag(profile)}.json`),
     };
 }
 
 /** A profile name is user-chosen; keep it usable as a file name. */
 function sanitize(profile: string): string {
     return profile.replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+
+/**
+ * A short, stable fingerprint of the raw name.
+ *
+ * Sanitizing is lossy — "Work Laptop" and "Work-Laptop" both become `Work_Laptop` — so the
+ * sanitized form alone would let two profiles share one presence file and each think the other
+ * pane was itself. The hash goes in the file name only; addressing still uses the sanitized form,
+ * which is what envelopes carry.
+ */
+function presenceTag(profile: string): string {
+    return crypto.createHash('sha1').update(profile, 'utf8').digest('hex').slice(0, 8);
 }
 
 /** Append-only writer. One `appendFileSync` per envelope keeps lines whole across processes. */
@@ -112,18 +125,21 @@ export class PaneMailPresence {
                 if (!name.startsWith('presence-') || !name.endsWith('.json')) {
                     continue;
                 }
-                const address = name.slice('presence-'.length, -'.json'.length);
-                if (address === mine) {
-                    continue;
-                }
                 const raw = JSON.parse(fs.readFileSync(path.join(paths.dir, name), 'utf8')) as {
                     liveAt?: number;
                     host?: string;
                     profile?: string;
                 };
                 const liveAt = typeof raw.liveAt === 'number' ? raw.liveAt : 0;
-                // A file written before the raw name was recorded only carries the sanitized one.
-                const profile = typeof raw.profile === 'string' && raw.profile ? raw.profile : address;
+                // The raw name lives in the file; the legacy form (name only) falls back to the
+                // sanitized part of the file name, minus the fingerprint when there is one.
+                const profile = typeof raw.profile === 'string' && raw.profile
+                    ? raw.profile
+                    : name.slice('presence-'.length, -'.json'.length).replace(/-[0-9a-f]{8}$/, '');
+                const address = sanitize(profile);
+                if (address === mine) {
+                    continue;
+                }
                 if (!best || liveAt > best.liveAt) {
                     best = {
                         profile,
