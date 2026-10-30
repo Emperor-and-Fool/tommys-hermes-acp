@@ -824,13 +824,7 @@ export class AcpClient {
         } catch (err) {
             // The agent explains a refusal in the JSON-RPC error's `data`, not in its message
             // ("Invalid params"), so the reason is lifted out here and reaches the log intact.
-            const data = (err as { data?: unknown })?.data;
-            const carried = typeof data === 'string'
-                ? data
-                : (data && typeof (data as { reason?: unknown }).reason === 'string'
-                    ? (data as { reason: string }).reason
-                    : '');
-            throw new Error(carried || (err instanceof Error ? err.message : String(err)));
+            throw new Error(this._errorDetail(err));
         }
     }
 
@@ -926,9 +920,12 @@ export class AcpClient {
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
         } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._transitionTo('error', `New session failed: ${msg}`);
-            this._onConnectionLost();
+            // A failed session/new says nothing about the connection: Hermes is still there, and
+            // tearing it down turned "missing provider key" into "Connection lost". The cause is
+            // in the JSON-RPC error's data, so it is lifted out and shown as the status message.
+            const msg = `New session failed: ${this._errorDetail(err)}`;
+            this._onLog(msg);
+            this._transitionTo('error', msg);
         }
     }
 
@@ -1297,5 +1294,27 @@ export class AcpClient {
     private _isMethodNotFoundError(err: unknown): boolean {
         const msg = err instanceof Error ? err.message : String(err);
         return /method not found|method_not_found/i.test(msg);
+    }
+
+    /**
+     * The reason an agent put in a JSON-RPC error's `data`, where Hermes explains a refusal
+     * ("Invalid params" is the transport's word for it, not the cause). Falls back to the
+     * error's own message.
+     */
+    private _errorDetail(err: unknown): string {
+        const data = (err as { data?: unknown })?.data;
+        if (typeof data === 'string' && data) {
+            return data;
+        }
+        if (data && typeof data === 'object') {
+            const carried = data as { reason?: unknown; details?: unknown };
+            if (typeof carried.reason === 'string' && carried.reason) {
+                return carried.reason;
+            }
+            if (typeof carried.details === 'string' && carried.details) {
+                return carried.details;
+            }
+        }
+        return err instanceof Error ? err.message : String(err);
     }
 }
