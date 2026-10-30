@@ -64,6 +64,16 @@ function restore() {
     }
 }
 
+// A SIGINT during tsc or vsce never reaches the `finally` below, and the repo would keep the
+// secondant's manifests. Restore first, then exit with the conventional code for the signal.
+for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+    process.on(signal, () => {
+        console.log(`\nsecondant: ${signal} — restoring the primary's manifests`);
+        restore();
+        process.exit(exitCode);
+    });
+}
+
 /** A stale bundle in the ship folder would be packed into the new one. */
 function clearShipped() {
     if (!existsSync(shipDir)) {
