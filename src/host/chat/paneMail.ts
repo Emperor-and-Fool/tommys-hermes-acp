@@ -86,34 +86,51 @@ export class PaneMailPresence {
         }
         try {
             fs.mkdirSync(paths.dir, { recursive: true });
-            fs.writeFileSync(paths.presence(profile), JSON.stringify({ liveAt: Date.now(), host: os.hostname() }));
+            fs.writeFileSync(
+                paths.presence(profile),
+                JSON.stringify({ liveAt: Date.now(), host: os.hostname(), profile }),
+            );
         } catch (err) {
             this._host.log(`Presence write failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         this.refresh();
     }
 
-    /** The newest other profile that has written recently. */
-    other(): { profile: string; host: string } | null {
+    /**
+     * The newest other profile that has written recently.
+     *
+     * `address` is the sanitized name the presence file and the envelopes are keyed by; `profile`
+     * is the name the user chose, for anything on screen. They differ whenever sanitizing changed
+     * it, and an envelope must be addressed with the first, not the second.
+     */
+    other(): { profile: string; address: string; host: string } | null {
         const paths = paneMailPaths();
         const mine = sanitize(this._host.profile());
-        let best: { profile: string; host: string; liveAt: number } | null = null;
+        let best: { profile: string; address: string; host: string; liveAt: number } | null = null;
         try {
             for (const name of fs.readdirSync(paths.dir)) {
                 if (!name.startsWith('presence-') || !name.endsWith('.json')) {
                     continue;
                 }
-                const profile = name.slice('presence-'.length, -'.json'.length);
-                if (profile === mine) {
+                const address = name.slice('presence-'.length, -'.json'.length);
+                if (address === mine) {
                     continue;
                 }
                 const raw = JSON.parse(fs.readFileSync(path.join(paths.dir, name), 'utf8')) as {
                     liveAt?: number;
                     host?: string;
+                    profile?: string;
                 };
                 const liveAt = typeof raw.liveAt === 'number' ? raw.liveAt : 0;
+                // A file written before the raw name was recorded only carries the sanitized one.
+                const profile = typeof raw.profile === 'string' && raw.profile ? raw.profile : address;
                 if (!best || liveAt > best.liveAt) {
-                    best = { profile, host: typeof raw.host === 'string' ? raw.host : '', liveAt };
+                    best = {
+                        profile,
+                        address,
+                        host: typeof raw.host === 'string' ? raw.host : '',
+                        liveAt,
+                    };
                 }
             }
         } catch {
@@ -122,7 +139,7 @@ export class PaneMailPresence {
         if (!best || Date.now() - best.liveAt > PRESENCE_TTL_MS) {
             return null;
         }
-        return { profile: best.profile, host: best.host };
+        return { profile: best.profile, address: best.address, host: best.host };
     }
 
     /** Tells the pane only when the answer changed: this runs every ten seconds. */
@@ -286,7 +303,9 @@ export function planDrain(
             break;
         }
         const envelope = parseEnvelope(log.slice(pos, end));
-        if (envelope && envelope.toProfile === profile && !decided.has(envelope.id)) {
+        // Addressing is the sanitized form on both sides: an envelope carries what its sender read
+        // from a presence file name, while `profile` here is the raw name from settings.
+        if (envelope && sanitize(envelope.toProfile) === sanitize(profile) && !decided.has(envelope.id)) {
             open.push(envelope);
             if (firstOpenAt === -1) {
                 firstOpenAt = pos;

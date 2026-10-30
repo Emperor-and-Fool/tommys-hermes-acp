@@ -90,4 +90,19 @@ describe('inbox drain plan', () => {
         assert.deepStrictEqual(plan.open, []);
         assert.strictEqual(plan.cursor, complete.length);
     });
+
+    it('matches an envelope addressed by sanitized name to the raw profile', () => {
+        // A sender only ever sees the sanitized name: it reads it from a presence file name.
+        const mine = envelope('Work_Laptop');
+        const plan = planDrain(log(mine), 0, 'Work Laptop', new Set());
+
+        assert.deepStrictEqual(plan.open.map(item => item.id), [mine.id]);
+    });
+
+    it('does not deliver mail addressed to another profile that sanitizes similarly', () => {
+        const other = envelope('Work_Desktop');
+        const plan = planDrain(log(other), 0, 'Work Laptop', new Set());
+
+        assert.deepStrictEqual(plan.open, []);
+    });
 });

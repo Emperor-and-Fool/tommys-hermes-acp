@@ -1037,7 +1037,9 @@ export class App implements vscode.WebviewViewProvider {
         const sent = this._mail.outbox.send(
             newEnvelope({
                 fromProfile: this._ownProfile(),
-                toProfile: other.profile,
+                // The address, not the display name: a profile with a space is keyed by its
+                // sanitized form, and the recipient compares in that form.
+                toProfile: other.address,
                 body,
                 sourceMessageId,
                 // A session-memory pick travels with its ref: the recipient draws the envelope.
