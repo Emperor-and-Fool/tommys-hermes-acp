@@ -353,6 +353,15 @@ export class Connection {
         }
     }
 
+    /** Drop the client and everything that belonged to it, before a fresh connect. */
+    private _resetClient(): void {
+        this.acp?.dispose();
+        this.acp = undefined;
+        this._host.models.reset();
+        this.tokenUsage = null;
+        this.postTokenUsage();
+    }
+
     async awaitSessionReady(): Promise<void> {
         if (this.connectPromise) {
             await this.connectPromise.catch(() => {});
@@ -376,11 +385,7 @@ export class Connection {
 
     async retry(): Promise<void> {
         this._host.log('Retry connection requested');
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
-        this.tokenUsage = null;
-        this.postTokenUsage();
+        this._resetClient();
         await this.connect(this._host.profiles.selectionId || undefined);
     }
 
@@ -389,9 +394,7 @@ export class Connection {
             return;
         }
         this._host.log('Settings changed — reconnecting Hermes...');
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
+        this._resetClient();
         await this.connect(this._host.profiles.selectionId || undefined);
     }
 
@@ -405,13 +408,9 @@ export class Connection {
             await this._host.turn.detachActivePrompt(this._host.turn.promptSessionId, { savePartial: true });
         }
         this._host.session.saveCurrent();
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
-        this.tokenUsage = null;
+        this._resetClient();
         this._host.turn.promptSessionId = undefined;
         this._host.setBoundSessionId('');
-        this.postTokenUsage();
         this._host.session.bindProfileScope(target.scopeKey);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
