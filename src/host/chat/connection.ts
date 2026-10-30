@@ -64,10 +64,18 @@ export class Connection {
 
     private disposed = false;
 
+    /**
+     * Bumped whenever the attempt in flight must be abandoned (a drop, a newer connect). A drop
+     * cannot cancel an await, but it can make that await's continuation do nothing: connectInner
+     * compares its own generation after every await and stops when it no longer owns it.
+     */
+    private _generation = 0;
+
     constructor(private readonly _host: ConnectionHost) {}
 
     /** Drop the client without touching other state; the provider pairs this with its own resets. */
     drop(): void {
+        this._generation += 1;
         this.acp?.dispose();
         this.acp = undefined;
     }
@@ -88,19 +96,28 @@ export class Connection {
             this.acp = undefined;
         }
         if (this.connectPromise) {
+            const generation = this._generation;
             await this.connectPromise;
-            return;
+            // A drop during that connect abandoned it; this caller still wants a connection.
+            if (generation === this._generation) {
+                return;
+            }
         }
 
-        this.connectPromise = this.connectInner(selectionId);
+        const promise = this.connectInner(selectionId);
+        this.connectPromise = promise;
         try {
-            await this.connectPromise;
+            await promise;
         } finally {
-            this.connectPromise = undefined;
+            if (this.connectPromise === promise) {
+                this.connectPromise = undefined;
+            }
         }
     }
 
     private async connectInner(selectionId?: string): Promise<void> {
+        const generation = ++this._generation;
+        const abandoned = (): boolean => generation !== this._generation;
         const target = this._host.profiles.resolveTarget(selectionId);
         if (target.scopeKey !== this._host.session.scopeKey) {
             this._host.session.bindProfileScope(target.scopeKey);
@@ -135,12 +152,18 @@ export class Connection {
         });
 
         const quickPath = await tryResolveHermesQuick(target.configPath);
+        if (abandoned()) {
+            return;
+        }
         let resolvedPath: string | undefined;
         if (quickPath) {
             this._host.log(`Hermes resolved without full detection: ${quickPath}`);
             resolvedPath = quickPath;
         } else {
             const report = await this._host.detection.runWithUi(target.configPath, 'connect');
+            if (abandoned()) {
+                return;
+            }
             if (report.status === 'cancelled') {
                 this._host.log('Connect cancelled during environment detection');
                 this._host.post({
@@ -153,6 +176,9 @@ export class Connection {
             resolvedPath = this._host.detection.pickBestExecutable(report);
             if (this._host.detection.shouldOfferConfiguration(report)) {
                 const configuredPath = await this._host.detection.autoConfigure(report);
+                if (abandoned()) {
+                    return;
+                }
                 if (configuredPath) {
                     resolvedPath = configuredPath;
                 }
@@ -292,11 +318,26 @@ export class Connection {
         this.deferReadyUntilSessionSetup = true;
         try {
             await this.acp!.start(cwd, resolvedPath, target.cliProfile);
+            if (abandoned()) {
+                return;
+            }
             await this._host.lifecycle.resumeOrAdopt(cwd);
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.sync({ skipModelOptions: true });
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.applySessionPreference();
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.sync();
         } catch (err) {
+            if (abandoned()) {
+                return;
+            }
             const msg = err instanceof Error ? err.message : String(err);
             this._host.log(`Connect failed: ${msg}`);
             this.acp?.dispose();
