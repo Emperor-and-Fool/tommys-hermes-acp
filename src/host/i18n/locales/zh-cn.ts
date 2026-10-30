@@ -268,6 +268,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     roleTool: '工具',
     roleMessage: '消息',
     permissionTitle: '需要授权',
+    permissionTimedOut: '{0} 秒内没有回应，请求已取消。',
     permissionCancelled: '已取消',
     permissionAllowOnce: '允许一次',
     permissionAllowAlways: '始终允许',

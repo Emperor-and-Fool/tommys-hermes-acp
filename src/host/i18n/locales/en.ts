@@ -268,6 +268,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     roleTool: 'Tool',
     roleMessage: 'Message',
     permissionTitle: 'Permission required',
+    permissionTimedOut: 'No answer after {0} seconds, so the request was cancelled.',
     permissionCancelled: 'Cancelled',
     permissionAllowOnce: 'Allow once',
     permissionAllowAlways: 'Always allow',
