@@ -15,7 +15,7 @@ import type { HistoryRef, SessionInfo, ChatMessage } from '../../shared/chat';
 import type { HostToPane, PaneToHost } from '../../shared/webview';
 import { anchorFor } from '../chat/historyAttach';
 
-/** Its own viewType, deliberately not `CHAT_PANEL_VIEW_TYPE`. */
+/** Its own viewType, deliberately not `chatPanelViewType()`. */
 export function historyViewerViewType(): string {
     return identity().historyViewerType;
 }
@@ -42,7 +42,7 @@ export interface HistoryViewerHost {
     loadRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]>;
     /** The sibling pane as the host knows it: the viewer needs it to show a forward button. */
     otherPane(): { live: boolean; profile: string };
-    /** The ticks, resolved: Phase 4 stages this. */
+    /** The ticked messages, handed to the host to stage in this tab's composer. */
     onPicked(pick: HistoryPick): void;
     /** The same ticks, sent to the sibling pane instead of into this composer. */
     onForwarded(pick: HistoryPick): void;
@@ -59,8 +59,27 @@ export class HistoryViewer {
     /** What became of the fetch: kept because the page can be ready after it resolved. */
     private _outcome: 'loading' | 'loaded' | 'empty' | 'failed' = 'loading';
     private _failureReason: string | undefined;
+    private readonly _createPanel: (title: string) => vscode.WebviewPanel;
 
-    constructor(private readonly _host: HistoryViewerHost) {}
+    /**
+     * `createPanel` is a seam for tests: everything else in this class is about the fetch and the
+     * messages, not about the editor tab.
+     */
+    constructor(
+        private readonly _host: HistoryViewerHost,
+        createPanel?: (title: string) => vscode.WebviewPanel,
+    ) {
+        this._createPanel = createPanel ?? ((title) => vscode.window.createWebviewPanel(
+            historyViewerViewType(),
+            title,
+            { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: false,
+                localResourceRoots: this._host.localResourceRoots(),
+            },
+        ));
+    }
 
     /**
      * Show one session read-only, reusing the live tab when there is one.
@@ -91,16 +110,7 @@ export class HistoryViewer {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel(
-            historyViewerViewType(),
-            title,
-            { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
-            {
-                enableScripts: true,
-                retainContextWhenHidden: false,
-                localResourceRoots: this._host.localResourceRoots(),
-            }
-        );
+        const panel = this._createPanel(title);
         this._panel = panel;
         panel.webview.options = {
             enableScripts: true,

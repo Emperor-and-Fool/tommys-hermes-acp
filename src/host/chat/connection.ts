@@ -33,6 +33,8 @@ export interface ConnectionHost {
     steerNotice(text: string): void;
     /** A switch completed: the new profile's display name. */
     profileChanged(name: string): void;
+    /** The profile this extension may not use: the primary's, seen from the secondant. */
+    excludedProfile?: () => string | undefined;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): vscode.WebviewView | undefined;
@@ -62,10 +64,18 @@ export class Connection {
 
     private disposed = false;
 
+    /**
+     * Bumped whenever the attempt in flight must be abandoned (a drop, a newer connect). A drop
+     * cannot cancel an await, but it can make that await's continuation do nothing: connectInner
+     * compares its own generation after every await and stops when it no longer owns it.
+     */
+    private _generation = 0;
+
     constructor(private readonly _host: ConnectionHost) {}
 
     /** Drop the client without touching other state; the provider pairs this with its own resets. */
     drop(): void {
+        this._generation += 1;
         this.acp?.dispose();
         this.acp = undefined;
     }
@@ -86,25 +96,49 @@ export class Connection {
             this.acp = undefined;
         }
         if (this.connectPromise) {
+            const generation = this._generation;
             await this.connectPromise;
-            return;
+            // A drop during that connect abandoned it; this caller still wants a connection.
+            if (generation === this._generation) {
+                return;
+            }
         }
 
-        this.connectPromise = this.connectInner(selectionId);
+        const promise = this.connectInner(selectionId);
+        this.connectPromise = promise;
         try {
-            await this.connectPromise;
+            await promise;
         } finally {
-            this.connectPromise = undefined;
+            if (this.connectPromise === promise) {
+                this.connectPromise = undefined;
+            }
         }
     }
 
     private async connectInner(selectionId?: string): Promise<void> {
+        const generation = ++this._generation;
+        const abandoned = (): boolean => generation !== this._generation;
         const target = this._host.profiles.resolveTarget(selectionId);
         if (target.scopeKey !== this._host.session.scopeKey) {
             this._host.session.bindProfileScope(target.scopeKey);
         }
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
+
+        // The rule the two extensions live by: the secondant never runs on the primary's
+        // profile. Checked here, on every path that connects, because a picker that hides it is
+        // a preference while this is the guarantee.
+        const excluded = this._host.excludedProfile?.();
+        if (excluded && target.cliProfile === excluded) {
+            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to the primary`);
+            this._host.post({
+                type: 'status',
+                status: 'error',
+                message: t('profileExcluded', target.displayName),
+            });
+            this._host.post({ type: 'openProfilePicker' });
+            return;
+        }
 
         this._host.log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._host.post({ type: 'activeAgent', name: target.displayName });
@@ -118,12 +152,18 @@ export class Connection {
         });
 
         const quickPath = await tryResolveHermesQuick(target.configPath);
+        if (abandoned()) {
+            return;
+        }
         let resolvedPath: string | undefined;
         if (quickPath) {
             this._host.log(`Hermes resolved without full detection: ${quickPath}`);
             resolvedPath = quickPath;
         } else {
             const report = await this._host.detection.runWithUi(target.configPath, 'connect');
+            if (abandoned()) {
+                return;
+            }
             if (report.status === 'cancelled') {
                 this._host.log('Connect cancelled during environment detection');
                 this._host.post({
@@ -136,6 +176,9 @@ export class Connection {
             resolvedPath = this._host.detection.pickBestExecutable(report);
             if (this._host.detection.shouldOfferConfiguration(report)) {
                 const configuredPath = await this._host.detection.autoConfigure(report);
+                if (abandoned()) {
+                    return;
+                }
                 if (configuredPath) {
                     resolvedPath = configuredPath;
                 }
@@ -223,14 +266,12 @@ export class Connection {
                 writeTextFile: (p: string, content: string) => this._host.files.writeTextFile(p, content),
             },
             (cmd: string, args: string[], cwd: string) => {
-                this._host.log(`Terminal: ${cmd.slice(0, 80)}`);
-                const fullCmd = args.length > 0 ? cmd + ' ' + args.join(' ') : cmd;
-                const terminal = vscode.window.createTerminal({
-                    name: `Hermes: ${cmd.slice(0, 30)}`,
-                    cwd,
-                });
-                terminal.sendText(fullCmd);
-                terminal.show(false);
+                // Showing a command must not run it. This callback used to open a VS Code
+                // terminal and `sendText()` the same command the ACP terminal had already
+                // spawned: every tool call could execute twice, and the second copy lost its
+                // argument quoting in `args.join(' ')`. The log keeps the visible record.
+                const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
+                this._host.log(`Terminal (${cwd}): ${fullCmd.slice(0, 200)}`);
             },
             (usage) => {
                 if (!this._host.isViewingPromptSession()) {
@@ -250,7 +291,7 @@ export class Connection {
                 this._host.post({ type: 'finishAssistantBubble', sessionId: this._host.session.activeId });
             },
             (cwd) => {
-                const servers = resolveMcpServersForSession(cwd);
+                const servers = resolveMcpServersForSession(cwd, (line) => this._host.log(line));
                 if (servers.length > 0) {
                     this._host.log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
                 }
@@ -277,11 +318,26 @@ export class Connection {
         this.deferReadyUntilSessionSetup = true;
         try {
             await this.acp!.start(cwd, resolvedPath, target.cliProfile);
+            if (abandoned()) {
+                return;
+            }
             await this._host.lifecycle.resumeOrAdopt(cwd);
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.sync({ skipModelOptions: true });
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.applySessionPreference();
+            if (abandoned()) {
+                return;
+            }
             await this._host.models.sync();
         } catch (err) {
+            if (abandoned()) {
+                return;
+            }
             const msg = err instanceof Error ? err.message : String(err);
             this._host.log(`Connect failed: ${msg}`);
             this.acp?.dispose();
@@ -297,12 +353,22 @@ export class Connection {
         }
     }
 
+    /** Drop the client and everything that belonged to it, before a fresh connect. */
+    private _resetClient(): void {
+        this.acp?.dispose();
+        this.acp = undefined;
+        this._host.models.reset();
+        this.tokenUsage = null;
+        this.postTokenUsage();
+    }
+
     async awaitSessionReady(): Promise<void> {
         if (this.connectPromise) {
             await this.connectPromise.catch(() => {});
         }
     }
 
+    /** One automatic reconnect after the process dies; the Retry button covers the rest. */
     private async reconnectAfterLoss(): Promise<void> {
         if (this.disposed || this.reconnectAttempts >= 1) {
             return;
@@ -319,11 +385,7 @@ export class Connection {
 
     async retry(): Promise<void> {
         this._host.log('Retry connection requested');
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
-        this.tokenUsage = null;
-        this.postTokenUsage();
+        this._resetClient();
         await this.connect(this._host.profiles.selectionId || undefined);
     }
 
@@ -332,9 +394,7 @@ export class Connection {
             return;
         }
         this._host.log('Settings changed — reconnecting Hermes...');
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
+        this._resetClient();
         await this.connect(this._host.profiles.selectionId || undefined);
     }
 
@@ -348,13 +408,9 @@ export class Connection {
             await this._host.turn.detachActivePrompt(this._host.turn.promptSessionId, { savePartial: true });
         }
         this._host.session.saveCurrent();
-        this.acp?.dispose();
-        this.acp = undefined;
-        this._host.models.reset();
-        this.tokenUsage = null;
+        this._resetClient();
         this._host.turn.promptSessionId = undefined;
         this._host.setBoundSessionId('');
-        this.postTokenUsage();
         this._host.session.bindProfileScope(target.scopeKey);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;

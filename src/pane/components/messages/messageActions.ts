@@ -17,6 +17,33 @@ const FORWARD_ICON_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000
 /** The other pane's profile, as last heard from the host. Empty when it is not running. */
 let otherPaneProfile = '';
 
+/**
+ * The copy → copied → reset button. The message bar and a code block's own actions want the same
+ * behaviour under different class names, so the choreography lives here once.
+ */
+export function createCopyButton(options: { className: string; getText: () => string; label?: string }): HTMLButtonElement {
+    const label = options.label || locale.copy;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = options.className;
+    button.title = label;
+    button.innerHTML = COPY_ICON_SVG;
+    button.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const text = options.getText();
+        if (!text) return;
+        copyToClipboard(text).then(function() {
+            button.classList.add('copied');
+            button.title = locale.copied;
+            setTimeout(function() {
+                button.classList.remove('copied');
+                button.title = label;
+            }, 1500);
+        });
+    });
+    return button;
+}
+
 const CHEVRON_DOWN_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 6 8 9.5 11.5 6l.7.7L8 10.9l-4.2-4.2.7-.7z"/></svg>';
 
 export function attachMessageActions(group, inner) {
@@ -24,23 +51,9 @@ export function attachMessageActions(group, inner) {
     actions.className = 'message-actions';
     actions.addEventListener('click', function(e) { e.stopPropagation(); });
 
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'copy-btn action-btn';
-    copyBtn.title = locale.copy;
-    copyBtn.innerHTML = COPY_ICON_SVG;
-    copyBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const text = getGroupMarkdownText(group).trim();
-        if (!text) return;
-        copyToClipboard(text).then(function() {
-            copyBtn.classList.add('copied');
-            copyBtn.title = locale.copied;
-            setTimeout(function() {
-                copyBtn.classList.remove('copied');
-                copyBtn.title = locale.copy;
-            }, 1500);
-        });
+    const copyBtn = createCopyButton({
+        className: 'copy-btn action-btn',
+        getText: function() { return getGroupMarkdownText(group).trim(); },
     });
     actions.appendChild(copyBtn);
 
@@ -103,11 +116,6 @@ function forwardTitle(): string {
         return locale.otherPaneNotLive;
     }
     return (locale.forwardToOtherPane || 'Forward to {0}').replace('{0}', otherPaneProfile);
-}
-
-function attachCopyButton(group) {
-    const stack = group.querySelector('.message-stack');
-    if (stack) attachMessageActions(group, stack);
 }
 
 function appendToInput(text) {

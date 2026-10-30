@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 /** ACP permission option as shown in the chat UI. */
 export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 
@@ -26,11 +24,6 @@ export interface PermissionResolvedEvent {
     optionName?: string;
 }
 
-export type PermissionUiHandler = {
-    onRequest: (request: PermissionRequestView) => void;
-    onResolved?: (event: PermissionResolvedEvent) => void;
-};
-
 export type AcpPermissionResponse = {
     outcome: { outcome: 'cancelled' } | { outcome: 'selected'; optionId: string };
 };
@@ -47,10 +40,6 @@ type PendingPermission = {
 };
 
 export const PERMISSION_TIMEOUT_MS = 120_000;
-
-export function createPermissionRequestId(): string {
-    return `perm-${randomUUID()}`;
-}
 
 export function normalizePermissionOptions(options: unknown): PermissionOptionView[] {
     if (!Array.isArray(options) || options.length === 0) {
@@ -87,25 +76,6 @@ function normalizeOptionKind(kind: unknown, optionId: string): PermissionOptionK
         return 'reject_once';
     }
     return 'allow_once';
-}
-
-export function extractPermissionDetail(toolCall: unknown): string | undefined {
-    if (!toolCall || typeof toolCall !== 'object') {
-        return undefined;
-    }
-    const tc = toolCall as Record<string, unknown>;
-    const rawInput = tc.rawInput;
-    if (rawInput == null) {
-        return undefined;
-    }
-    if (typeof rawInput === 'string') {
-        return rawInput;
-    }
-    try {
-        return JSON.stringify(rawInput, null, 2);
-    } catch {
-        return String(rawInput);
-    }
 }
 
 export class PermissionBridge {

@@ -1,3 +1,4 @@
+import { TOOL_AGGREGATE_SEPARATOR, canAggregateToolTexts } from '../../../shared/toolAggregate';
 import { state } from '../../state';
 import { processFileRefs } from '../composer/fileMention';
 import { profileDisplayName } from '../pickers/profilePicker';
@@ -13,12 +14,6 @@ export function initShowThoughtsFlag(): void {
 export function initShowToolCallsFlag(): void {
     window._showToolCalls = true;
 }
-
-const TOOL_SHORT_MAX_LINES = 3;
-
-const TOOL_AGGREGATE_MAX_LINES = 12;
-
-const TOOL_AGGREGATE_SEPARATOR = '\n\n---\n\n';
 
 const THOUGHT_COLLAPSED_LINES = 5;
 
@@ -67,31 +62,6 @@ export function syncAuxiliaryDetailView(group) {
     const overflow = auxDetailOverflows(aux.scrollEl, aux.rawText, maxLines);
     aux.moreBtn.hidden = aux.detailExpanded || !overflow;
     aux.lessBtn.hidden = !aux.detailExpanded || !overflow;
-}
-
-function countNonemptyLines(text) {
-    const trimmed = (text || '').trim();
-    if (!trimmed) return 0;
-    return trimmed.split('\n').filter(function(line) { return line.trim().length > 0; }).length;
-}
-
-function isShortToolText(text) {
-    return countNonemptyLines(text) <= TOOL_SHORT_MAX_LINES;
-}
-
-function isAggregatedToolText(text) {
-    return (text || '').indexOf('---') >= 0;
-}
-
-function mergeToolTexts(existing, incoming) {
-    return existing.trim() + TOOL_AGGREGATE_SEPARATOR + incoming.trim();
-}
-
-function canAggregateToolTexts(existing, incoming) {
-    if (!isShortToolText(incoming)) return false;
-    const existingLines = countNonemptyLines(existing);
-    if (existingLines > TOOL_SHORT_MAX_LINES && !isAggregatedToolText(existing)) return false;
-    return countNonemptyLines(mergeToolTexts(existing, incoming)) <= TOOL_AGGREGATE_MAX_LINES;
 }
 
 function rebuildAggregateToolContent(group) {

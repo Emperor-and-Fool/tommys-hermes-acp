@@ -3,7 +3,7 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { newChat } from '../messages/messageList';
-import { closeAllDropdowns, setMenuOpen } from '../modals/modal';
+import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';
 
 
 const closedDropdown = byId('closedDropdown');
@@ -19,15 +19,9 @@ export function initOpenTabBtnClick(): void {
 }
 
 export function initClosedPickerBtnClick(): void {
-    closedPickerBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const open = closedPicker.dataset.open !== 'true';
-        closeAllDropdowns();
-        if (open) {
-            setMenuOpen(closedPicker, true);
-            post({ type: 'getHiddenSessions' });
-            renderClosedList();
-        }
+    wirePickerButton(closedPickerBtn, closedPicker, function() {
+        post({ type: 'getHiddenSessions' });
+        renderClosedList();
     });
 }
 

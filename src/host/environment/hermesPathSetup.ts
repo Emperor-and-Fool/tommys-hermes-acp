@@ -12,6 +12,13 @@ export interface SystemPathConfigureResult {
     profileFile?: string;
 }
 
+export interface SystemPathOptions {
+    /** PATH to consult instead of this process's own. Tests pass a fixed one. */
+    processPath?: string;
+    /** Write the change when the entry is missing. False makes this a pure query. */
+    apply?: boolean;
+}
+
 function pathsEqual(a: string, b: string): boolean {
     const left = path.normalize(a);
     const right = path.normalize(b);
@@ -144,15 +151,23 @@ export function getHermesExecutableDirectory(executable: string): string {
     return path.dirname(path.normalize(executable));
 }
 
-export function addHermesDirectoryToSystemPath(executable: string): SystemPathConfigureResult {
+export function addHermesDirectoryToSystemPath(
+    executable: string,
+    options: SystemPathOptions = {},
+): SystemPathConfigureResult {
     const pathEntry = getHermesExecutableDirectory(executable);
+    const apply = options.apply !== false;
 
     if (process.platform === 'win32') {
-        const userPath = readWindowsUserPath();
-        const processPath = process.env.PATH || process.env.Path || '';
+        // A pure query must not spawn PowerShell to read the user PATH, and must not write it.
+        const userPath = apply ? readWindowsUserPath() : '';
+        const processPath = options.processPath ?? process.env.PATH ?? process.env.Path ?? '';
         const pathEntryNormalized = sanitizeWindowsPathEntry(pathEntry);
         if (isDirectoryOnPath(pathEntryNormalized, userPath) || isDirectoryOnPath(pathEntryNormalized, processPath)) {
             return { changed: false, alreadyPresent: true, pathEntry: pathEntryNormalized };
+        }
+        if (!apply) {
+            return { changed: false, alreadyPresent: false, pathEntry: pathEntryNormalized };
         }
         const next = userPath
             ? normalizeWindowsUserPath(`${pathEntryNormalized};${userPath}`)
@@ -161,7 +176,7 @@ export function addHermesDirectoryToSystemPath(executable: string): SystemPathCo
         return { changed: true, alreadyPresent: false, pathEntry: pathEntryNormalized };
     }
 
-    const processPath = process.env.PATH || '';
+    const processPath = options.processPath ?? process.env.PATH ?? '';
     if (isDirectoryOnPath(pathEntry, processPath)) {
         return { changed: false, alreadyPresent: true, pathEntry };
     }
@@ -170,6 +185,10 @@ export function addHermesDirectoryToSystemPath(executable: string): SystemPathCo
     const profilePaths = readUnixProfilePaths(profileFile);
     if (profilePaths.some((entry) => pathsEqual(entry, pathEntry))) {
         return { changed: false, alreadyPresent: true, pathEntry, profileFile };
+    }
+
+    if (!apply) {
+        return { changed: false, alreadyPresent: false, pathEntry, profileFile };
     }
 
     const exportLine = `export PATH="$PATH:${pathEntry.replace(/"/g, '\\"')}"`;

@@ -1,6 +1,6 @@
-{
+﻿{
   "extension.displayName": "Tommys Hermes ACP",
-  "extension.description": "在 VS Code 中直接与 Hermes Agent 对话",
+  "extension.description": "在 VS Code 中运行 Hermes Agent——两个独立智能体并排工作，可实时引导，并可互相传递上下文",
   "viewsContainers.activitybar.title": "Tommys Dev Chat",
   "views.tommysChat.name": "聊天",
   "commands.tommys.toggleChatSurface.title": "在编辑器/侧边栏中打开聊天",

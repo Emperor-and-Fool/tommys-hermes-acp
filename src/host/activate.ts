@@ -14,6 +14,8 @@ import type { ExtensionIdentity } from '../shared/extensionId';
 /** What the secondant may ask the primary: only which profile it is on. */
 export interface PrimaryProfileSource {
     readonly activeProfile: string;
+    /** The secondant's profile, handed up so this side can withhold it too. */
+    registerSiblingProfile?(profile: string): void;
 }
 
 /** The commands every surface offers: the chat ones, bound to the running App. */

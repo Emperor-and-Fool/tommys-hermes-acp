@@ -10,7 +10,7 @@ import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelect
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
-import { cancelSessionMarkdownRender, chatSearchState, getGroupMarkdownText, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
+import { cancelSessionMarkdownRender, chatSearchState, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
@@ -130,17 +130,6 @@ export function quoteSegmentForGroup(group, range) {
     const text = (clipped.toString() || '').trim();
     if (!text) return null;
     return { role: getGroupRoleLabel(group), text: text, group: group };
-}
-
-function getGroupsPlainText(groups) {
-    const lines = [];
-    groups.forEach(function(group) {
-        const role = getGroupRoleLabel(group);
-        const text = getGroupMarkdownText(group).trim();
-        if (!text) return;
-        lines.push(role + ':\n' + text);
-    });
-    return lines.join('\n\n');
 }
 
 export function initDocumentVisibilitychange(): void {

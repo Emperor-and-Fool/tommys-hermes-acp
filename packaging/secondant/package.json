@@ -2,7 +2,7 @@
   "name": "tommys-hermes-secondant",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.1.0",
+  "version": "2.1.0",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",

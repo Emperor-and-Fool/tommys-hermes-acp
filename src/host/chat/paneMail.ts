@@ -38,13 +38,26 @@ export function paneMailPaths(hermesHome = resolveDefaultHermesHome()) {
     return {
         dir,
         log: path.join(dir, PANE_MAIL_LOG),
-        presence: (profile: string) => path.join(dir, `presence-${sanitize(profile)}.json`),
+        presence: (profile: string) =>
+            path.join(dir, `presence-${sanitize(profile)}-${presenceTag(profile)}.json`),
     };
 }
 
 /** A profile name is user-chosen; keep it usable as a file name. */
 function sanitize(profile: string): string {
     return profile.replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+
+/**
+ * A short, stable fingerprint of the raw name.
+ *
+ * Sanitizing is lossy — "Work Laptop" and "Work-Laptop" both become `Work_Laptop` — so the
+ * sanitized form alone would let two profiles share one presence file and each think the other
+ * pane was itself. The hash goes in the file name only; addressing still uses the sanitized form,
+ * which is what envelopes carry.
+ */
+function presenceTag(profile: string): string {
+    return crypto.createHash('sha1').update(profile, 'utf8').digest('hex').slice(0, 8);
 }
 
 /** Append-only writer. One `appendFileSync` per envelope keeps lines whole across processes. */
@@ -71,7 +84,8 @@ export class PaneMailPresence {
     private _lastLive = false;
     private _lastProfile = '';
 
-    constructor(private readonly _host: PaneMailHost) {}
+    /** `paths` is injectable so a test's heartbeats land in its own directory, not the user's. */
+    constructor(private readonly _host: PaneMailHost, private readonly _paths = paneMailPaths()) {}
 
     start(): void {
         this.beat();
@@ -79,41 +93,68 @@ export class PaneMailPresence {
     }
 
     beat(): void {
-        const paths = paneMailPaths();
+        const paths = this._paths;
         const profile = this._host.profile();
         if (!profile) {
             return;
         }
         try {
             fs.mkdirSync(paths.dir, { recursive: true });
-            fs.writeFileSync(paths.presence(profile), JSON.stringify({ liveAt: Date.now(), host: os.hostname() }));
+            fs.writeFileSync(
+                paths.presence(profile),
+                JSON.stringify({ liveAt: Date.now(), host: os.hostname(), profile }),
+            );
         } catch (err) {
             this._host.log(`Presence write failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         this.refresh();
     }
 
-    /** The newest other profile that has written recently. */
-    other(): { profile: string; host: string } | null {
-        const paths = paneMailPaths();
-        const mine = sanitize(this._host.profile());
-        let best: { profile: string; host: string; liveAt: number } | null = null;
+    /**
+     * The newest other profile that has written recently.
+     *
+     * `address` is the sanitized name the envelopes are keyed by; `profile` is the name the user
+     * chose, for anything on screen. They differ whenever sanitizing changed it, and an envelope
+     * must be addressed with the first, not the second. (Each presence file's own name carries the
+     * address plus a fingerprint of the raw name, so two names can share the address and not the
+     * file.)
+     */
+    other(): { profile: string; address: string; host: string } | null {
+        const paths = this._paths;
+        const mineName = this._host.profile();
+        const mine = sanitize(mineName);
+        let best: { profile: string; address: string; host: string; liveAt: number } | null = null;
         try {
             for (const name of fs.readdirSync(paths.dir)) {
                 if (!name.startsWith('presence-') || !name.endsWith('.json')) {
                     continue;
                 }
-                const profile = name.slice('presence-'.length, -'.json'.length);
-                if (profile === mine) {
-                    continue;
-                }
                 const raw = JSON.parse(fs.readFileSync(path.join(paths.dir, name), 'utf8')) as {
                     liveAt?: number;
                     host?: string;
+                    profile?: string;
                 };
                 const liveAt = typeof raw.liveAt === 'number' ? raw.liveAt : 0;
+                // The raw name lives in the file; the legacy form (name only) falls back to the
+                // sanitized part of the file name, minus the fingerprint when there is one.
+                const recorded = typeof raw.profile === 'string' && raw.profile ? raw.profile : '';
+                const profile = recorded
+                    || name.slice('presence-'.length, -'.json'.length).replace(/-[0-9a-f]{8}$/, '');
+                const address = sanitize(profile);
+                // Skip this pane's own heartbeat by its raw name: two profiles whose names
+                // sanitize alike share an address, and comparing addresses would hide each pane
+                // from the other. A legacy file never recorded a raw name, so its address is all
+                // there is to compare.
+                if (recorded ? profile === mineName : address === mine) {
+                    continue;
+                }
                 if (!best || liveAt > best.liveAt) {
-                    best = { profile, host: typeof raw.host === 'string' ? raw.host : '', liveAt };
+                    best = {
+                        profile,
+                        address,
+                        host: typeof raw.host === 'string' ? raw.host : '',
+                        liveAt,
+                    };
                 }
             }
         } catch {
@@ -122,7 +163,7 @@ export class PaneMailPresence {
         if (!best || Date.now() - best.liveAt > PRESENCE_TTL_MS) {
             return null;
         }
-        return { profile: best.profile, host: best.host };
+        return { profile: best.profile, address: best.address, host: best.host };
     }
 
     /** Tells the pane only when the answer changed: this runs every ten seconds. */
@@ -149,7 +190,10 @@ export class PaneMailPresence {
 /** Reader: a byte cursor in global state, one injection per envelope id. */
 export class PaneMailInbox {
     private _watcher?: fs.FSWatcher;
-    private _seen?: Set<string>;
+    /** Envelopes this profile has settled. Only a decision is written here. */
+    private _decided?: Set<string>;
+    /** Envelopes currently drawn in the transcript: in memory, because a card is not a row. */
+    private _shown = new Set<string>();
 
     constructor(private readonly _host: PaneMailHost) {}
 
@@ -157,17 +201,42 @@ export class PaneMailInbox {
         return `paneMail.cursor.${this._host.profile()}`;
     }
 
-    private get _seenKey(): string {
-        return `paneMail.seen.${this._host.profile()}`;
+    private get _decidedKey(): string {
+        return `paneMail.decided.${this._host.profile()}`;
     }
 
-    /** Envelope ids already taken for this profile, kept across reloads (see `drain`). */
-    private seen(): Set<string> {
-        if (!this._seen) {
-            const stored = this._host.state.get<string[]>(this._seenKey) ?? [];
-            this._seen = new Set(stored);
+    /**
+     * Envelope ids this profile has decided on, kept across reloads.
+     *
+     * The old set recorded an envelope when it was *shown*, which is why a card could not come
+     * back: the inbox had already written it off while the transcript held the only copy.
+     */
+    private decided(): Set<string> {
+        if (!this._decided) {
+            const stored = this._host.state.get<string[]>(this._decidedKey) ?? [];
+            this._decided = new Set(stored);
         }
-        return this._seen;
+        return this._decided;
+    }
+
+    /** Deliver/Dismiss landed: this envelope is finished with, and the cursor may move past it. */
+    acknowledge(envelopeId: string): void {
+        if (!envelopeId) {
+            return;
+        }
+        const decided = this.decided();
+        if (decided.has(envelopeId)) {
+            return;
+        }
+        decided.add(envelopeId);
+        void this._host.state.update(this._decidedKey, [...decided].slice(-200));
+        this.drain();
+    }
+
+    /** The transcript was rebuilt (reload, tab switch): draw the open cards again. */
+    reinjectOpen(): void {
+        this._shown.clear();
+        this.drain();
     }
 
     start(): void {
@@ -205,44 +274,26 @@ export class PaneMailInbox {
             return 0;
         }
         // A shorter file than the cursor means the log was recreated; start over rather than skip.
-        //
-        // Not replay-safe on its own: if the log is ever rolled or truncated while unread
-        // envelopes are still in it, both panes re-ingest from zero and the moderator sees
-        // duplicate cards. That is why taken envelope ids are remembered in global state and
-        // not only in memory — a roll plus a reload would otherwise take the same card twice.
-        // The standing rule stays: never roll a non-empty log.
+        // Not replay-safe on its own: if the log is ever rolled while unread envelopes are still
+        // in it, the moderator sees duplicates. That is why decided ids are kept in global state
+        // and not only in memory. The standing rule stays: never roll a non-empty log.
         const offset = stored > buf.length ? 0 : stored;
-        const fresh = buf.subarray(offset).toString('utf8');
-        if (!fresh) {
-            return 0;
-        }
-
-        const profile = this._host.profile();
+        const plan = planDrain(buf.toString('utf8'), offset, this._host.profile(), this.decided());
         let injected = 0;
-        const lines = fresh.split('\n');
-        // The last element is either '' (clean append) or a half-written line: keep it for later.
-        const tail = lines.pop() ?? '';
-        for (const line of lines) {
-            const envelope = parseEnvelope(line);
-            if (!envelope) {
+        for (const envelope of plan.open) {
+            if (this._shown.has(envelope.id)) {
                 continue;
             }
-            const seen = this.seen();
-            if (envelope.toProfile !== profile || seen.has(envelope.id)) {
-                continue;
-            }
-            seen.add(envelope.id);
-            void this._host.state.update(this._seenKey, [...seen].slice(-200));
+            this._shown.add(envelope.id);
             this._host.onPeer(envelope);
             injected += 1;
         }
-        const consumed = lines.map(line => line + '\n').join('');
-        const nextOffset = offset + Buffer.byteLength(consumed, 'utf8');
-        void this._host.state.update(this._cursorKey, nextOffset);
+        if (plan.cursor !== stored) {
+            void this._host.state.update(this._cursorKey, plan.cursor);
+        }
         if (injected) {
             this._host.log(`Received ${injected} forwarded draft(s)`);
         }
-        void tail;
         return injected;
     }
 
@@ -250,6 +301,44 @@ export class PaneMailInbox {
         this._watcher?.close();
         this._watcher = undefined;
     }
+}
+
+/**
+ * What to inject, and how far the cursor may move.
+ *
+ * The cursor stops at the first envelope addressed here that is not yet decided: that line is the
+ * inbox's promise to keep showing the card until a human answers it. Everything before it is
+ * someone else's mail, unreadable, or already decided — never looked at again.
+ */
+export function planDrain(
+    log: string,
+    offset: number,
+    profile: string,
+    decided: Set<string>,
+): { open: PaneMailEnvelope[]; cursor: number } {
+    const open: PaneMailEnvelope[] = [];
+    let cursor = Math.max(0, Math.min(offset, log.length));
+    let firstOpenAt = -1;
+    let pos = cursor;
+    while (pos < log.length) {
+        const end = log.indexOf('\n', pos);
+        if (end === -1) {
+            // A half-written last line: leave it for the next drain rather than parse partial JSON.
+            break;
+        }
+        const envelope = parseEnvelope(log.slice(pos, end));
+        // Addressing is the sanitized form on both sides: an envelope carries the address its
+        // sender read from the other pane's presence file, while `profile` here is the raw name
+        // from settings.
+        if (envelope && sanitize(envelope.toProfile) === sanitize(profile) && !decided.has(envelope.id)) {
+            open.push(envelope);
+            if (firstOpenAt === -1) {
+                firstOpenAt = pos;
+            }
+        }
+        pos = end + 1;
+    }
+    return { open, cursor: firstOpenAt === -1 ? pos : firstOpenAt };
 }
 
 /** One envelope, built where the host knows all four names. */

@@ -18,6 +18,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// The local entry points, run through this Node: `npx` is a shell shim that spawnSync cannot
+// start on Windows without `shell: true`.
+const localBin = (...parts) => join(repo, 'node_modules', ...parts);
 const secondantDir = join(repo, 'packaging', 'secondant');
 const buildDir = join(secondantDir, 'out');
 const shipDir = join(repo, 'secondant');
@@ -60,6 +64,16 @@ function restore() {
     }
 }
 
+// A SIGINT during tsc or vsce never reaches the `finally` below, and the repo would keep the
+// secondant's manifests. Restore first, then exit with the conventional code for the signal.
+for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+    process.on(signal, () => {
+        console.log(`\nsecondant: ${signal} — restoring the primary's manifests`);
+        restore();
+        process.exit(exitCode);
+    });
+}
+
 /** A stale bundle in the ship folder would be packed into the new one. */
 function clearShipped() {
     if (!existsSync(shipDir)) {
@@ -78,17 +92,16 @@ try {
     mkdirSync(buildDir, { recursive: true });
     install();
 
-    const compile = spawnSync('npx', ['tsc', '-p', './'], { cwd: repo, stdio: 'inherit' });
+    const compile = spawnSync(process.execPath, [localBin('typescript', 'bin', 'tsc'), '-p', './'], { cwd: repo, stdio: 'inherit' });
     if (compile.status !== 0) {
         throw new Error('compile failed; nothing packaged');
     }
 
     const built = join(buildDir, NAME);
     const vsce = spawnSync(
-        'npx',
+        process.execPath,
         [
-            '--no-install',
-            '@vscode/vsce',
+            localBin('@vscode', 'vsce', 'vsce'),
             'package',
             '--allow-missing-repository',
             // Its own ignore list: `--ignoreFile` replaces the root one, so the secondant can

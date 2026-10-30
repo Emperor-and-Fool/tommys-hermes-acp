@@ -1,4 +1,5 @@
 import type { ChatMessage, HistoryRef } from '../../shared/chat';
+import { handoverLines } from '../../shared/historyHandover';
 import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
 
 /** The cap lives in `shared/` because the pane refuses the tick as well; re-exported for callers here. */
@@ -22,10 +23,6 @@ export function attachableMessages(messages: ChatMessage[]): ChatMessage[] {
 
 function normalise(text: string): string {
     return text.replace(/\s+/g, ' ').trim();
-}
-
-function iso(ms?: number): string | null {
-    return typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 /** The opening words of the first attached message: what the agent can search when no id matched. */
@@ -70,23 +67,21 @@ export function historySliceBody(ref: HistoryRef, messages: ChatMessage[]): stri
  * the agent's session_search understands; per-line ids let it scroll to one message with
  * session_id + around_message_id. When no id matched, the anchor is all it gets.
  */
-export function formatHistoryBlock(ref: HistoryRef, messages: ChatMessage[]): string {
+export function formatHistoryBlock(
+    ref: HistoryRef,
+    messages: ChatMessage[],
+    /** Whose eyes. Omitted means this profile — an attach is always a slice of your own history. */
+    readerProfile: string = ref.profile,
+): string {
     const picked = attachableMessages(messages);
     const ids = messageIdsFor(ref, messages);
-    const matched = ids.some(id => id !== null);
+    // Ids that matched but with no span in the ref: fall back to the anchor, as before.
+    const spanRef: HistoryRef = ids.some(id => id !== null)
+        ? ref
+        : { ...ref, from: undefined, to: undefined };
 
-    const lines = [`${MARKER_OPEN}${ref.title}]`, `Session: @session:${ref.profile}/${ref.sessionId}`];
-    const from = matched ? iso(ref.from) : null;
-    const to = matched ? iso(ref.to) : null;
-    if (from && to) {
-        lines.push(`Span: ${from} → ${to}`);
-    }
-    if (!matched) {
-        const anchor = ref.anchor ?? anchorFor(picked);
-        if (anchor) {
-            lines.push(`Anchor: "${anchor}"`);
-        }
-    }
+    const lines = [`${MARKER_OPEN}${ref.title}]`];
+    lines.push(...handoverLines(spanRef, { readerProfile, fallbackAnchor: anchorFor(picked) }));
     lines.push(...blockMessageLines(ref, messages));
     lines.push(MARKER_CLOSE);
     return lines.join('\n');
@@ -126,6 +121,10 @@ export function parseHistoryBlocks(text: string): { blocks: ParsedHistoryBlock[]
                 const end = Date.parse(span[2]);
                 if (Number.isFinite(start)) from = start;
                 if (Number.isFinite(end)) to = end;
+                continue;
+            }
+            // The handover advice: for the agent, not part of the slice.
+            if (/^(Note|Hint): /.test(line)) {
                 continue;
             }
             const anchored = /^Anchor: "(.*)"$/.exec(line);

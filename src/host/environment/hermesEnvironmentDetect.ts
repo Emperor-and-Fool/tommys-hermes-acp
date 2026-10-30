@@ -285,9 +285,8 @@ async function runPythonScript(
     return execText(command, args);
 }
 
-async function probePathLookup(
-    add: (filePath: string, source: HermesDetectSource) => Promise<void>,
-): Promise<void> {
+/** `hermes` as PATH resolves it, with the Windows registry PATH folded back in. */
+async function resolveHermesOnPath(): Promise<string[]> {
     const whichCmd = process.platform === 'win32' ? 'where' : 'which';
     const refreshedPath = refreshWindowsPathFromRegistry();
     const env = refreshedPath
@@ -319,10 +318,13 @@ async function probePathLookup(
         proc.on('error', () => resolve(null));
     });
 
-    if (!resolved) {
-        return;
-    }
-    for (const item of resolved) {
+    return resolved ?? [];
+}
+
+async function probePathLookup(
+    add: (filePath: string, source: HermesDetectSource) => Promise<void>,
+): Promise<void> {
+    for (const item of await resolveHermesOnPath()) {
         if (path.isAbsolute(item) && await accessExecutable(item)) {
             await add(item, 'path_lookup');
         }
@@ -776,41 +778,7 @@ export async function detectHermesEnvironment(
 }
 
 async function findVerifiedHermesOnPath(): Promise<string | undefined> {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const refreshedPath = refreshWindowsPathFromRegistry();
-    const env = refreshedPath
-        ? { ...process.env, Path: refreshedPath, PATH: refreshedPath }
-        : process.env;
-
-    const resolved = await new Promise<string[] | null>((resolve) => {
-        const proc = spawn(whichCmd, ['hermes'], {
-            stdio: ['ignore', 'pipe', 'ignore'],
-            shell: process.platform === 'win32',
-            env,
-        });
-        let stdout = '';
-        proc.stdout?.on('data', (chunk: Buffer) => {
-            stdout += chunk.toString();
-        });
-        proc.on('exit', (code) => {
-            if (code !== 0) {
-                resolve(null);
-                return;
-            }
-            resolve(
-                stdout
-                    .split(/\r?\n/)
-                    .map((line) => line.trim())
-                    .filter(Boolean),
-            );
-        });
-        proc.on('error', () => resolve(null));
-    });
-
-    if (!resolved) {
-        return undefined;
-    }
-    for (const item of resolved) {
+    for (const item of await resolveHermesOnPath()) {
         if (!path.isAbsolute(item) || !(await accessExecutable(item))) {
             continue;
         }

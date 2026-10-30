@@ -32,12 +32,28 @@ describe('hermesPathSetup', () => {
         );
     });
 
-    it('addHermesDirectoryToSystemPath reports already present process PATH entries', () => {
+    it('reports a directory that is already on the PATH it is given', () => {
         const dir = getHermesExecutableDirectory(process.execPath);
-        const result = addHermesDirectoryToSystemPath(process.execPath);
+        const result = addHermesDirectoryToSystemPath(process.execPath, {
+            processPath: [path.join('/usr', 'bin'), dir].join(path.delimiter),
+            apply: false,
+        });
         assert.strictEqual(result.pathEntry, dir);
         assert.strictEqual(result.alreadyPresent, true);
         assert.strictEqual(result.changed, false);
+    });
+
+    it('reports a missing entry without writing to the system', () => {
+        // `apply: false` is a query: it must not append to the user's shell profile, which is
+        // what the old test did by asking about the running Node's own directory.
+        const executable = path.join('/opt', 'hermes', 'bin', 'hermes');
+        const result = addHermesDirectoryToSystemPath(executable, {
+            processPath: path.join('/usr', 'bin'),
+            apply: false,
+        });
+        assert.strictEqual(result.alreadyPresent, false);
+        assert.strictEqual(result.changed, false);
+        assert.strictEqual(result.pathEntry, path.dirname(executable));
     });
 
     it('sanitizeWindowsPathEntry collapses doubled backslashes on drive paths', () => {

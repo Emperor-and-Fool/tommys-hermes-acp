@@ -24,7 +24,7 @@ import {
 } from './detectFormat';
 import { detectHermesEnvironment } from './hermesEnvironmentDetect';
 import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from './hermesPathSetup';
-import { accessExecutable, venvHermesCandidates } from './hermesPaths';
+import { accessExecutable, agentVenv, venvHermesCandidates } from './hermesPaths';
 import type {
     HermesDetectProgressEvent,
     HermesDetectSource,
@@ -86,10 +86,13 @@ export class EnvironmentDetection {
         }
     }
 
-    private _postDetectProgress(event: HermesDetectProgressEvent): void {
+    private _postProgress(
+        event: HermesDetectProgressEvent,
+        type: 'detectEnvironmentProgress' | 'configureEnvironmentDetectProgress',
+    ): void {
         const brief = formatDetectProgressPercent(event, this._detectStepOrder);
         this._host.post({
-            type: 'detectEnvironmentProgress',
+            type,
             step: event.step,
             status: event.status,
             brief,
@@ -145,9 +148,9 @@ export class EnvironmentDetection {
             signal,
             onProgress: (event) => {
                 if (useConfigurePanel) {
-                    this._postConfigureDetectProgress(event);
+                    this._postProgress(event, 'configureEnvironmentDetectProgress');
                 } else {
-                    this._postDetectProgress(event);
+                    this._postProgress(event, 'detectEnvironmentProgress');
                 }
                 this._recordDetectStep(event);
             },
@@ -174,7 +177,7 @@ export class EnvironmentDetection {
         };
         this._recordDetectStep(summaryEvent);
         if (useConfigurePanel) {
-            this._postConfigureDetectProgress(summaryEvent);
+            this._postProgress(summaryEvent, 'configureEnvironmentDetectProgress');
             this._host.post({
                 type: 'configureEnvironmentDetectEnd',
                 status: report.status,
@@ -182,7 +185,7 @@ export class EnvironmentDetection {
                 executables: this._serializeConfigureExecutables(report.executables),
             });
         } else {
-            this._postDetectProgress(summaryEvent);
+            this._postProgress(summaryEvent, 'detectEnvironmentProgress');
             this._host.post({
                 type: 'detectEnvironmentEnd',
                 status: report.status,
@@ -242,22 +245,6 @@ export class EnvironmentDetection {
             varName: 'PATH',
             varTarget: t('detectEnvironmentSystemVarTargetUnix'),
         };
-    }
-
-    private _postConfigureDetectProgress(event: HermesDetectProgressEvent): void {
-        const brief = formatDetectProgressPercent(event, this._detectStepOrder);
-        this._host.post({
-            type: 'configureEnvironmentDetectProgress',
-            step: event.step,
-            status: event.status,
-            brief,
-            detail: event.detail,
-            paths: event.paths,
-            count: event.count,
-            verifiedCount: event.verifiedCount,
-            totalCount: event.totalCount,
-            reportStatus: event.reportStatus,
-        });
     }
 
     private _serializeConfigureExecutables(
@@ -320,12 +307,7 @@ export class EnvironmentDetection {
             }
         }
         if (path.basename(fsPath) === 'hermes-agent') {
-            const venvCandidates = process.platform === 'win32'
-                ? [
-                    path.join(fsPath, 'venv', 'Scripts', 'hermes.exe'),
-                    path.join(fsPath, 'venv', 'Scripts', 'hermes.cmd'),
-                ]
-                : [path.join(fsPath, 'venv', 'bin', 'hermes')];
+            const venvCandidates = agentVenv(path.dirname(fsPath), 'hermes');
             for (const candidate of venvCandidates) {
                 if (await accessExecutable(candidate)) {
                     return candidate;

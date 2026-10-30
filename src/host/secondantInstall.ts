@@ -84,18 +84,27 @@ function secondantDirectories(extensionsDir: string): string[] {
         .map(name => path.join(extensionsDir, name));
 }
 
-/** The editor parks a removed extension in `.obsolete` until its next start; the folder is gone now. */
-function forgetObsolete(extensionsDir: string): void {
+/**
+ * The editor parks a removed extension in `.obsolete` until its next start. Forget an entry only
+ * when its directory is actually gone: a folder locked by another process (Windows) is still on
+ * disk, and dropping its entry would hide the leftover from the next sweep.
+ */
+function forgetObsolete(extensionsDir: string, stillPresent: string[]): void {
     const marker = path.join(extensionsDir, '.obsolete');
     if (!extensionsDir || !fs.existsSync(marker)) {
         return;
     }
+    const remaining = stillPresent.map(dir => path.basename(dir).toLowerCase());
     try {
         const entries = JSON.parse(fs.readFileSync(marker, 'utf8')) as Record<string, unknown>;
         const kept = Object.fromEntries(
-            Object.entries(entries).filter(
-                ([name]) => !name.toLowerCase().includes(SECONDANT_ID.toLowerCase())
-            )
+            Object.entries(entries).filter(([name]) => {
+                const lower = name.toLowerCase();
+                if (!lower.includes(SECONDANT_ID.toLowerCase())) {
+                    return true;
+                }
+                return remaining.some(dir => lower.includes(dir));
+            })
         );
         if (Object.keys(kept).length !== Object.keys(entries).length) {
             fs.writeFileSync(marker, JSON.stringify(kept));
@@ -129,7 +138,7 @@ export async function uninstallSecondant(): Promise<void> {
             console.error('[secondant] could not remove', dir, err);
         }
     }
-    forgetObsolete(extensionsDir);
+    forgetObsolete(extensionsDir, candidates.filter(dir => fs.existsSync(dir)));
     await refreshSecondantContext();
 
     const suffix = removed ? ` (${removed} folder${removed === 1 ? '' : 's'} removed)` : '';

@@ -16,8 +16,6 @@ export type PlanUpdateView = {
     entries?: PlanEntryView[];
 };
 
-export type PlanUpdateHandler = (update: PlanUpdateView) => void;
-
 const ENTRY_STATUS: ReadonlySet<string> = new Set(['pending', 'in_progress', 'completed']);
 const ENTRY_PRIORITY: ReadonlySet<string> = new Set(['high', 'medium', 'low']);
 

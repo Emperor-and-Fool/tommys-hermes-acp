@@ -77,6 +77,22 @@ export function closeAllDropdowns() {
     setMenuOpen(historyPicker, false);
 }
 
+/**
+ * A toolbar button that opens its picker: one press opens it, a second closes it. `onOpen` runs
+ * once the picker is open, so the caller can ask the host for the list it is about to show.
+ */
+export function wirePickerButton(button, picker, onOpen): void {
+    button.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const open = picker.dataset.open !== 'true';
+        closeAllDropdowns();
+        if (open) {
+            setMenuOpen(picker, true);
+            onOpen();
+        }
+    });
+}
+
 export function initDocumentClickDocument(): void {
     document.addEventListener('click', function(e) {
         if (e.target.closest('.picker')) {

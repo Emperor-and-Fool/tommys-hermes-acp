@@ -1,9 +1,9 @@
 import {
-    type ModelListItem,
     type ModelProviderGroup,
     type ProfileDefaultModel,
     type ProfileModelCatalog,
     encodeHermesModelValueId,
+    flattenGroupModels,
 } from './modelConfig';
 
 export interface AcpModelOptionsProvider {
@@ -186,19 +186,4 @@ export function resolveModelCatalog(
         }
     }
     return buildCatalogFromHermesModelsRaw(hermesModelsRaw);
-}
-
-function flattenGroupModels(groups: ModelProviderGroup[]): ModelListItem[] {
-    const flat: ModelListItem[] = [];
-    const seen = new Set<string>();
-    for (const group of groups) {
-        for (const model of group.models) {
-            if (seen.has(model.valueId)) {
-                continue;
-            }
-            seen.add(model.valueId);
-            flat.push(model);
-        }
-    }
-    return flat;
 }

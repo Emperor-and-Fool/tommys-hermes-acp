@@ -36,13 +36,17 @@ export interface PromptHost {
     awaitSessionReady(): Promise<void>;
 }
 
+/** Whether a send may proceed, and whether the reader has already been told why not. */
+export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
+
 /**
- * State of the turn in flight, plus the code that acquires the session it runs on.
+ * The turn in flight, and the session it runs on.
  *
- * Step 1 moved the state here alone. Step 2 moves `ensureSessionReady`, which holds the
- * single `session/new` call site: a tab that never had a Hermes session gets one on its
- * first message; a tab that has history but lost its session is refused rather than
- * silently re-sessioned.
+ * Holds the streaming state for the current prompt, the pending permission cards, the steer
+ * counter and the send epoch (a switch or a detach bumps it, so a late chunk is dropped rather
+ * than painted into the next tab), and `ensureSessionReady` — the single `session/new` site: a tab
+ * that never had a Hermes session gets one on its first message; a tab that has history but lost
+ * its session is refused rather than silently re-sessioned.
  */
 export class PromptRunner {
     promptSessionId: string | undefined;
@@ -238,10 +242,18 @@ export class PromptRunner {
         this.pendingPermissions.clear();
     }
 
-    async ensureSessionReady(): Promise<boolean> {
+    /**
+     * Bind (or create) this tab's Hermes session.
+     *
+     * The answer carries who said what: `notified` means this function already told the reader the
+     * specific reason, so the caller must not add a second, vaguer line on top of it. Two messages
+     * for one send — "no session (id)" followed by "not connected, nothing was sent" — read as two
+     * different failures.
+     */
+    async ensureSessionReady(): Promise<SessionReadiness> {
         const acp = this.host.acp();
         if (!acp) {
-            return false;
+            return { ok: false, notified: false };
         }
         if (this.host.otherSessionIsPrompting()) {
             await this.host.detachActivePrompt(this.promptSessionId!, { savePartial: true });
@@ -257,22 +269,35 @@ export class PromptRunner {
                 const msg = err instanceof Error ? err.message : String(err);
                 this.host.log(`Resume failed for ${bound}: ${msg}`);
                 this.host.post({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', bound) });
-                return false;
+                return { ok: false, notified: true };
             }
         } else if (!bound) {
-            if (this.host.messages().length > 0) {
+            // A conversation Hermes knows about has user or assistant turns. A peer card waiting
+            // for a decision is not one: it is a draft, and refusing here left a fresh tab with a
+            // received forward unable to start its session at all.
+            const hasConversation = this.host.messages().some(
+                (message) => message.role === 'user' || message.role === 'assistant'
+            );
+            if (hasConversation) {
                 // This tab shows a conversation whose Hermes session is gone; creating a new
                 // one here would silently replace it, so say so and leave the pane alone.
                 this.host.log(`No Hermes session bound to tab ${sessionId}`);
                 this.host.post({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', sessionId) });
-                return false;
+                return { ok: false, notified: true };
             }
             // Blank tab: the first message is what creates its session.
             await acp.newSession(this.host.resolveCwd());
+            if (this.host.acpStatus() !== 'ready') {
+                // `newSession` keeps the connection when the agent refuses and reports through
+                // the status; without this check the turn fell through as a success and the send
+                // went to a session that was never created — or to whatever was still bound.
+                this.host.log('session/new produced no ready session; the tab stays unbound');
+                return { ok: false, notified: false };
+            }
             this.host.bindHermesSessionId(acp.activeSessionId);
         }
         await this.host.applySessionModelPreference();
         this.host.setBoundSessionId(sessionId);
-        return true;
+        return { ok: true };
     }
 }

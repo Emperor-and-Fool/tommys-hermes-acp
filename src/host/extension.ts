@@ -15,6 +15,8 @@ export interface TommysHermesAcpApi {
     readonly activeProfile: string;
     /** Fires when the primary moves to another profile, so the secondant can step aside. */
     onDidChangeProfile(listener: (profile: string) => void): vscode.Disposable;
+    /** The secondant's profile, so the primary can withhold it from its own picker. */
+    registerSiblingProfile(profile: string): void;
 }
 
 export function activate(context: vscode.ExtensionContext): TommysHermesAcpApi {
@@ -40,6 +42,9 @@ export function activate(context: vscode.ExtensionContext): TommysHermesAcpApi {
         },
         onDidChangeProfile(listener: (profile: string) => void): vscode.Disposable {
             return running.onDidChangeProfile(listener);
+        },
+        registerSiblingProfile(profile: string): void {
+            running.registerSiblingProfile(profile);
         },
     };
 }

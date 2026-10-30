@@ -10,7 +10,7 @@ import {
     registerSession,
     reorderSessions,
 } from '../tabs/tabs';
-import { canAggregateToolTexts, rebuildAggregatedToolText } from '../chat/toolAggregate';
+import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';
 import { t } from '../i18n';
 
@@ -71,8 +71,13 @@ export class Sessions {
         this.store.writeActiveId(this.activeId);
     }
 
+    /** The first user turn's opening words, or undefined while the tab has none. */
+    private _tabTitle(): string | undefined {
+        return this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
+    }
+
     saveCurrent(): void {
-        const firstUser = this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
+        const firstUser = this._tabTitle();
         const existing = this.tabs.find(s => s.id === this.activeId);
         if (existing) {
             existing.updatedAt = Date.now();
@@ -91,27 +96,22 @@ export class Sessions {
                 updatedAt: Date.now(),
             });
         }
-        try {
-            if (this.saveCatalog()) {
-                this.saveActive();
-            }
-        } catch { /* non-critical */ }
+        if (this.saveCatalog()) {
+            this.saveActive();
+        }
         this.postList();
     }
 
     ensureRegistered(): void {
-        const firstUser = this.messages.find(m => m.role === 'user')?.text.slice(0, 40);
         const next = registerSession(this.tabs, {
             id: this.activeId,
-            title: firstUser || t('newChat'),
+            title: this._tabTitle() || t('newChat'),
         });
         if (next === this.tabs) {
             return;
         }
         this.tabs = next;
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
     }
 
     postList(): void {
@@ -136,7 +136,11 @@ export class Sessions {
      * Returns whether the write happened, for the one caller that does more on success.
      */
     saveCatalog(): boolean {
-        return this.store.writeCatalog(this.tabs);
+        const ok = this.store.writeCatalog(this.tabs);
+        if (!ok) {
+            this.host.log(`sessions.json write failed: ${this.store.catalogPath}`);
+        }
+        return ok;
     }
 
     private loadCatalog(): void {
@@ -171,9 +175,7 @@ export class Sessions {
         }
         this.tabs = result.sessions;
         this.hiddenSessions = result.hiddenRows;
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
         this.postHidden();
     }
@@ -333,14 +335,26 @@ export class Sessions {
     }
 
     /**
-     * The only write left: the user's own message, kept until a replay confirms it arrived.
-     * Nothing else is persisted — assistant, thought and tool rows are Hermes'.
+     * The only write left: the tab index and the active id.
+     *
+     * It used to take `(role, text)` and append user turns to the sidecar, but no caller ever
+     * passed them — so the sidecar was never written and `findUndelivered` always read nothing.
+     * The append now happens where the send happens (`saveOutgoingUser`), which is the only place
+     * that can tell a real send from a replayed user row.
      */
-    persistMessages(role?: string, text?: string): void {
-        if (role === 'user' && typeof text === 'string') {
-            this.pendingUsers.append(this.activeId, text);
-        }
+    persistMessages(): void {
         this.saveCurrent();
+    }
+
+    /**
+     * A message the user actually sent — not a replay echoing one back.
+     *
+     * The sidecar exists to answer one question when a replay arrives: did Hermes ever receive
+     * this? Only a send can answer it, so only a send writes it.
+     */
+    saveOutgoingUser(text: string, imageRefs?: StoredImageRef[]): void {
+        this.saveMessage('user', text, undefined, imageRefs);
+        this.pendingUsers.append(this.activeId, text);
     }
 
     private permissionBodyText(title?: string, detail?: string): string {
@@ -406,7 +420,6 @@ export class Sessions {
             }
         }
         this.persistMessages();
-        this.saveCurrent();
     }
 
     handleReorderSessions(sessionIds: unknown): void {
@@ -419,9 +432,7 @@ export class Sessions {
         }
         this.tabs = next;
         this.host.log(`Reorder sessions: ${this.tabs.map(s => s.id).join(', ')}`);
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
     }
 
@@ -433,9 +444,7 @@ export class Sessions {
         this.tabs = next;
         const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
         this.host.log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
-        try {
-            this.saveCatalog();
-        } catch { /* non-critical */ }
+        this.saveCatalog();
         this.postList();
     }
 

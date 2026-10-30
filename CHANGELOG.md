@@ -5,6 +5,186 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-30
+
+The release where the pane stops keeping its own copy of facts the agent already owns, and the
+week of cleanup that followed it. Two claims were deleted outright — the local model catalog and
+the per-card draft file — and the rest is what those deletions exposed: a path check that was a
+string prefix, a terminal command that ran twice, a sidecar that was never written, a refused
+`session/new` that read as ready.
+
+### Added
+
+- **Four ACP fields the client had been dropping**: a terminal's `env` arrives as name/value pairs
+  and was spread as an object, so requested variables were lost; `outputByteLimit` belongs to the
+  create call and was read from every output request; `fs/read_text_file` ignored `line` and
+  `limit`; and a structured permission request produced no detail, so an approval could be granted
+  without seeing the command. A terminal whose executable did not exist now resolves its exit
+  promise instead of raising an unhandled error
+- **One handover vocabulary** for a session slice, whichever route it takes: `shared/historyHandover.ts`
+  writes the session handle, the anchor, the permission note and the hint to read on. The note
+  appears only when the reader's profile differs from the slice's, and the hint now reaches the
+  attach path as well as the forwarded one
+
+### Changed
+
+- **The model list is Hermes' again.** `profileModels.ts` parsed `config.yaml` into a catalog and
+  `providerModelFetch.ts` asked a provider's `/v1/models`; production imported neither. Models a
+  chat can use arrive over ACP in the `session/new` response, and a second, local claim on that
+  fact is how the list drifts from the agent's
+- **An undecided forward is inbox state, not a transcript row.** The cursor stops before the first
+  envelope addressed here that no decision has been made on, and only Deliver/Dismiss moves it;
+  the pane redraws the open cards from the cursor after a reload or a tab switch. The per-tab
+  `pending_peers_<tab>.json` written one commit earlier is gone — one source, one restore path
+- **The primary withholds the secondant's profile too.** The exclusion ran one way, so switching
+  the primary onto a shared profile evicted the secondant retroactively; the secondant now
+  registers its profile up and the picker withholds it
+- **A terminal mirror is a log line, not a second execution** — the full argv and the cwd, instead
+  of `sendText()` into a VS Code terminal
+- **The secondant's artwork is chosen in one place**: `identityArtwork()` in `webview/html.ts`, so
+  the About panel no longer falls back to the primary's icon
+
+### Fixed
+
+- **Every `terminal/create` command ran twice.** The handler spawned the process *and* a mirror
+  callback typed the same command into an editor terminal, where `args.join(' ')` lost the argument
+  boundaries — so an install or a migration could happen twice, differently
+- **Path containment was a string prefix.** `/work/repo-secrets` passed for `/work/repo`,
+  `/work/repo/../secrets` passed, and a relative path was not checked at all. `pathWithin()`
+  resolves and then requires the path to sit inside a workspace folder
+- **The pending-user sidecar was never written**: `persistMessages()` appended only for a `user`
+  role, and every caller passed nothing, so `findUndelivered` always read an empty list and the
+  "offered back to the composer" path could not fire
+- **A refused `session/new` was treated as ready**: the failure lives in the client's status, so
+  the blank-tab branch fell through, bound the tab and sent the turn against a session that was
+  never created. It now refuses on anything but `ready`
+- **A send that cannot bind no longer goes, and says why once** — the non-composer entry awaited
+  `ensureSessionReady()` and discarded the answer, while the composer path added its generic line
+  on top of the specific one
+- **A failed `session/new` no longer drops the connection.** It was reported as a lost connection
+  with a retry that could not help, and the JSON-RPC data carrying the cause was discarded
+- **The profile guard compared display labels**, so an agent named "Main" resolved to `default`
+  and passed against a pane on `default` labelled "Default". It compares the CLI profile now, and
+  every connect path enforces it
+- **The history viewer showed a failed export as an empty conversation**: `exportSessionMessages`
+  swallowed failures into `[]`. It throws a typed error, and the viewer posts the reason
+- **Closing a tab hid the tab's id, not its Hermes session**, so a session the strip had opened
+  stayed visible in the catalog
+- **A stale session pointer blocked adoption**, leaving the throwaway session from `session/new`
+  bound to the tab; a failed load no longer reaches the connection's catch
+- **A tab holding only an undecided forward could not start a session** — `ensureSessionReady`
+  refused any unbound tab with a message in it, and a peer card is a message
+- **Attachment matches spanned conversations**: the index key was the message text alone, so an
+  identical message elsewhere could pick up the wrong picture. Entries carry their session and
+  profile, and the replay fallback stays inside that conversation
+- **Forwarded mail was addressed by a sanitized name** compared against the raw profile from
+  settings, so any profile with a space or a non-ASCII character never received mail
+- **Two profiles whose names sanitize alike shared one presence file**, then one comparison: the
+  file name now carries a fingerprint of the raw name, and the pane recognises itself by that name
+- **A connect overtaken by a drop carried on** when its await resolved, and a later connect
+  returned without connecting at all. `Connection` carries a generation now
+- **`npx` could not start on Windows**, so deploy and package failed before compiling; `tsc`,
+  `vsce` and the pane bundle run through this Node instead
+- **A `.obsolete` entry was dropped while its folder was still there**, after a `rmSync` failed on a
+  directory another process held open
+- **A PATH test could write to the real shell profile** — `addHermesDirectoryToSystemPath` takes an
+  injected PATH and an apply flag now
+- **An interrupted package run left the secondant's identity in the manifest**; a signal handler
+  restores it
+- Failed catalog and MCP-config writes are logged instead of silently dropped, and a malformed
+  `mcp.json` is no longer indistinguishable from a missing one
+
+### Repository
+
+- Dead: the three pane formatters, five exported helpers, five exported types, a second
+  permission-detail parser, the `parseModelsFromConfigYaml` parser, and the unwired elicitation
+  bridge (136 lines, wired to nothing)
+- Collapsed to one copy: the grouped-model flattener, the tool-aggregation rules (now
+  `shared/toolAggregate.ts`), `which`/`where` lookup, detection progress, the three picker handlers,
+  the three replay chunk cases, the copy button, turn quiescing, client reset, the tab title, and
+  the venv path
+- Five orphaned style rules, 25 unread locale keys and five stale comments removed; the three
+  locale lists stay in sync at 263
+- `packaging/hermes-patches/0002-acp-gateway-ext-methods.patch` carries the three `_session/*`
+  methods onto `GatewayACPAgent`, with a patch changelog recording each base commit and the symptom
+  when a patch is missing
+
+## [2.0.0] - 2026-10-29
+
+A second agent in the same window, and a transcript that belongs to Hermes again.
+
+Two things happened at once here, and they are the same thing seen from opposite ends. The
+extension gained a companion — a second, independent agent beside the first — and lost the
+local copy of the conversation it had been keeping since the fork. Neither works without the
+other: two panes sharing one stale mirror would have been worse than one pane with a stale
+one.
+
+### Added
+
+- **Secondant**: a second Hermes agent in the same editor window — own extension id, own
+  sidebar, own tabs, own profile. It ships as a VSIX inside the primary and is installed
+  from a command (`Install secondant`), so it is one install for the user and two extensions
+  on disk. Uninstalling it takes the version directories with it
+- **The pane says which one it is**: the secondant carries an orange rule on its toolbar and
+  a badge row below it; in the editor-panel surface each pane's frame is drawn in its own
+  accent. Two chats side by side no longer look identical
+- **The profile guard**: the secondant may not run on the profile the primary is using. When
+  they collide it drops the connection, opens its picker and says why. Two agents means two
+  profiles, enforced rather than assumed
+- **Pane mail**: forward any message from one pane to the other. It arrives as a card with a
+  sender pill and its body rendered as markdown, and nothing is sent to the receiving agent
+  until you press **Deliver**. The log is append-only NDJSON under the Hermes home, with a
+  presence heartbeat per pane, a byte cursor, and taken ids remembered in global state so a
+  reload or a log roll cannot deliver the same card twice
+- **One decision per stack**: consecutive pending forwards share a rail and a single
+  Deliver / Dismiss on the last card, sent as one turn in arrival order
+- **Session memory crosses the channel**: a session-memory slice can be forwarded too, and
+  the receiving agent gets the session handle, an anchor when no message ids matched, and a
+  note that the handle reads outside its own profile — with the call that reads more of it
+- **A loading state worth looking at**: the pane's own icon, pulsing, with the live chunk
+  count beneath it. Under `prefers-reduced-motion` it keeps breathing as an opacity-only pulse —
+  slower, without the scale — because a still indicator reads as a broken one; the preference
+  picks the gentler motion, not silence
+- **Replay progress** streamed from the ACP updates as they arrive
+- **Search in the history viewer**: the same in-conversation search the chat has
+- **A wire trace** for ACP `session/update` traffic (`HERMES_ACP_TRACE=1`), written to the
+  output channel and to `pane-mail/trace-<profile>.ndjson`
+
+### Changed
+
+- **The history viewer reads from Hermes**, so any session Hermes knows can be opened — not
+  only the ones this pane happened to have rendered before
+- **The transcript mirror is gone.** What remains on disk is a five-user-message sidecar
+  whose only job is holding a message Hermes never received. Everything the pane shows now
+  comes from Hermes
+- **The tab's link to its session is proven from the catalog** — a bound `hermesSessionId`
+  and a catalog row for it — instead of from whether a cached transcript loaded
+- The message count is Hermes' own; the pane no longer writes a replay length back into the
+  tab record
+- The composer grows to ten lines and returns to its resting height when emptied
+
+### Fixed
+
+- **The tab could lose its session** when the cached paint was removed: `messages.length`
+  was answering "did the cache load?" while being read as "is this tab new?" — the same
+  shape in `applyCatalog` and in `resumeOrAdopt`
+- **"This conversation is not available locally"** is replaced by three honest states:
+  fetching, empty, and failed — with the failure logged instead of swallowed
+- The mail log's cursor counts **bytes**, so an envelope carrying multi-byte text no longer
+  pushes every later line out of reach
+- Peer cards rendered their markdown as literal characters, because the card was built live
+  and the sweep that renders markdown only runs after a restore
+
+### Repository
+
+- `sessionPrune`, `removeMessages`, `dropTranscript`, the `createBlankTab` unlink and the
+  `hideSessions` purge are gone. Each was a local `fs.unlink`; Hermes kept every row, so
+  "delete" was never a delete
+- The transcript cache's 100-message cap went with them — a size policy for a store that was
+  never the authority
+- `ReplayMessage` carries the metadata ACP already sends: `messageId`, tool
+  `title`/`kind`/`status`/`locations`, and `_meta`
+
 ## [1.1.0] - 2026-10-27
 
 What the transcript does while the agent is working, and a filter on what a

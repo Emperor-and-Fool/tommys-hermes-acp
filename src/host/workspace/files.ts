@@ -10,6 +10,7 @@
  * configured cwd) is readable. That is why the read and write callbacks live here rather than
  * next to the connection: they are this rule, not the protocol.
  */
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { t } from '../i18n';
@@ -20,6 +21,15 @@ import type { HostToPane } from '../../shared/webview';
 export interface WorkspaceHost {
     post(msg: HostToPane): void;
     log(line: string): void;
+}
+
+/**
+ * Containment by directory, not by string prefix: `/work/repo-secrets` is not inside `/work/repo`,
+ * and neither is `/work/repo/../elsewhere`. Both passed when this was `startsWith()`.
+ */
+export function pathWithin(root: string, target: string): boolean {
+    const rel = path.relative(path.resolve(root), path.resolve(target));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 export class WorkspaceFiles {
@@ -37,17 +47,44 @@ export class WorkspaceFiles {
         return process.cwd();
     }
 
-    isPathAllowed(p: string): boolean {
-        if (!path.isAbsolute(p)) return true; // relative paths are fine
+    /** Every directory the agent may reach: the workspace folders, or the configured cwd. */
+    private allowedRoots(): string[] {
         const folders = vscode.workspace.workspaceFolders;
         if (folders && folders.length > 0) {
-            return folders.some(f => p.startsWith(f.uri.fsPath));
+            return folders.map(folder => folder.uri.fsPath);
         }
-        // No workspace: restrict to cwd
         const config = vscode.workspace.getConfiguration(settingsSection());
-        const configCwd = config.get<string>('cwd');
-        const cwd = configCwd || process.cwd();
-        return p.startsWith(cwd);
+        return [config.get<string>('cwd') || process.cwd()];
+    }
+
+    /** A path as the filesystem will see it: symlinks followed, missing tails resolved by parent. */
+    private realPath(p: string): string {
+        const resolved = path.resolve(p);
+        try {
+            return fs.realpathSync(resolved);
+        } catch {
+            try {
+                return path.join(fs.realpathSync(path.dirname(resolved)), path.basename(resolved));
+            } catch {
+                return resolved;
+            }
+        }
+    }
+
+    /**
+     * Containment, not a string prefix.
+     *
+     * `startsWith()` passed for two paths it should not have: a sibling with the same prefix
+     * (`/work/repo-secrets` for `/work/repo`) and an absolute path that walks back out
+     * (`/work/repo/../secrets`). Relative paths were allowed outright, which is the same hole
+     * through a different door. Resolve first, then require the result to sit inside a root.
+     */
+    isPathAllowed(p: string): boolean {
+        if (!p) {
+            return false;
+        }
+        const target = this.realPath(p);
+        return this.allowedRoots().some(root => pathWithin(this.realPath(root), target));
     }
 
     resolveFileUri(filePath: string): vscode.Uri | undefined {

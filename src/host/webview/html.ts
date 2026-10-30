@@ -32,10 +32,13 @@ export function highlightSheetFor(themeKind: number): string {
 }
 
 /**
- * The artwork each identity loads while connecting: the secondant is orange by definition, the
- * primary gets the full-colour art. One file per role, both resolved through the same slot.
+ * The artwork each identity wears — loading block, About panel, anywhere a picture is posted.
+ *
+ * **The secondant is orange by definition.** `icon_orange.svg` is its mark and must not be
+ * "unified" with the primary's `icon_fullcolor.png`; the two panes are told apart by that colour
+ * before a word is read. One function so the rule lives in one place.
  */
-function loadingIconFor(role: 'primary' | 'secondant'): string {
+export function identityArtwork(role: 'primary' | 'secondant'): string {
     return role === 'secondant' ? 'icon_orange.svg' : 'icon_fullcolor.png';
 }
 
@@ -76,7 +79,7 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
         .replace('{{CHAT_CSS_URI}}', versioned('chat.css'))
         .replace('{{CHAT_JS_URI}}', versioned('pane.js'))
         .replace('{{SECONDANT_ICON_URI}}', versioned('icon_orange.svg'))
-        .replace('{{LOADING_ICON_URI}}', versioned(loadingIconFor(identity().role)))
+        .replace('{{LOADING_ICON_URI}}', versioned(identityArtwork(identity().role)))
         .replace('{{LOCALE_JSON}}', JSON.stringify(input.locale).replace(/</g, '\\u003c'))
         .replace('{{LOCALE_HELPER}}', WEBVIEW_LOCALE_HELPER);
 }

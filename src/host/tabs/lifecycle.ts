@@ -30,6 +30,8 @@ export interface TabLifecycleHost {
     postTo(surface: ChatSurface, msg: HostToPane): void;
     log(line: string): void;
     resolveCwd(): string;
+    /** The CLI profile of the agent this pane is talking to: attachments are scoped by it. */
+    profile(): string;
     attachments: AttachmentStore;
     promptSessionId(): string | undefined;
     detachActivePrompt(id: string, options?: { savePartial?: boolean }): Promise<void>;
@@ -45,6 +47,8 @@ export interface TabLifecycleHost {
     postHistoryState(tabId: string): void;
     /** Forget one tab's staged pick: the tab is gone. */
     dropHistoryStage(tabId: string): void;
+    /** Draw the undecided forwarded cards again: reloads and tab switches rebuild the transcript. */
+    reinjectOpenPeers?: () => void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
     workspaceState: vscode.Memento;
 }
@@ -97,12 +101,13 @@ export class TabLifecycle {
         await this.syncFromHermes(cwd);
         const session = this._host.session;
         const tabBound = session.tabs.find(rec => rec.id === session.activeId)?.hermesSessionId;
-        const target = tabBound || this._persistedHermesSessionId;
-        // The catalog row is the link's proof: the id is bound, and Hermes still lists it.
-        // A pointer at a session Hermes no longer lists is not a link, and a load would only fail.
-        const row = session.catalogRow(target);
-        if (target && !row) {
-            this._host.log(`Tab points at ${target}, which this profile no longer lists; not resuming`);
+        const remembered = tabBound || this._persistedHermesSessionId;
+        // The catalog row is the link's proof: the id is bound, and Hermes still lists it. A
+        // pointer at a session Hermes no longer lists is not a target — treating it as one used to
+        // skip adoption and leave the throwaway session `session/new` created bound to the tab.
+        const target = remembered && session.catalogRow(remembered) ? remembered : undefined;
+        if (remembered && !target) {
+            this._host.log(`Tab points at ${remembered}, which this profile no longer lists; adopting instead`);
         }
         // First run / unlinked tab: open the most recent Hermes session rather than
         // leaving the throwaway session `session/new` just created in front of the
@@ -113,11 +118,12 @@ export class TabLifecycle {
                 session.activeId = newest.id;
                 session.messages = [];
                 this._host.post({ type: 'newChat' });
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(newest.cwd || cwd, newest.hermesSessionId);
-                } finally {
-                    this._renderReplayOnLoad = false;
+                if (!await this._loadForReplay(acp, newest.cwd || cwd, newest.hermesSessionId, 'Adopt')) {
+                    // The tab stays empty and this pane stays unbound: binding the throwaway would
+                    // present a session Hermes never had, and letting the error escape would send
+                    // it to Connection's catch, which disposes the whole client.
+                    this._host.postSessionList();
+                    return;
                 }
                 this.bindHermesSessionId(newest.hermesSessionId);
                 this._host.postSessionList();
@@ -125,24 +131,35 @@ export class TabLifecycle {
                 return;
             }
         }
-        if (target && row && target !== acp.activeSessionId) {
+        if (target && target !== acp.activeSessionId) {
             const targetCwd = session.tabs.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
-            try {
-                this._renderReplayOnLoad = true;
-                try {
-                    await acp.loadSession(targetCwd, target);
-                } finally {
-                    this._renderReplayOnLoad = false;
-                }
+            if (await this._loadForReplay(acp, targetCwd, target, 'Resume')) {
                 this.bindHermesSessionId(target);
                 this._host.log(`Resumed Hermes session ${target}`);
                 return;
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._host.log(`Resume failed for ${target}: ${msg}`);
             }
         }
         this.bindHermesSessionId(acp.activeSessionId);
+    }
+
+    /** Load one session with the replay allowed to paint; false, with a log line, when it fails. */
+    private async _loadForReplay(
+        acp: AcpClient,
+        cwd: string,
+        hermesSessionId: string,
+        verb: string,
+    ): Promise<boolean> {
+        this._renderReplayOnLoad = true;
+        try {
+            await acp.loadSession(cwd, hermesSessionId);
+            return true;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this._host.log(`${verb} failed for ${hermesSessionId}: ${msg}`);
+            return false;
+        } finally {
+            this._renderReplayOnLoad = false;
+        }
     }
 
     async resumeTabHermesSession(sessionId: string): Promise<boolean> {
@@ -203,7 +220,7 @@ export class TabLifecycle {
             const used = new Set<string>();
             for (const msg of messages) {
                 if (msg.role !== 'user' || (msg.imageRefs && msg.imageRefs.length)) continue;
-                const refs = this._host.attachments.refsFromIndex(msg.text, used, true);
+                const refs = this._host.attachments.refsFromIndex(this._attachmentScope(localId), msg.text, used, true);
                 if (refs.length) {
                     msg.imageRefs = refs;
                 }
@@ -219,9 +236,11 @@ export class TabLifecycle {
         this._host.post({ type: 'newChat' });
         this._host.post({
             type: 'restoreHistory',
-            messages: this._host.attachments.hydrateImages(this._host.session.messages),
+            messages: this._host.attachments.hydrateImages(this._attachmentScope(localId), this._host.session.messages),
             localHistoryOnly: false,
         });
+        // Hermes' replay never contains a card it was never sent; the inbox still holds it.
+        this._host.reinjectOpenPeers?.();
         this._host.postSessionList();
         if (undelivered) {
             this._host.log(`Undelivered message offered back to the composer: ${localId}`);
@@ -237,11 +256,15 @@ export class TabLifecycle {
         const rec = this._host.session.tabs.find(item => item.id === this._host.session.activeId);
         if (rec && rec.hermesSessionId !== hermesSessionId) {
             rec.hermesSessionId = hermesSessionId;
-            try {
-                this._host.saveCatalog();
-            } catch { /* non-critical */ }
+            this._host.saveCatalog();
         }
         void this._host.workspaceState.update('hermesSessionId', hermesSessionId);
+    }
+
+    /** The conversation a tab's attachments belong to: its Hermes id once bound, else its own. */
+    private _attachmentScope(localId: string): { sessionId: string; profile: string } {
+        const record = this._host.session.tabs.find(rec => rec.id === localId);
+        return { sessionId: record?.hermesSessionId || localId, profile: this._host.profile() };
     }
 
     restoreMessages(target?: ChatSurface): void {
@@ -253,7 +276,10 @@ export class TabLifecycle {
         this._host.log(`Restoring ${this._host.session.messages.length} messages`);
         const msg: HostToPane = {
             type: 'restoreHistory',
-            messages: this._host.attachments.hydrateImages(this._host.session.messages),
+            messages: this._host.attachments.hydrateImages(
+                this._attachmentScope(this._host.session.activeId),
+                this._host.session.messages,
+            ),
             localHistoryOnly: true,
         };
         if (target) {
@@ -318,6 +344,9 @@ export class TabLifecycle {
             // The replay repaints this tab when it arrives; the chip is this tab's already.
             this.postHistoryState();
         }
+        // A forward is addressed to the agent, not to a conversation: whatever is still undecided
+        // belongs in the tab now on screen.
+        this._host.reinjectOpenPeers?.();
         await this._host.syncModelStateForCurrentSession();
         this._host.syncPromptUiIfReturningToOwner();
     }
@@ -356,15 +385,19 @@ export class TabLifecycle {
 
     async hideSessions(toHide: string[], focusSessionId?: string): Promise<void> {
         const acp = this._host.acp();
+        const tabs = this._host.session.tabs;
         for (const id of toHide) {
             // A closed tab's staged pick has nowhere to go; it must not outlive the tab.
             this._host.dropHistoryStage(id);
-            if (acp) {
+            // The strip's id is only the tab's until the catalog lists it. A tab that was never
+            // bound has no Hermes session to hide, so the local removal is the whole close.
+            const bound = tabs.find(tab => tab.id === id)?.hermesSessionId;
+            if (acp && bound) {
                 try {
-                    await acp.setSessionHidden(id, true);
+                    await acp.setSessionHidden(hermesSessionIdFor(tabs, id), true);
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    this._host.log(`Hide failed for ${id}: ${msg}`);
+                    this._host.log(`Hide failed for ${bound}: ${msg}`);
                 }
             }
         }

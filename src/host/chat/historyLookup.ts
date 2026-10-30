@@ -133,11 +133,22 @@ export function matchMessageIds(picked: ChatMessage[], exported: ExportedMessage
 }
 
 /**
+ * The export could not be read. Distinct from an export that succeeded and held no rows: the
+ * viewer says "could not read it" for this, and "empty" only for the other.
+ */
+export class HistoryExportError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'HistoryExportError';
+    }
+}
+
+/**
  * Read one session's messages out of Hermes, ids and all.
  *
  * Only ever called at Attach time: the local copy is what the viewer shows, and its timestamps are
  * replay artefacts. The export is read-only and writes JSONL to a temp file, which is always
- * removed. A failed or slow export yields no messages, which the caller turns into an anchor.
+ * removed. A failed export throws: an empty list means Hermes had nothing to send.
  */
 export async function exportSessionMessages(
     executable: string | undefined,
@@ -146,7 +157,7 @@ export async function exportSessionMessages(
 ): Promise<ExportedMessage[]> {
     const resolved = executable || (await findHermesExecutable(undefined));
     if (!resolved) {
-        return [];
+        throw new HistoryExportError('no Hermes executable found');
     }
     const cliProfile = normalizeHermesCliProfile(profile);
     const file = path.join(
@@ -175,8 +186,9 @@ export async function exportSessionMessages(
             }
         }
         return messages;
-    } catch {
-        return [];
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new HistoryExportError(`hermes sessions export failed: ${reason}`);
     } finally {
         await fs.promises.rm(file, { force: true }).catch(() => undefined);
     }

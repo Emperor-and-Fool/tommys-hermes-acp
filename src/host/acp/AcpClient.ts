@@ -23,6 +23,7 @@ import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
+import { sliceTextByLines } from './fsRead';
 import { shouldReportReplay } from './replayProgress';
 import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
@@ -75,6 +76,40 @@ interface TerminalInstance {
     exitSignal: string | null;
     exited: Promise<void>;
     resolveExit: () => void;
+    /** Asked for at create time; null means keep everything. */
+    outputByteLimit?: number;
+    /** True once any output was dropped, so a read can say so. */
+    truncated: boolean;
+}
+
+/** Keep the newest `limit` bytes: the tail is what a reader is looking for. */
+function trimToByteLimit(text: string, limit: number | undefined): { text: string; dropped: boolean } {
+    if (!limit || limit <= 0) {
+        return { text, dropped: false };
+    }
+    const bytes = Buffer.from(text, 'utf-8');
+    if (bytes.length <= limit) {
+        return { text, dropped: false };
+    }
+    return { text: bytes.subarray(bytes.length - limit).toString('utf-8'), dropped: true };
+}
+
+/** ACP sends terminal env as a list of {name, value} pairs; Node wants one object. */
+function terminalEnv(requested: unknown): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (Array.isArray(requested)) {
+        for (const entry of requested) {
+            const pair = entry as { name?: unknown; value?: unknown };
+            if (pair && typeof pair.name === 'string' && pair.name) {
+                env[pair.name] = typeof pair.value === 'string' ? pair.value : String(pair.value ?? '');
+            }
+        }
+        return env;
+    }
+    if (requested && typeof requested === 'object') {
+        Object.assign(env, requested as NodeJS.ProcessEnv);
+    }
+    return env;
 }
 
 function readTextFromContentBlock(block: unknown): string {
@@ -92,7 +127,7 @@ function readTextFromContentBlock(block: unknown): string {
     return '';
 }
 
-function extractPermissionDetail(toolCall: unknown): string | undefined {
+export function extractPermissionDetail(toolCall: unknown): string | undefined {
     if (!toolCall || typeof toolCall !== 'object') {
         return undefined;
     }
@@ -101,6 +136,14 @@ function extractPermissionDetail(toolCall: unknown): string | undefined {
     const rawInput = tc.rawInput ?? tc.raw_input;
     if (typeof rawInput === 'string' && rawInput.trim()) {
         parts.push(rawInput.trim());
+    } else if (rawInput && typeof rawInput === 'object') {
+        // Hermes sends the tool's input as an object for most calls. Showing it is the point of
+        // the card: without it an approval is granted without seeing the command it approves.
+        try {
+            parts.push(JSON.stringify(rawInput, null, 2));
+        } catch {
+            parts.push(String(rawInput));
+        }
     }
     const content = tc.content;
     if (typeof content === 'string' && content.trim()) {
@@ -445,7 +488,7 @@ export class AcpClient {
             // Register fs capability handlers
             this._app.onRequest(methods.client.fs.readTextFile as any, async ({ params }: any) => {
                 const content = await this._onFileSystem.readTextFile(params.path);
-                return { content };
+                return { content: sliceTextByLines(content, params.line, params.limit) };
             });
 
             this._app.onRequest(methods.client.fs.writeTextFile as any, async ({ params }: any) => {
@@ -824,13 +867,7 @@ export class AcpClient {
         } catch (err) {
             // The agent explains a refusal in the JSON-RPC error's `data`, not in its message
             // ("Invalid params"), so the reason is lifted out here and reaches the log intact.
-            const data = (err as { data?: unknown })?.data;
-            const carried = typeof data === 'string'
-                ? data
-                : (data && typeof (data as { reason?: unknown }).reason === 'string'
-                    ? (data as { reason: string }).reason
-                    : '');
-            throw new Error(carried || (err instanceof Error ? err.message : String(err)));
+            throw new Error(this._errorDetail(err));
         }
     }
 
@@ -926,9 +963,12 @@ export class AcpClient {
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
         } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this._transitionTo('error', `New session failed: ${msg}`);
-            this._onConnectionLost();
+            // A failed session/new says nothing about the connection: Hermes is still there, and
+            // tearing it down turned "missing provider key" into "Connection lost". The cause is
+            // in the JSON-RPC error's data, so it is lifted out and shown as the status message.
+            const msg = `New session failed: ${this._errorDetail(err)}`;
+            this._onLog(msg);
+            this._transitionTo('error', msg);
         }
     }
 
@@ -975,7 +1015,8 @@ export class AcpClient {
         const cmd = params.command;
         const args = params.args || [];
         const cwd = params.cwd || process.cwd();
-        const env = params.env ? { ...process.env, ...params.env } : process.env;
+        const env = terminalEnv(params.env);
+        const outputByteLimit = typeof params.outputByteLimit === 'number' ? params.outputByteLimit : undefined;
 
         this._onTerminal(cmd, args, cwd); // mirror to VS Code terminal
 
@@ -997,17 +1038,27 @@ export class AcpClient {
             exitSignal: null,
             exited,
             resolveExit,
+            outputByteLimit,
+            truncated: false,
         };
 
-        proc.stdout?.on('data', (chunk: Buffer) => {
-            term.stdout += chunk.toString();
-        });
-        proc.stderr?.on('data', (chunk: Buffer) => {
-            term.stderr += chunk.toString();
-        });
+        const append = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
+            const capped = trimToByteLimit(term[stream] + chunk.toString(), term.outputByteLimit);
+            term[stream] = capped.text;
+            term.truncated = term.truncated || capped.dropped;
+        };
+        proc.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
+        proc.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
         proc.on('exit', (code, sig) => {
             term.exitCode = code;
             term.exitSignal = sig === null ? null : sig;
+            resolveExit();
+        });
+        // An unknown executable raises 'error' and never 'exit'. Without this the request waiting
+        // on `exited` never resolves, and the host logs an unhandled error event.
+        proc.on('error', (err) => {
+            append('stderr', Buffer.from(`\n${err.message}`));
+            term.exitCode = term.exitCode ?? 127;
             resolveExit();
         });
 
@@ -1018,16 +1069,11 @@ export class AcpClient {
     private _handleTerminalOutput(params: any): any {
         const term = this._terminals.get(params.terminalId);
         if (!term) return { output: '', truncated: false, exitStatus: {} };
-        let output = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
-        const byteLimit = params.outputByteLimit;
-        let truncated = false;
-        if (byteLimit && Buffer.byteLength(output, 'utf-8') > byteLimit) {
-            output = Buffer.from(output, 'utf-8').subarray(0, byteLimit).toString('utf-8');
-            truncated = true;
-        }
+        const combined = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
+        const capped = trimToByteLimit(combined, term.outputByteLimit);
         return {
-            output,
-            truncated,
+            output: capped.text,
+            truncated: term.truncated || capped.dropped,
             exitStatus: term.exitCode !== null ? { exitCode: term.exitCode } : undefined,
         };
     }
@@ -1145,28 +1191,15 @@ export class AcpClient {
             return false;
         }
         switch (kind) {
-            case 'user_message_chunk': {
-                const text = extractTextFromContentBlock(update.content);
-                if (text) {
-                    sink.push({ role: 'user', text, ...extractChunkMeta(update) });
-                    this._noteReplayChunk();
-                }
-                return true;
-            }
-
-            case 'agent_message_chunk': {
-                const text = extractTextFromContentBlock(update.content);
-                if (text) {
-                    sink.push({ role: 'assistant', text, ...extractChunkMeta(update) });
-                    this._noteReplayChunk();
-                }
-                return true;
-            }
-
+            case 'user_message_chunk':
+            case 'agent_message_chunk':
             case 'agent_thought_chunk': {
+                const role = kind === 'user_message_chunk' ? 'user'
+                    : kind === 'agent_message_chunk' ? 'assistant'
+                    : 'thought';
                 const text = extractTextFromContentBlock(update.content);
                 if (text) {
-                    sink.push({ role: 'thought', text, ...extractChunkMeta(update) });
+                    sink.push({ role, text, ...extractChunkMeta(update) });
                     this._noteReplayChunk();
                 }
                 return true;
@@ -1310,5 +1343,27 @@ export class AcpClient {
     private _isMethodNotFoundError(err: unknown): boolean {
         const msg = err instanceof Error ? err.message : String(err);
         return /method not found|method_not_found/i.test(msg);
+    }
+
+    /**
+     * The reason an agent put in a JSON-RPC error's `data`, where Hermes explains a refusal
+     * ("Invalid params" is the transport's word for it, not the cause). Falls back to the
+     * error's own message.
+     */
+    private _errorDetail(err: unknown): string {
+        const data = (err as { data?: unknown })?.data;
+        if (typeof data === 'string' && data) {
+            return data;
+        }
+        if (data && typeof data === 'object') {
+            const carried = data as { reason?: unknown; details?: unknown };
+            if (typeof carried.reason === 'string' && carried.reason) {
+                return carried.reason;
+            }
+            if (typeof carried.details === 'string' && carried.details) {
+                return carried.details;
+            }
+        }
+        return err instanceof Error ? err.message : String(err);
     }
 }

@@ -1,4 +1,5 @@
 import type { HistoryRef } from '../../shared/chat';
+import { handoverLines } from '../../shared/historyHandover';
 
 /**
  * What a delivered peer card becomes: one user turn.
@@ -18,28 +19,12 @@ export interface PeerTurnItem {
     fromHost: string;
     body: string;
     history?: HistoryRef;
+    /** The profile reading this turn. Same as the slice's profile means no cross-profile note. */
+    readerProfile?: string;
 }
 
 /** Between two delivered cards in one turn: a rule the agent can see, not a sentence about one. */
 export const PEER_TURN_SEPARATOR = '\n\n---\n\n';
-
-function spanLine(ref: HistoryRef): string {
-    if (typeof ref.from === 'number' && typeof ref.to === 'number') {
-        return `${new Date(ref.from).toISOString()} → ${new Date(ref.to).toISOString()}`;
-    }
-    // No id matched, so there is no span: the opening words are what the agent can search for.
-    return ref.anchor ? `Anchor: "${ref.anchor}"` : '';
-}
-
-/** The first real Hermes id in the slice, or null when none matched. */
-function firstMessageId(ref: HistoryRef): number | null {
-    for (const id of ref.messageIds || []) {
-        if (typeof id === 'number') {
-            return id;
-        }
-    }
-    return null;
-}
 
 /**
  * What the receiving agent may do with the handle, said where it reads it.
@@ -48,30 +33,17 @@ function firstMessageId(ref: HistoryRef): number | null {
  * sandbox escape to brag about, and not a reason to go rummaging in the rest of that profile), the
  * hint is the call that reads more of *this* conversation.
  */
-function accessLines(ref: HistoryRef, handle: string, anchorOnly: boolean): string[] {
-    const note = 'Note: this session handle reads outside your profile — the sender granted it by ' +
-        'forwarding. Read from it; do not go looking through that profile for anything else.';
-    const hint = anchorOnly
-        ? `Hint: no message ids matched this slice — search the transcript for "${ref.anchor || ''}" ` +
-          'instead of scrolling to one.'
-        : 'Hint: session_search(session_id="' + handle + '", around_message_id=<an id from the ' +
-          'slice>) reads the turns around that message.';
-    return [note, hint];
-}
+
 
 /** One forwarded card as turn text: sender, session handle, how to read more, then the body. */
 export function peerTurnBlock(item: PeerTurnItem): string {
     const lines = [`[forwarded from ${item.fromProfile}@${item.fromHost}]`];
     const ref = item.history;
     if (ref) {
-        const profile = ref.profile || item.fromProfile;
-        const handle = `@session:${profile}/${ref.sessionId}`;
-        lines.push(`Session: ${handle}`);
-        const span = spanLine(ref);
-        if (span) {
-            lines.push(span);
-        }
-        lines.push(...accessLines(ref, handle, firstMessageId(ref) === null));
+        lines.push(...handoverLines(ref, {
+            readerProfile: item.readerProfile,
+            fallbackProfile: item.fromProfile,
+        }));
     }
     return lines.join('\n') + '\n\n' + item.body.trim();
 }

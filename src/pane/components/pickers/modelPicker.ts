@@ -3,7 +3,7 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { pickerRowReserve } from '../composer/composer';
-import { closeAllDropdowns, setMenuOpen } from '../modals/modal';
+import { closeAllDropdowns, wirePickerButton } from '../modals/modal';
 
 
 const VENDOR_NAMES = {
@@ -59,14 +59,8 @@ const modelLabelEl = byId('modelLabel');
 const modelDropdown = byId('modelDropdown');
 
 export function initModelBtnClick(): void {
-    modelBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const open = modelPicker.dataset.open !== 'true';
-        closeAllDropdowns();
-        if (open) {
-            setMenuOpen(modelPicker, true);
-            post({ type: 'getModels' });
-        }
+    wirePickerButton(modelBtn, modelPicker, function() {
+        post({ type: 'getModels' });
     });
 }
 

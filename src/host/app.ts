@@ -17,7 +17,7 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml } from './webview/html';
+import { buildWebviewHtml, identityArtwork } from './webview/html';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
@@ -38,16 +38,6 @@ import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './e
 import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
-/**
- * `onNewSession` is a Rina-era name kept for settings compatibility. A tab no longer gets a new
- * session behind its back; the picker shows when a tab's transcript is restored, until the
- * first reply.
- */
-
-/** The panel id lives with the panel; re-exported so extension.ts keeps one import site. */
-
-/** The key an attachment is filed under: the message text, markers and spacing removed. */
-
 
 export class App implements vscode.WebviewViewProvider {
 
@@ -55,8 +45,29 @@ export class App implements vscode.WebviewViewProvider {
      * The profile this instance is talking to. The secondant reads it through `activate()`'s
      * return value; nothing else is exported from the extension on purpose.
      */
+    /**
+     * The profile the *other* extension is on, when it has told us. Withheld from this pane's
+     * picker for the same reason it withholds ours: the two may not share one profile, and the
+     * rule should not depend on which side the user is looking at.
+     */
+    private _siblingProfile = '';
+
+    /** Called by the secondant: the profile it just connected to, or moved to. */
+    registerSiblingProfile(profile: string): void {
+        const next = profile || '';
+        if (next === this._siblingProfile) {
+            return;
+        }
+        this._siblingProfile = next;
+        this._log(`Sibling profile is "${next}"; withholding it from the picker`);
+        // The open picker lists from the last post, so re-post or it keeps offering it.
+        this._profiles.postList();
+    }
+
     get activeProfile(): string {
-        return this._profiles.displayName || this._profiles.selectionId || '';
+        // The Hermes CLI profile, not the label the chip shows. Two agents can be named
+        // anything; what they must never share is the profile the agent actually runs on.
+        return this._profiles.resolveTarget().cliProfile;
     }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
@@ -241,7 +252,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
-            excludedProfile: () => this._primary?.activeProfile || undefined,
+            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
         });
         this._output = vscode.window.createOutputChannel(
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
@@ -271,6 +282,7 @@ export class App implements vscode.WebviewViewProvider {
             resolveCwd: () => this._files.resolveCwd(),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
+            profile: () => this._profiles.resolveTarget().cliProfile,
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
@@ -283,6 +295,7 @@ export class App implements vscode.WebviewViewProvider {
             postHistoryState: (tabId) => this._postHistoryState(tabId),
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             activate: (id, options) => this._session.activate(id, options),
+            reinjectOpenPeers: () => this._mail?.inbox.reinjectOpen(),
             workspaceState: context.workspaceState,
         });
         this._connection = new Connection({
@@ -297,7 +310,12 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
-            profileChanged: (name) => this._profileChanged.fire(name),
+            profileChanged: (name) => {
+                this._profileChanged.fire(name);
+                // Push it up too: the primary's picker must stop offering this profile.
+                this._primary?.registerSiblingProfile?.(this.activeProfile);
+            },
+            excludedProfile: () => this._primary?.activeProfile || undefined,
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -395,10 +413,6 @@ export class App implements vscode.WebviewViewProvider {
 
 
 
-    /** Point the *live* session at another model. No session/new: Hermes' set_session_model
-     *  swaps the agent in place, and a fresh session here would silently drop the tab's
-     *  conversation (and leave an empty row in the catalog). */
-
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         // The tab whose pane sent this. Captured before any await: `promptSessionId` is only set
         // once the turn is ready, and a switch mid-send must not move the message to the new tab.
@@ -416,13 +430,16 @@ export class App implements vscode.WebviewViewProvider {
             this._postMessage({ type: 'noActiveTab' });
             return;
         }
-        const ready = await this._turn.ensureSessionReady();
+        const readiness = await this._turn.ensureSessionReady();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (!ready) {
-            // The pane keeps its history; the reader gets the reason instead of silence.
-            this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+        if (!readiness.ok) {
+            // The pane keeps its history, and the reader gets one reason: the specific one when
+            // ensureSessionReady could name it, the generic one only when it could not.
+            if (!readiness.notified) {
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+            }
             return;
         }
         const imageCount = images?.length ?? 0;
@@ -442,7 +459,17 @@ export class App implements vscode.WebviewViewProvider {
         this._turn.promptSessionId = tabId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
-            this._attachments.indexAttachments(imageRefs, text);
+            // The tab is bound by ensureSessionReady above, so this is the Hermes id the replay
+            // for this conversation will look the images up by.
+            const record = this._session.tabs.find(rec => rec.id === tabId);
+            this._attachments.indexAttachments(
+                {
+                    sessionId: record?.hermesSessionId || tabId,
+                    profile: this._profiles.resolveTarget().cliProfile,
+                },
+                imageRefs,
+                text,
+            );
         }
         if (staged) {
             // The card is part of the transcript before the question it belongs to, both live
@@ -457,7 +484,7 @@ export class App implements vscode.WebviewViewProvider {
                 sessionId: this._session.activeId,
             });
         }
-        this._session.saveMessage('user', text, undefined, imageRefs);
+        this._session.saveOutgoingUser(text, imageRefs);
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
@@ -538,8 +565,16 @@ export class App implements vscode.WebviewViewProvider {
         this._turn.promptSessionId = this._session.activeId;
         this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
-        this._session.saveMessage('user', text);
-        await this._turn.ensureSessionReady();
+        this._session.saveOutgoingUser(text);
+        const readiness = await this._turn.ensureSessionReady();
+        if (!readiness.ok) {
+            // Nothing was sent, so say so instead of prompting into a session that is not bound
+            // (or into whichever session the client still had).
+            if (!readiness.notified) {
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+            }
+            return;
+        }
         await this._connection.acp.sendMessage(text);
     }
 
@@ -620,9 +655,9 @@ export class App implements vscode.WebviewViewProvider {
     /**
      * A session with no tab here: read it from Hermes, never cache it.
      *
-     * The three outcomes are logged apart — no Hermes, export failed, export empty — because they
-     * read the same on screen and mean three different things. Failure throws: the viewer has to be
-     * able to say "could not read it" rather than show an empty transcript and call it a day.
+     * Both failures throw: no executable here, or an export that could not be read. The viewer
+     * catches either and says "could not read it"; an empty list travels as empty, because Hermes
+     * really can return a session with nothing in it.
      */
     private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
         const executable = await this._resolveHermesExecutable();
@@ -858,7 +893,7 @@ export class App implements vscode.WebviewViewProvider {
         return rec?.title || t('newChat');
     }
 
-    /** One automatic reconnect after the process dies; the Retry button covers the rest. */
+    /** Clear the title the detection state put on the view. */
     private _resetViewTitleToDefault(): void {
         const view = this._surfaces.view;
         if (!view) {
@@ -941,8 +976,10 @@ export class App implements vscode.WebviewViewProvider {
         let iconUri = '';
         const iconWebview = this._surfaces.iconWebview;
         if (iconWebview) {
+            // The identity's own mark: the secondant is orange by definition, so this must not be
+            // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
             iconUri = iconWebview.asWebviewUri(
-                vscode.Uri.joinPath(this._extensionUri, 'media', 'icon.png')
+                vscode.Uri.joinPath(this._extensionUri, 'media', identityArtwork(this._id.role))
             ).toString();
         }
         this._postMessage({
@@ -1011,7 +1048,9 @@ export class App implements vscode.WebviewViewProvider {
         const sent = this._mail.outbox.send(
             newEnvelope({
                 fromProfile: this._ownProfile(),
-                toProfile: other.profile,
+                // The address, not the display name: a profile with a space is keyed by its
+                // sanitized form, and the recipient compares in that form.
+                toProfile: other.address,
                 body,
                 sourceMessageId,
                 // A session-memory pick travels with its ref: the recipient draws the envelope.
@@ -1037,6 +1076,7 @@ export class App implements vscode.WebviewViewProvider {
             envelope.body,
             envelope.history
         );
+        this._log(`Peer card received: ${envelope.id} (tab ${this._session.activeId})`);
         this._postMessage({
             type: 'addMessage',
             role: 'peer',
@@ -1072,12 +1112,15 @@ export class App implements vscode.WebviewViewProvider {
         if (!this._session.setPeerState(envelopeId, state)) {
             return;
         }
+        this._mail?.inbox.acknowledge(envelopeId);
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
         const turn = peerTurnBlock({
             fromProfile: stored.peer.fromProfile,
             fromHost: stored.peer.fromHost,
             body: stored.text,
             history: stored.history,
+            // A forward to our own profile is a handover, not a grant: no cross-profile note.
+            readerProfile: this._ownProfile(),
         });
         this._enqueueChatOp(() => this._handleUserMessage(turn));
     }
@@ -1088,6 +1131,7 @@ export class App implements vscode.WebviewViewProvider {
         if (!this._session.setPeerState(envelopeId, state)) {
             return;
         }
+        this._mail?.inbox.acknowledge(envelopeId);
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
     }
 
@@ -1108,6 +1152,7 @@ export class App implements vscode.WebviewViewProvider {
                 fromHost: message.peer!.fromHost,
                 body: message.text,
                 history: message.history,
+                readerProfile: this._ownProfile(),
             }))
         );
         const settled = pending.filter(message => {
@@ -1115,6 +1160,7 @@ export class App implements vscode.WebviewViewProvider {
             if (!this._session.setPeerState(id, 'delivered')) {
                 return false;
             }
+            this._mail?.inbox.acknowledge(id);
             this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'delivered' });
             return true;
         });
@@ -1131,6 +1177,7 @@ export class App implements vscode.WebviewViewProvider {
             if (!this._session.setPeerState(id, 'dismissed')) {
                 continue;
             }
+            this._mail?.inbox.acknowledge(id);
             this._postMessage({ type: 'peerActionResult', envelopeId: id, state: 'dismissed' });
         }
     }
@@ -1191,12 +1238,7 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');
-        this._turn.sendEpoch++;
-        this._turn.flushThought();
-        this._turn.saveAssistantText();
-        this._turn.cancelPendingPermissions();
-        this._session.saveCurrent();
-        this._session.persistMessages();
+        this._quiesceTurn();
 
         this._connection.drop();
         this._models.reset();
@@ -1210,13 +1252,21 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
+        this._quiesceTurn();
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+
+    /**
+     * Stop the turn in flight and put what it produced on disk. Both reload paths start here:
+     * the window reload and the session reload differ only in what they do next.
+     */
+    private _quiesceTurn(): void {
         this._turn.sendEpoch++;
         this._turn.flushThought();
         this._turn.saveAssistantText();
         this._turn.cancelPendingPermissions();
         this._session.saveCurrent();
         this._session.persistMessages();
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
 
     private async _checkForUpdate(): Promise<void> {
