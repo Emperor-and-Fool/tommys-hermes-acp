@@ -2,7 +2,6 @@ import { describe, it } from 'mocha';
 import assert from 'assert';
 import {
     PermissionBridge,
-    extractPermissionDetail,
     normalizePermissionOptions,
 } from '../../host/acp/permissionBridge';
 
@@ -87,19 +86,5 @@ describe('normalizePermissionOptions', () => {
         ]);
         assert.strictEqual(opts[0].optionId, 'allow_session');
         assert.strictEqual(opts[0].name, 'Allow for session');
-    });
-});
-
-describe('extractPermissionDetail', () => {
-    it('returns string rawInput', () => {
-        assert.strictEqual(
-            extractPermissionDetail({ rawInput: 'rm -rf node_modules' }),
-            'rm -rf node_modules'
-        );
-    });
-
-    it('stringifies object rawInput', () => {
-        const detail = extractPermissionDetail({ rawInput: { command: 'npm test' } });
-        assert.ok(detail?.includes('npm test'));
     });
 });

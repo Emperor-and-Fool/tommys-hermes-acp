@@ -83,25 +83,6 @@ function normalizeOptionKind(kind: unknown, optionId: string): PermissionOptionK
     return 'allow_once';
 }
 
-export function extractPermissionDetail(toolCall: unknown): string | undefined {
-    if (!toolCall || typeof toolCall !== 'object') {
-        return undefined;
-    }
-    const tc = toolCall as Record<string, unknown>;
-    const rawInput = tc.rawInput;
-    if (rawInput == null) {
-        return undefined;
-    }
-    if (typeof rawInput === 'string') {
-        return rawInput;
-    }
-    try {
-        return JSON.stringify(rawInput, null, 2);
-    } catch {
-        return String(rawInput);
-    }
-}
-
 export class PermissionBridge {
     private _pending = new Map<string, PendingPermission>();
     private _timeoutMs: number;
