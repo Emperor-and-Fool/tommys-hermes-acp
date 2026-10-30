@@ -29,7 +29,7 @@ function reorderSessionTabs(fromId, toId) {
     }
     ids.splice(fromIdx, 1);
     ids.splice(toIdx, 0, fromId);
-    const byId = {};
+    const byId: Record<string, unknown> = {};
     state.lastSessions.forEach(function(s) { byId[s.id] = s; });
     state.lastSessions = ids.map(function(id) { return byId[id]; }).filter(Boolean);
     renderSessionTabs(state.lastSessions, state.lastActiveSessionId);

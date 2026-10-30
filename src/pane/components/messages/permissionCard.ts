@@ -23,7 +23,7 @@ function permissionBodyText(title, detail) {
 function permissionOptionLabel(opt) {
     const kind = String(opt.kind || '').toLowerCase().replace(/-/g, '_');
     const id = String(opt.optionId || '').toLowerCase().replace(/-/g, '_');
-    const map = {
+    const map: Record<string, string> = {
         allow_once: 'permissionAllowOnce',
         allow_always: 'permissionAllowAlways',
         allow_session: 'permissionAllowSession',

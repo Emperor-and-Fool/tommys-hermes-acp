@@ -8,7 +8,7 @@ export const DETECT_STEP_IDS = [
     'config', 'path_lookup', 'known_path', 'pip', 'python_import', 'hermes_home', 'verify', 'acp_check', 'acp_install', 'summary',
 ];
 
-const DETECT_STEP_LOCALE_KEYS = {
+const DETECT_STEP_LOCALE_KEYS: Record<string, string> = {
     config: 'detectEnvironmentStepConfig',
     path_lookup: 'detectEnvironmentStepPath',
     known_path: 'detectEnvironmentStepKnownPath',

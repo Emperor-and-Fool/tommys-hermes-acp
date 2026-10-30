@@ -6,7 +6,7 @@ import { pickerRowReserve } from '../composer/composer';
 import { closeAllDropdowns, wirePickerButton } from '../modals/modal';
 
 
-const VENDOR_NAMES = {
+const VENDOR_NAMES: Record<string, string> = {
     deepseek: 'DeepSeek',
     openai: 'OpenAI',
     xai: 'xAI',
@@ -136,11 +136,13 @@ export function renderModelList(payload) {
         }).join('');
     }
     list.querySelectorAll('.dropdown-item[data-value]').forEach(function(item) {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(this: HTMLElement) {
+            const valueId = this.dataset.value;
+            if (!valueId) return;
             post({
                 type: 'switchModel',
                 configId: state.modelConfigId,
-                valueId: this.dataset.value
+                valueId
             });
             closeAllDropdowns();
         });

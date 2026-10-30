@@ -111,7 +111,7 @@ function syncEmptyState() {
 /** The status line, the dot, and the pane's empty state — one entry point for all three. */
 export function updateStatus(status, message) {
     statusDot.className = 'dot ' + status;
-    const labels = {
+    const labels: Record<string, string> = {
         idle: locale.statusDisconnected,
         connecting: locale.statusConnecting,
         ready: locale.statusReady,

@@ -49,8 +49,10 @@ export function renderProfileList(profiles) {
             escapeHtml(entry.label) + (active ? ' ✓' : '') + '</div>';
     }).join('');
     list.querySelectorAll('.dropdown-item[data-profile]').forEach(function(item) {
-        item.addEventListener('click', function() {
-            post({ type: 'switchAgent', agentName: this.dataset.profile });
+        item.addEventListener('click', function(this: HTMLElement) {
+            const agentName = this.dataset.profile;
+            if (!agentName) return;
+            post({ type: 'switchAgent', agentName });
             closeAllDropdowns();
         });
     });

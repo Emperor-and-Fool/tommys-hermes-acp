@@ -65,7 +65,7 @@ export function renderClosedList() {
     }
     closedList.innerHTML = rows.join('');
     closedList.querySelectorAll('.dropdown-item[data-closed]').forEach(function(item) {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(this: HTMLElement) {
             const pickedId = this.dataset.closed === 'new' ? null : this.dataset.closed;
             const picked = pickedId
                 ? state.closedSessions.find(function(s) { return s.sessionId === pickedId; })
