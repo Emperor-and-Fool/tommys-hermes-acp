@@ -260,7 +260,13 @@ export class PromptRunner {
                 return false;
             }
         } else if (!bound) {
-            if (this.host.messages().length > 0) {
+            // A conversation Hermes knows about has user or assistant turns. A peer card waiting
+            // for a decision is not one: it is a draft, and refusing here left a fresh tab with a
+            // received forward unable to start its session at all.
+            const hasConversation = this.host.messages().some(
+                (message) => message.role === 'user' || message.role === 'assistant'
+            );
+            if (hasConversation) {
                 // This tab shows a conversation whose Hermes session is gone; creating a new
                 // one here would silently replace it, so say so and leave the pane alone.
                 this.host.log(`No Hermes session bound to tab ${sessionId}`);
