@@ -10,7 +10,9 @@ Hermes's ACP adapter, which this extension uses:
 It only touches `acp_adapter/server.py` and `acp_adapter/session.py`, and only calls Hermes's own
 db methods.
 
-Bases: `d923a5eb487` (Release 0.22.2) for `0001`, `bf0203a794a` (0.22.5) for `0002`.
+Bases: `d923a5eb487` (Release 0.22.2) for `0001`, `bf0203a794a` (0.22.5) for `0002`. `0001` applies
+cleanly to both and reads the session table in whichever layout the build uses — `source` on 0.22.2,
+`created_source` alongside it on 0.22.5, where `source` is rewritten to `local`.
 
 Kept here until they live on a hermes-agent fork branch with an upstream PR.
 
