@@ -430,13 +430,16 @@ export class App implements vscode.WebviewViewProvider {
             this._postMessage({ type: 'noActiveTab' });
             return;
         }
-        const ready = await this._turn.ensureSessionReady();
+        const readiness = await this._turn.ensureSessionReady();
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (!ready) {
-            // The pane keeps its history; the reader gets the reason instead of silence.
-            this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+        if (!readiness.ok) {
+            // The pane keeps its history, and the reader gets one reason: the specific one when
+            // ensureSessionReady could name it, the generic one only when it could not.
+            if (!readiness.notified) {
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+            }
             return;
         }
         const imageCount = images?.length ?? 0;
@@ -563,7 +566,15 @@ export class App implements vscode.WebviewViewProvider {
         this._models.snapshotFromProfile();
         this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
         this._session.saveOutgoingUser(text);
-        await this._turn.ensureSessionReady();
+        const readiness = await this._turn.ensureSessionReady();
+        if (!readiness.ok) {
+            // Nothing was sent, so say so instead of prompting into a session that is not bound
+            // (or into whichever session the client still had).
+            if (!readiness.notified) {
+                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
+            }
+            return;
+        }
         await this._connection.acp.sendMessage(text);
     }
 
