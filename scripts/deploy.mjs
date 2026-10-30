@@ -17,6 +17,7 @@
  *   npm run deploy
  */
 import { createHash } from 'node:crypto';
+import { buildSync } from 'esbuild';
 import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -28,21 +29,34 @@ const repo = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
 
+// The local entry points, run through this Node. `npx` is a shell shim: on Windows spawnSync
+// cannot start it without `shell: true`, and the script failed there before running anything.
+const localBin = (...parts) => path.join(repo, 'node_modules', ...parts);
+
 // Clean build first. tsc never deletes the output of a file that moved or went away, so a
 // stale .js left in out/ would be copied and kept — the exact failure the prune below exists
 // to catch, caught one layer too late. Wiping makes the repo's out/ the truth: whatever is in
 // it after the compile is exactly what src/ produces.
 rmSync(path.join(repo, 'out'), { recursive: true, force: true });
-const build = spawnSync('npx', ['tsc', '-p', './'], { cwd: repo, stdio: 'inherit' });
+const build = spawnSync(process.execPath, [localBin('typescript', 'bin', 'tsc'), '-p', './'], { cwd: repo, stdio: 'inherit' });
 if (build.status !== 0) {
     console.error('deploy: compile failed, nothing copied (out/ was wiped; run npm run compile)');
     process.exit(1);
 }
 
 // The webview bundle: src/pane/*.ts becomes the single file the pane loads.
-const pane = spawnSync('npx', ['esbuild', 'src/pane/main.ts', '--bundle', '--format=iife', '--target=es2020',
-    '--outfile=media/pane.js'], { cwd: repo, stdio: 'inherit' });
-if (pane.status !== 0) {
+// Through the Node API rather than the `esbuild` package's bin: that file is the platform
+// binary on some installs and a JS shim on others, so there is no one path to spawn.
+try {
+    buildSync({
+        entryPoints: [path.join(repo, 'src/pane/main.ts')],
+        bundle: true,
+        format: 'iife',
+        target: 'es2020',
+        outfile: path.join(repo, 'media/pane.js'),
+        logLevel: 'info',
+    });
+} catch {
     console.error('deploy: pane build failed, nothing copied');
     process.exit(1);
 }

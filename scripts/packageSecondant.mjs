@@ -18,6 +18,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// The local entry points, run through this Node: `npx` is a shell shim that spawnSync cannot
+// start on Windows without `shell: true`.
+const localBin = (...parts) => join(repo, 'node_modules', ...parts);
 const secondantDir = join(repo, 'packaging', 'secondant');
 const buildDir = join(secondantDir, 'out');
 const shipDir = join(repo, 'secondant');
@@ -78,17 +82,16 @@ try {
     mkdirSync(buildDir, { recursive: true });
     install();
 
-    const compile = spawnSync('npx', ['tsc', '-p', './'], { cwd: repo, stdio: 'inherit' });
+    const compile = spawnSync(process.execPath, [localBin('typescript', 'bin', 'tsc'), '-p', './'], { cwd: repo, stdio: 'inherit' });
     if (compile.status !== 0) {
         throw new Error('compile failed; nothing packaged');
     }
 
     const built = join(buildDir, NAME);
     const vsce = spawnSync(
-        'npx',
+        process.execPath,
         [
-            '--no-install',
-            '@vscode/vsce',
+            localBin('@vscode', 'vsce', 'vsce'),
             'package',
             '--allow-missing-repository',
             // Its own ignore list: `--ignoreFile` replaces the root one, so the secondant can
