@@ -140,11 +140,27 @@ export interface PaneState {
     undeliveredText: string;
 }
 
+/** What a permission card remembers between renders. */
+export interface PermissionCardState {
+    options: import('../shared/acp').PermissionOption[];
+    text: string;
+    scrollEl: HTMLElement;
+    textEl: HTMLElement;
+    wrapEl: HTMLElement;
+    moreBtn: HTMLElement;
+    lessBtn: HTMLElement;
+    cardToggle: HTMLElement;
+    cardCollapsed: boolean;
+    detailExpanded: boolean;
+    readOnly: boolean;
+}
+
 declare global {
-    /** Booked onto message elements by the markdown and tool-card renderers. */
+    /** Booked onto message elements by the markdown, tool-card and permission renderers. */
     interface HTMLElement {
         _auxState?: AuxState;
         _rawText?: string;
+        _permissionState?: PermissionCardState;
     }
 }
 
