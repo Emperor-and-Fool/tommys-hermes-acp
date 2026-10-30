@@ -24,11 +24,6 @@ export interface PermissionResolvedEvent {
     optionName?: string;
 }
 
-export type PermissionUiHandler = {
-    onRequest: (request: PermissionRequestView) => void;
-    onResolved?: (event: PermissionResolvedEvent) => void;
-};
-
 export type AcpPermissionResponse = {
     outcome: { outcome: 'cancelled' } | { outcome: 'selected'; optionId: string };
 };

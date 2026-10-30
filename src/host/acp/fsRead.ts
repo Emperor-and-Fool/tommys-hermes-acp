@@ -1,8 +1,3 @@
-export type ReadTextFileOptions = {
-    line?: number | null;
-    limit?: number | null;
-};
-
 /** Slice file text by 1-based line number and max line count (ACP fs/read_text_file). */
 export function sliceTextByLines(
     content: string,

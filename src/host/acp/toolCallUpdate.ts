@@ -10,8 +10,6 @@ export type ToolCallUpdateView = {
     kind?: string;
 };
 
-export type ToolCallUpdateHandler = (update: ToolCallUpdateView) => void;
-
 const TERMINAL_STATUSES: ReadonlySet<ToolCallStatus> = new Set([
     'completed',
     'failed',

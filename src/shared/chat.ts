@@ -22,13 +22,6 @@ export function unwrapSteer(text: string): { text: string; steer: boolean } {
     return { text: text.replace(STEER_OPEN, '').replace(STEER_CLOSE, '').trim(), steer: true };
 }
 
-/** What the webview posts when the user commits an inline tab title. */
-export interface RenameSessionRequest {
-    type: 'renameSession';
-    sessionId: string;
-    title: string;
-}
-
 /** Why a title write did not land. `refused` carries Hermes' own explanation in `message`. */
 export type SessionTitleRefusal = 'empty' | 'too-long' | 'refused';
 
