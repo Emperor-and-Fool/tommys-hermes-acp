@@ -1002,6 +1002,7 @@ export class App implements vscode.WebviewViewProvider {
                     .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', relative))
                     .toString()
                 : undefined,
+            cspSource: webview ? webview.cspSource : undefined,
             themeKind: vscode.window.activeColorTheme.kind,
             locale: getWebviewLocale(),
         });

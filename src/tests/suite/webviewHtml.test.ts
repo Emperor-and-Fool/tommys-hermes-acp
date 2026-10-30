@@ -56,4 +56,43 @@ describe('webviewHtml', () => {
         assert.strictEqual(highlightSheetFor(2), 'github-dark.min.css');
         assert.strictEqual(highlightSheetFor(3), 'github-dark.min.css');
     });
+
+    it('carries a nonce-guarded CSP and stamps every script with the nonce', () => {
+        const html = buildWebviewHtml({
+            htmlPath,
+            resourceUri: uri,
+            cspSource: 'vscode-webview://abc',
+            themeKind: 2,
+            locale: en,
+        });
+        assert.ok(html.includes("default-src 'none'"), 'the CSP is present');
+        assert.ok(html.includes('img-src vscode-webview://abc'), 'the webview origin is allowed');
+        assert.strictEqual(html.includes('{{CSP_NONCE}}'), false, 'the nonce slot is filled');
+        assert.strictEqual(html.includes('{{CSP_SOURCE}}'), false, 'the source slot is filled');
+
+        const nonces = [...html.matchAll(/<script nonce="([^"]+)"/g)].map(m => m[1]);
+        const scripts = [...html.matchAll(/<script\b/g)].length;
+        assert.strictEqual(nonces.length, scripts, 'every script tag carries a nonce');
+        assert.strictEqual(new Set(nonces).size, 1, 'one nonce per build');
+    });
+
+    it('gives two builds different nonces', () => {
+        const build = () => buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale: en });
+        const nonceOf = (html: string) => /<script nonce="([^"]+)"/.exec(html)?.[1];
+        assert.notStrictEqual(nonceOf(build()), nonceOf(build()));
+    });
+
+    it('keeps a `$&` in a locale string literal instead of expanding it', () => {
+        const locale = { ...en, __probe: 'costs $& nothing, $1 stays' } as unknown as typeof en;
+        const html = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale });
+        assert.ok(html.includes('costs $& nothing, $1 stays'), 'the value survives verbatim');
+        assert.strictEqual(html.includes('{{LOCALE_JSON}}'), false, 'the slot is still filled');
+    });
+
+    it('escapes `<` in the locale payload so it cannot close the script', () => {
+        const locale = { ...en, __probe: '</script><b>x</b>' } as unknown as typeof en;
+        const html = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale });
+        assert.strictEqual(html.includes('</script><b>x</b>'), false);
+        assert.ok(html.includes('\\u003c/script>'), 'escaped as a unicode sequence');
+    });
 });

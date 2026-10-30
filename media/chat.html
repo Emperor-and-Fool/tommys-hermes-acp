@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{CSP_SOURCE}} data: https:; media-src {{CSP_SOURCE}} https:; font-src {{CSP_SOURCE}} data:; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{CSP_NONCE}}'; connect-src {{CSP_SOURCE}}; base-uri 'none'; form-action 'none';">
 <link rel="stylesheet" href="{{HIGHLIGHT_CSS_URI}}">
-<script src="{{MARKED_URI}}"></script>
-<script src="{{PURIFY_URI}}"></script>
-<script src="{{HIGHLIGHT_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{MARKED_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{PURIFY_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{HIGHLIGHT_URI}}"></script>
 <link rel="stylesheet" href="{{CHAT_CSS_URI}}">
 </head>
 <body>
@@ -314,10 +315,10 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{CSP_NONCE}}">
     var locale = {{LOCALE_JSON}};
     {{LOCALE_HELPER}}
 </script>
-    <script src="{{CHAT_JS_URI}}"></script>
+    <script nonce="{{CSP_NONCE}}" src="{{CHAT_JS_URI}}"></script>
     </body>
     </html>
