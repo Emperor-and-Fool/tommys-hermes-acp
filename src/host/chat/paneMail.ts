@@ -113,9 +113,11 @@ export class PaneMailPresence {
     /**
      * The newest other profile that has written recently.
      *
-     * `address` is the sanitized name the presence file and the envelopes are keyed by; `profile`
-     * is the name the user chose, for anything on screen. They differ whenever sanitizing changed
-     * it, and an envelope must be addressed with the first, not the second.
+     * `address` is the sanitized name the envelopes are keyed by; `profile` is the name the user
+     * chose, for anything on screen. They differ whenever sanitizing changed it, and an envelope
+     * must be addressed with the first, not the second. (Each presence file's own name carries the
+     * address plus a fingerprint of the raw name, so two names can share the address and not the
+     * file.)
      */
     other(): { profile: string; address: string; host: string } | null {
         const paths = this._paths;
@@ -325,8 +327,9 @@ export function planDrain(
             break;
         }
         const envelope = parseEnvelope(log.slice(pos, end));
-        // Addressing is the sanitized form on both sides: an envelope carries what its sender read
-        // from a presence file name, while `profile` here is the raw name from settings.
+        // Addressing is the sanitized form on both sides: an envelope carries the address its
+        // sender read from the other pane's presence file, while `profile` here is the raw name
+        // from settings.
         if (envelope && sanitize(envelope.toProfile) === sanitize(profile) && !decided.has(envelope.id)) {
             open.push(envelope);
             if (firstOpenAt === -1) {

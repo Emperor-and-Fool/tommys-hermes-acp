@@ -92,7 +92,8 @@ describe('inbox drain plan', () => {
     });
 
     it('matches an envelope addressed by sanitized name to the raw profile', () => {
-        // A sender only ever sees the sanitized name: it reads it from a presence file name.
+        // A sender only ever sees the sanitized name: it takes the address from the other pane's
+        // presence file, and addresses the envelope with that.
         const mine = envelope('Work_Laptop');
         const plan = planDrain(log(mine), 0, 'Work Laptop', new Set());
 
