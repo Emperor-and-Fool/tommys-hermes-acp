@@ -74,21 +74,49 @@ function walk(rel, out = []) {
     return out;
 }
 
-/** Folders VS Code actually has registered; a folder missing here is loaded from stale metadata. */
-function registeredFolders() {
-    const file = path.join(extensionsDir, 'extensions.json');
-    if (!existsSync(file)) return new Set();
-    try {
-        const entries = JSON.parse(readFileSync(file, 'utf8'));
-        return new Set(
-            entries
-                .map(entry => entry?.location?.path || (typeof entry?.location === 'string' ? entry.location : ''))
-                .filter(Boolean)
-                .map(dir => path.resolve(dir))
-        );
-    } catch {
-        return new Set();
+/**
+ * Folder paths each registry claims, with the profile that claims them. Profiles keep their own
+ * extensions.json beside their state; the file in the extensions directory belongs to the default
+ * profile only, so reading that one alone says "not installed" for everything a named profile uses.
+ */
+function registryFiles() {
+    const homes = process.platform === 'darwin'
+        ? [path.join(homedir(), 'Library', 'Application Support', 'VSCodium'), path.join(homedir(), 'Library', 'Application Support', 'Code')]
+        : process.platform === 'win32'
+            ? ['VSCodium', 'Code'].map(name => path.join(process.env.APPDATA || '', name))
+            : ['VSCodium', 'Code'].map(name => path.join(homedir(), '.config', name));
+    const files = [];
+    for (const home of homes) {
+        if (!home) continue;
+        const profiles = path.join(home, 'User', 'profiles');
+        if (!existsSync(profiles)) continue;
+        for (const id of readdirSync(profiles)) {
+            const file = path.join(profiles, id, 'extensions.json');
+            if (existsSync(file)) files.push({ file, label: `profile ${id}` });
+        }
     }
+    const own = path.join(extensionsDir, 'extensions.json');
+    if (existsSync(own)) files.push({ file: own, label: 'default profile' });
+    return files;
+}
+
+/** Folder path -> registry that lists it. The registry is a cache; the folder on disk is the truth. */
+function registeredFolders() {
+    const byPath = new Map();
+    for (const { file, label } of registryFiles()) {
+        try {
+            for (const entry of JSON.parse(readFileSync(file, 'utf8'))) {
+                const location = entry?.location;
+                const dir = typeof location === 'string' ? location : location?.path;
+                if (dir) {
+                    byPath.set(path.resolve(dir), `${label} v${entry.version ?? '?'}`);
+                }
+            }
+        } catch {
+            // A half-written registry is not a deploy failure: the folder itself still loads.
+        }
+    }
+    return byPath;
 }
 
 /**
@@ -115,16 +143,35 @@ if (!extensionsDir) {
 }
 console.log(`deploy: extensions in ${extensionsDir} (${extensionsSource})`);
 
+/** Folders the editor has queued for deletion on its next start. Copying into one is wasted work. */
+function obsoleteFolders() {
+    const file = path.join(extensionsDir, '.obsolete');
+    if (!existsSync(file)) return new Set();
+    try {
+        return new Set(Object.keys(JSON.parse(readFileSync(file, 'utf8'))));
+    } catch {
+        return new Set();
+    }
+}
+
+const obsolete = obsoleteFolders();
+
 /** Installed copies, by folder — the editor lowercases the publisher in the directory name. */
 function installed(prefix) {
     if (!existsSync(extensionsDir)) return [];
     return readdirSync(extensionsDir)
         .filter(name => name.toLowerCase().startsWith(prefix.toLowerCase()))
+        .filter(name => !obsolete.has(name))
         .map(name => path.join(extensionsDir, name))
         .filter(dir => statSync(dir).isDirectory());
 }
 
 const publisher = pkg.publisher.toLowerCase();
+for (const name of obsolete) {
+    if (name.toLowerCase().startsWith(`${publisher}.`)) {
+        console.log(`deploy: skipping ${name} — queued for deletion by the editor (.obsolete)`);
+    }
+}
 const primaryDirs = installed(`${publisher}.${pkg.name}-`);
 const secondantDirs = installed(`${publisher}.tommys-hermes-secondant-`);
 
@@ -199,7 +246,7 @@ function checkTarget(target, role) {
     const registersChat = readFileSync(path.join(target, 'out', 'host', 'activate.js'), 'utf8')
         .includes('registerWebviewViewProvider(id.chatViewId');
     const manifestMatches = viewIds.includes(identity.chatViewId);
-    const registered = registeredFolders().has(path.resolve(target));
+    const registered = registeredFolders().get(path.resolve(target));
     const entryMatches = entryFile === (role === 'primary' ? 'out/host/extension.js' : 'out/host/extensionSecondant.js');
 
     console.log(
@@ -211,12 +258,13 @@ function checkTarget(target, role) {
         console.error(`deploy: [${role}] manifest and host build disagree — this copy will not run`);
         return false;
     }
-    if (!registered) {
-        console.error(
-            `deploy: [${role}] this folder is NOT in extensions.json — VS Code is running it from ` +
-                'stale metadata, so nothing copied here will show. Reinstall it from its VSIX.'
+    if (registered) {
+        console.log(`deploy: [${role}] listed by ${registered}`);
+    } else {
+        console.log(
+            `deploy: [${role}] no profile registry lists this folder yet — the editor adds it when it ` +
+                'next scans; the folder on disk is what loads'
         );
-        return false;
     }
     return true;
 }
