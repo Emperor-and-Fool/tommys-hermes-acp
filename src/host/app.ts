@@ -1227,12 +1227,7 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');
-        this._turn.sendEpoch++;
-        this._turn.flushThought();
-        this._turn.saveAssistantText();
-        this._turn.cancelPendingPermissions();
-        this._session.saveCurrent();
-        this._session.persistMessages();
+        this._quiesceTurn();
 
         this._connection.drop();
         this._models.reset();
@@ -1246,13 +1241,21 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
+        this._quiesceTurn();
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+
+    /**
+     * Stop the turn in flight and put what it produced on disk. Both reload paths start here:
+     * the window reload and the session reload differ only in what they do next.
+     */
+    private _quiesceTurn(): void {
         this._turn.sendEpoch++;
         this._turn.flushThought();
         this._turn.saveAssistantText();
         this._turn.cancelPendingPermissions();
         this._session.saveCurrent();
         this._session.persistMessages();
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
 
     private async _checkForUpdate(): Promise<void> {
