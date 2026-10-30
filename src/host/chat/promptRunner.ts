@@ -286,6 +286,13 @@ export class PromptRunner {
             }
             // Blank tab: the first message is what creates its session.
             await acp.newSession(this.host.resolveCwd());
+            if (this.host.acpStatus() !== 'ready') {
+                // `newSession` keeps the connection when the agent refuses and reports through
+                // the status; without this check the turn fell through as a success and the send
+                // went to a session that was never created — or to whatever was still bound.
+                this.host.log('session/new produced no ready session; the tab stays unbound');
+                return { ok: false, notified: false };
+            }
             this.host.bindHermesSessionId(acp.activeSessionId);
         }
         await this.host.applySessionModelPreference();
