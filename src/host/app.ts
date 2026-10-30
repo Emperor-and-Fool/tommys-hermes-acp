@@ -633,9 +633,9 @@ export class App implements vscode.WebviewViewProvider {
     /**
      * A session with no tab here: read it from Hermes, never cache it.
      *
-     * The three outcomes are logged apart — no Hermes, export failed, export empty — because they
-     * read the same on screen and mean three different things. Failure throws: the viewer has to be
-     * able to say "could not read it" rather than show an empty transcript and call it a day.
+     * Both failures throw: no executable here, or an export that could not be read. The viewer
+     * catches either and says "could not read it"; an empty list travels as empty, because Hermes
+     * really can return a session with nothing in it.
      */
     private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
         const executable = await this._resolveHermesExecutable();

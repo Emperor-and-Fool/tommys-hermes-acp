@@ -59,8 +59,27 @@ export class HistoryViewer {
     /** What became of the fetch: kept because the page can be ready after it resolved. */
     private _outcome: 'loading' | 'loaded' | 'empty' | 'failed' = 'loading';
     private _failureReason: string | undefined;
+    private readonly _createPanel: (title: string) => vscode.WebviewPanel;
 
-    constructor(private readonly _host: HistoryViewerHost) {}
+    /**
+     * `createPanel` is a seam for tests: everything else in this class is about the fetch and the
+     * messages, not about the editor tab.
+     */
+    constructor(
+        private readonly _host: HistoryViewerHost,
+        createPanel?: (title: string) => vscode.WebviewPanel,
+    ) {
+        this._createPanel = createPanel ?? ((title) => vscode.window.createWebviewPanel(
+            historyViewerViewType(),
+            title,
+            { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: false,
+                localResourceRoots: this._host.localResourceRoots(),
+            },
+        ));
+    }
 
     /**
      * Show one session read-only, reusing the live tab when there is one.
@@ -91,16 +110,7 @@ export class HistoryViewer {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel(
-            historyViewerViewType(),
-            title,
-            { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
-            {
-                enableScripts: true,
-                retainContextWhenHidden: false,
-                localResourceRoots: this._host.localResourceRoots(),
-            }
-        );
+        const panel = this._createPanel(title);
         this._panel = panel;
         panel.webview.options = {
             enableScripts: true,
