@@ -30,6 +30,8 @@ export interface TabLifecycleHost {
     postTo(surface: ChatSurface, msg: HostToPane): void;
     log(line: string): void;
     resolveCwd(): string;
+    /** The CLI profile of the agent this pane is talking to: attachments are scoped by it. */
+    profile(): string;
     attachments: AttachmentStore;
     promptSessionId(): string | undefined;
     detachActivePrompt(id: string, options?: { savePartial?: boolean }): Promise<void>;
@@ -218,7 +220,7 @@ export class TabLifecycle {
             const used = new Set<string>();
             for (const msg of messages) {
                 if (msg.role !== 'user' || (msg.imageRefs && msg.imageRefs.length)) continue;
-                const refs = this._host.attachments.refsFromIndex(msg.text, used, true);
+                const refs = this._host.attachments.refsFromIndex(this._attachmentScope(localId), msg.text, used, true);
                 if (refs.length) {
                     msg.imageRefs = refs;
                 }
@@ -234,7 +236,7 @@ export class TabLifecycle {
         this._host.post({ type: 'newChat' });
         this._host.post({
             type: 'restoreHistory',
-            messages: this._host.attachments.hydrateImages(this._host.session.messages),
+            messages: this._host.attachments.hydrateImages(this._attachmentScope(localId), this._host.session.messages),
             localHistoryOnly: false,
         });
         // Hermes' replay never contains a card it was never sent; the inbox still holds it.
@@ -259,6 +261,12 @@ export class TabLifecycle {
         void this._host.workspaceState.update('hermesSessionId', hermesSessionId);
     }
 
+    /** The conversation a tab's attachments belong to: its Hermes id once bound, else its own. */
+    private _attachmentScope(localId: string): { sessionId: string; profile: string } {
+        const record = this._host.session.tabs.find(rec => rec.id === localId);
+        return { sessionId: record?.hermesSessionId || localId, profile: this._host.profile() };
+    }
+
     restoreMessages(target?: ChatSurface): void {
         if (this._host.session.messages.length === 0) {
             // Nothing to repaint, but the chip still belongs to the tab now on screen.
@@ -268,7 +276,10 @@ export class TabLifecycle {
         this._host.log(`Restoring ${this._host.session.messages.length} messages`);
         const msg: HostToPane = {
             type: 'restoreHistory',
-            messages: this._host.attachments.hydrateImages(this._host.session.messages),
+            messages: this._host.attachments.hydrateImages(
+                this._attachmentScope(this._host.session.activeId),
+                this._host.session.messages,
+            ),
             localHistoryOnly: true,
         };
         if (target) {

@@ -282,6 +282,7 @@ export class App implements vscode.WebviewViewProvider {
             resolveCwd: () => this._files.resolveCwd(),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
+            profile: () => this._profiles.resolveTarget().cliProfile,
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
@@ -455,7 +456,17 @@ export class App implements vscode.WebviewViewProvider {
         this._turn.promptSessionId = tabId;
         const imageRefs = images && images.length ? this._attachments.storeImages(images) : undefined;
         if (imageRefs && imageRefs.length) {
-            this._attachments.indexAttachments(imageRefs, text);
+            // The tab is bound by ensureSessionReady above, so this is the Hermes id the replay
+            // for this conversation will look the images up by.
+            const record = this._session.tabs.find(rec => rec.id === tabId);
+            this._attachments.indexAttachments(
+                {
+                    sessionId: record?.hermesSessionId || tabId,
+                    profile: this._profiles.resolveTarget().cliProfile,
+                },
+                imageRefs,
+                text,
+            );
         }
         if (staged) {
             // The card is part of the transcript before the question it belongs to, both live
