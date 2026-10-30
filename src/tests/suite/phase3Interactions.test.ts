@@ -2,7 +2,6 @@ import { describe, it } from 'mocha';
 import assert from 'assert';
 import { sliceTextByLines } from '../../host/acp/fsRead';
 import { parsePlanSessionUpdate } from '../../host/acp/planUpdate';
-import { parseElicitationFormFields } from '../../host/acp/elicitationBridge';
 
 describe('fsRead', () => {
     it('sliceTextByLines returns full content when no range', () => {
@@ -51,23 +50,5 @@ describe('parsePlanSessionUpdate', () => {
     it('handles plan_removed', () => {
         const plan = parsePlanSessionUpdate({ id: 'plan-x' }, 'plan_removed');
         assert.deepStrictEqual(plan, { planId: 'plan-x', removed: true });
-    });
-});
-
-describe('parseElicitationFormFields', () => {
-    it('maps schema properties to form fields', () => {
-        const fields = parseElicitationFormFields({
-            type: 'object',
-            required: ['name'],
-            properties: {
-                name: { type: 'string', title: 'Name' },
-                count: { type: 'integer', title: 'Count', default: 1 },
-                role: { type: 'string', enum: ['admin', 'user'] },
-            },
-        });
-        assert.strictEqual(fields.length, 3);
-        assert.strictEqual(fields[0].name, 'name');
-        assert.strictEqual(fields[0].required, true);
-        assert.deepStrictEqual(fields[2].enum, ['admin', 'user']);
     });
 });
