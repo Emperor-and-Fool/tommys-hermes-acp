@@ -40,12 +40,13 @@ export interface PromptHost {
 export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
 
 /**
- * State of the turn in flight, plus the code that acquires the session it runs on.
+ * The turn in flight, and the session it runs on.
  *
- * Step 1 moved the state here alone. Step 2 moves `ensureSessionReady`, which holds the
- * single `session/new` call site: a tab that never had a Hermes session gets one on its
- * first message; a tab that has history but lost its session is refused rather than
- * silently re-sessioned.
+ * Holds the streaming state for the current prompt, the pending permission cards, the steer
+ * counter and the send epoch (a switch or a detach bumps it, so a late chunk is dropped rather
+ * than painted into the next tab), and `ensureSessionReady` — the single `session/new` site: a tab
+ * that never had a Hermes session gets one on its first message; a tab that has history but lost
+ * its session is refused rather than silently re-sessioned.
  */
 export class PromptRunner {
     promptSessionId: string | undefined;
