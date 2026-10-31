@@ -18,6 +18,7 @@ import { countsTowardMessageCount, replayCountDiffers } from '../acp/replayProgr
 import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
+import { t } from '../i18n';
 import { hermesSessionIdFor } from './tabs';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
@@ -165,8 +166,15 @@ export class TabLifecycle {
     async resumeTabHermesSession(sessionId: string): Promise<boolean> {
         const acp = this._host.acp();
         const bound = this._host.session.tabs.find(rec => rec.id === sessionId)?.hermesSessionId;
-        if (!acp || !bound || bound === acp.activeSessionId) {
+        if (!acp || !bound) {
             return false;
+        }
+        // `bound === acp.activeSessionId` used to return false here — "the client is already on that
+        // session". True of the client, false of the pane: the transcript is the replay, and since
+        // the local mirror was removed there is nothing else to paint. Replaying again costs one
+        // load; skipping it leaves a blank pane that is indistinguishable from an empty session.
+        if (bound === acp.activeSessionId) {
+            this._host.log(`Replaying ${bound} again — the pane holds no transcript of its own`);
         }
         try {
             const record = this._host.session.tabs.find(rec => rec.id === sessionId);
@@ -339,7 +347,16 @@ export class TabLifecycle {
         // render cache when this tab has no Hermes session to replay.
         const resumed = await this.resumeTabHermesSession(sessionId);
         if (!resumed) {
-            this.restoreMessages();
+            // A tab with a Hermes session that would not load must not look like an empty
+            // conversation: say so, and leave the transcript alone.
+            const bound = this._host.session.tabs.find(rec => rec.id === sessionId)?.hermesSessionId;
+            if (bound) {
+                const text = t('sessionReplayFailed');
+                this._host.log(`No transcript for ${bound}: the load was skipped or failed`);
+                this._host.post({ type: 'addMessage', role: 'assistant', text, sessionId });
+            } else {
+                this.restoreMessages();
+            }
         } else {
             // The replay repaints this tab when it arrives; the chip is this tab's already.
             this.postHistoryState();

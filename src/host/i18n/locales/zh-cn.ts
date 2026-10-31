@@ -16,6 +16,7 @@ export const zhCn: LocaleStrings = {
     newChat: '新对话',
     noActiveTabHint: '没有打开的对话。使用“打开标签页”以打开已关闭的对话或开始新的对话。',
     sessionNotFound: '此对话没有关联的 Hermes 会话（{0}）。请从已关闭的对话中重新打开。',
+    sessionReplayFailed: '无法从 Hermes 载入此对话。请从 Open 重新打开，或重新加载窗口。',
     sessionNotWritable: '此对话未连接到 Hermes 会话，因此未发送任何内容。请从已关闭的对话中重新打开。',
     profileExcluded: '“{0}”是主代理正在使用的配置档。请为此面板选择另一个。',
     modelSwitchIncomplete: '模型未能切换到 {0}，对话保持原样。',

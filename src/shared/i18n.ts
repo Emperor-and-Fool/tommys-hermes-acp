@@ -17,6 +17,7 @@ export interface LocaleStrings {
     newChat: string;
     noActiveTabHint: string;
     sessionNotFound: string;
+    sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
     modelSwitchIncomplete: string;
