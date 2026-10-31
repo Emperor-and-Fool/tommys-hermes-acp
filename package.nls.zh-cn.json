@@ -18,6 +18,8 @@
   "commands.tommys.openHelp.title": "帮助",
   "commands.tommys.openFaq.title": "FAQ",
   "commands.tommys.installSecondant.title": "安装副手",
+  "commands.tommys.installSystray.title": "安装 Hermes 托盘应用",
+  "commands.tommys.uninstallSystray.title": "卸载 Desktop GUI",
   "commands.tommys.uninstallSecondant.title": "卸载副手",
   "commands.tommys.openLogs.title": "日志",
   "commands.tommys.detectEnvironment.title": "环境检测",

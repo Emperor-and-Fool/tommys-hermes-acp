@@ -3,6 +3,7 @@ import { App } from './app';
 import { activateExtension } from './activate';
 import { PRIMARY, commandId, setActiveIdentity } from '../shared/extensionId';
 import { installSecondant, refreshSecondantContext, uninstallSecondant } from './secondantInstall';
+import { installSystray, startSystrayWatch, uninstallSystray } from './systrayInstall';
 
 let app: App | undefined;
 
@@ -34,6 +35,19 @@ export function activate(context: vscode.ExtensionContext): TommysHermesAcpApi {
     context.subscriptions.push(
         vscode.commands.registerCommand(commandId('uninstallSecondant'), () => uninstallSecondant())
     );
+    // The systray app is a separate Qt program with its own installer window; this command
+    // only starts it, so the questions (packages, autostart) are asked in its dialogs.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(commandId('installSystray'), () =>
+            installSystray(context.extensionUri)
+        )
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand(commandId('uninstallSystray'), () =>
+            uninstallSystray(context.extensionUri)
+        )
+    );
+    context.subscriptions.push(startSystrayWatch());
     void refreshSecondantContext();
 
     return {

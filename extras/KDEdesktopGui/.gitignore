@@ -1,0 +1,5 @@
+# Build scratch and the throwaway build venv — not the packages themselves.
+.build-venv/
+build/
+__pycache__/
+*.pyc
