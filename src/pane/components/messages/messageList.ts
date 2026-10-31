@@ -2,6 +2,7 @@ import { byId, chatBodyEl, messagesEl, required } from '../../dom';
 import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
+import { isAtBottom, isPointerNearFabs, jumpControlMode } from '../../../shared/scrollLogic';
 import { escapeHtml } from '../../util/html';
 import { setInputMode, updateQuickActionBtns } from '../composer/composer';
 import { processFileRefs } from '../composer/fileMention';
@@ -46,16 +47,14 @@ import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 const RESTORE_BATCH_SIZE = 30;
 
-const SCROLL_BOTTOM_THRESHOLD = 24;
 
 /** Past this much travel the control offers "back to the start". */
-const JUMP_TOP_AFTER_PX = 300;
 
 function isMessagesAtBottom() {
     if (!messagesEl) {
         return true;
     }
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <= SCROLL_BOTTOM_THRESHOLD;
+    return isAtBottom(messagesEl.scrollTop, messagesEl.scrollHeight, messagesEl.clientHeight);
 }
 
 export function maybeScrollToBottom(force?: boolean) {
@@ -92,8 +91,7 @@ function updateJumpControl() {
     if (!button || !messagesEl) {
         return;
     }
-    const awayFromTop = messagesEl.scrollTop > JUMP_TOP_AFTER_PX;
-    const mode = state.scrollPinnedByUser ? 'now' : (awayFromTop ? 'top' : null);
+    const mode = jumpControlMode(state.scrollPinnedByUser, messagesEl.scrollTop);
     button.hidden = mode === null;
     if (mode === null) {
         return;
@@ -114,8 +112,6 @@ function updateJumpControl() {
 }
 
 /** How close the pointer has to come to the corner before "back to the start" shows itself. */
-const JUMP_REVEAL_ZONE = { right: 150, bottom: 70 };
-
 /** Reveal every dim control in the stack when the pointer comes near the corner it occupies. */
 function revealFabsNear(ev: PointerEvent): void {
     const stack = byId<HTMLElement>('paneFabs');
@@ -124,7 +120,7 @@ function revealFabsNear(ev: PointerEvent): void {
         return;
     }
     const box = area.getBoundingClientRect();
-    const near = box.right - ev.clientX <= JUMP_REVEAL_ZONE.right && box.bottom - ev.clientY <= JUMP_REVEAL_ZONE.bottom;
+    const near = isPointerNearFabs(box, { x: ev.clientX, y: ev.clientY });
     stack.querySelectorAll('.pane-fab.is-dim').forEach(function(fab) {
         fab.classList.toggle('is-revealed', near);
     });
