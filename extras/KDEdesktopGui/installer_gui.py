@@ -142,6 +142,17 @@ def api_answers(url: str) -> bool:
         return False
 
 
+SYSTEM_DIR = Path("/usr/lib/hermes-desktopgui")
+
+
+def system_installed() -> bool:
+    """True when this copy came from the .deb, where apt owns the files and the packages."""
+    try:
+        return HERE.resolve() == SYSTEM_DIR.resolve()
+    except OSError:
+        return False
+
+
 def autostart_entry() -> Path:
     return AUTOSTART_DIR / f"{APP_ID}.desktop"
 
@@ -296,6 +307,13 @@ class Installer(QDialog):
 
     def _step1(self) -> None:
         self._heading(1, "System check")
+        if system_installed():
+            self.body.setText(
+                "System packages: <b>provided by the package</b> (Debian dependency)."
+            )
+            self._button("Cancel", self._abort)
+            self._button("Next", lambda: self._goto(2), primary=True)
+            return
         missing = missing_packages(self.force_packages)
         found = [p for p in APT_PACKAGES if p not in missing]
         lines: list[str] = []
@@ -365,6 +383,15 @@ class Installer(QDialog):
 
     def _step2(self) -> None:
         self._heading(2, "App install")
+        if system_installed():
+            self.app_installed = True
+            self.body.setText(
+                f"Installed system-wide by the package in <code>{SYSTEM_DIR}</code>.<br>"
+                "apt owns these files, so there is nothing to copy."
+            )
+            self._button("Cancel", self._abort)
+            self._button("Next", lambda: self._goto(3), primary=True)
+            return
         already = installed_copy().exists()
         self.body.setText(
             f"{'Already installed in' if already else 'Will be installed in'} "
@@ -642,8 +669,26 @@ class Uninstaller(QDialog):
         note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         note.setEnabled(False)
 
-        nothing_to_do = not (installed_copy().exists() or autostart_written()
-                             or (DESKTOP_DIR / f"{APP_ID}.desktop").exists())
+        nothing_to_do = system_installed() or not (
+            installed_copy().exists() or autostart_written()
+            or (DESKTOP_DIR / f"{APP_ID}.desktop").exists()
+        )
+
+        if system_installed():
+            removed = QLabel(
+                f"Installed by the <b>{APP_ID}</b> package in <code>{SYSTEM_DIR}</code>.<br>"
+                "Remove it with:<br><code>sudo apt remove hermes-desktopgui</code>"
+            )
+            removed.setWordWrap(True)
+            removed.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            kept = QLabel(
+                "Uninstalling does not change your settings: the autostart entry in "
+                f"<code>{AUTOSTART_DIR}</code> stays, and the Desktop TUI stays configured "
+                "not to open a browser at login."
+            )
+            kept.setWordWrap(True)
+            kept.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            note.setVisible(False)
 
         panel.addWidget(title)
         panel.addWidget(removed)
@@ -690,7 +735,12 @@ class Uninstaller(QDialog):
         layout.addWidget(self.result)
         layout.addLayout(close_row)
 
-        if nothing_to_do:
+        if system_installed():
+            self._show_result(
+                "This copy is installed by the package. Remove it with "
+                "<code>sudo apt remove hermes-desktopgui</code>."
+            )
+        elif nothing_to_do:
             self._show_result("Nothing is installed, so there was nothing to remove.")
 
     def _show_result(self, text: str) -> None:

@@ -1,5 +1,10 @@
-# Build scratch and the throwaway build venv — not the packages themselves.
+# Build scratch and the throwaway build venv. Frozen bundles and .debs are
+# build output too: rebuild with build.sh or packaging/build-deb.sh instead of
+# committing hundreds of megabytes (or 23 KB of artifact nobody can diff).
 .build-venv/
 build/
 __pycache__/
 *.pyc
+dist/*.deb
+dist/**/hermesdesktopgui/
+dist/*.zip

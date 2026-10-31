@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hermes Desktop GUI
+Comment=Tray status and window for the local Hermes dashboard
+Exec=/usr/bin/hermes-desktopgui --show
+Icon=hermes-desktopgui
+Terminal=false
+Categories=Development;
+StartupNotify=false
+StartupWMClass=hermes-desktopgui

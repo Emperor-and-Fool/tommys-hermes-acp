@@ -45,6 +45,19 @@ QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS='--no-sandbox --disable-gpu
 # page loaded -> True title='Hermes Agent - Dashboard'
 ```
 
+## Debian/Ubuntu package
+
+```
+./packaging/build-deb.sh            # → dist/hermes-desktopgui_2.1.1_amd64.deb, ~24 KB
+sudo apt install ./dist/hermes-desktopgui_2.1.1_amd64.deb
+```
+
+`Depends: python3-pyqt6, python3-pyqt6.qtwebengine` — Qt and Chromium come from apt, so
+the archive is tiny and shares them with the rest of the desktop. Files land in
+`/usr/lib/hermes-desktopgui`, `/usr/bin/hermes-desktopgui`, the menu entry and the icon.
+Run from that copy, the installer detects it is package-installed: no package step, nothing
+to copy, only the settings questions, and uninstalling points at `apt remove hermes-desktopgui`.
+
 ## Frozen packages
 
 `dist/` holds one directory per target (`linux-x86_64/`, `windows-x86_64/`, …) plus a

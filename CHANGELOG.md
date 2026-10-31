@@ -19,6 +19,12 @@ ships inside the bundle.
   is launched from the extension's own folder, so a fresh install needs no separate download.
   The commands are not gated by platform yet, so on Windows and macOS the entries appear and
   the install cannot work
+- **A Debian/Ubuntu package** — `extras/KDEdesktopGui/packaging/build-deb.sh` builds
+  `hermes-desktopgui_2.1.1_amd64.deb` (24 KB) with `Depends: python3-pyqt6,
+  python3-pyqt6.qtwebengine`, so Qt and Chromium stay in the distribution instead of
+  being bundled. Run from `/usr/lib/hermes-desktopgui` the installer recognises the
+  package install: it skips the package and copy steps and only asks the settings
+  questions
 - **`extras/KDEdesktopGui/`** — the Qt program behind that entry: `hermes_desktop_gui.py` (the
   tray), `installer_gui.py` (the install flow), its icons, a `.desktop` entry, and build scripts
   for Linux and Windows. It is a separate program, not part of the extension's runtime; the
