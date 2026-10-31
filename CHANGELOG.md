@@ -25,6 +25,9 @@ string prefix, a terminal command that ran twice, a sidecar that was never writt
   writes the session handle, the anchor, the permission note and the hint to read on. The note
   appears only when the reader's profile differs from the slice's, and the hint now reaches the
   attach path as well as the forwarded one
+- **A control stack in the transcript**, so a long conversation is not a scroll hunt: jump to now
+  centres the current turn, back to the start appears on hover, and search scrolls a match into
+  view instead of only counting it
 
 ### Changed
 
@@ -43,6 +46,10 @@ string prefix, a terminal command that ran twice, a sidecar that was never writt
   of `sendText()` into a VS Code terminal
 - **The secondant's artwork is chosen in one place**: `identityArtwork()` in `webview/html.ts`, so
   the About panel no longer falls back to the primary's icon
+- **The follow state belongs to the reader.** The pane no longer re-pins itself to the bottom a
+  few seconds after a scroll, so reading back through history during a run stays where it was put
+- **An unanswered permission card expires after 120 s** rather than holding the ACP request open
+  for as long as the agent waits; the turn continues as refused
 
 ### Fixed
 
@@ -93,6 +100,14 @@ string prefix, a terminal command that ran twice, a sidecar that was never writt
   restores it
 - Failed catalog and MCP-config writes are logged instead of silently dropped, and a malformed
   `mcp.json` is no longer indistinguishable from a missing one
+- **Sessions created after a `hermes update` to 0.22.5 disappeared from Open, and renaming one
+  deleted its tab.** Hermes now keeps the creating surface in `created_source` and rewrites
+  `source` to `local`; the catalog still asked for `source="acp"`, so every session made since the
+  update was invisible while its rows sat in the store. Patch `0001` reads either table layout —
+  and the VSIX alone does not fix this: re-apply the patch after a `hermes update`
+- **Switching tabs replayed nothing.** The active-session id was set after the load rather than
+  before it, so the replay was addressed to the session being left; a tab that was already active
+  was never replayed at all, which is how a session with hundreds of rows could open empty
 
 ### Repository
 
