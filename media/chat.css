@@ -1568,17 +1568,23 @@ body.surface-notabs #tab-bar {
 /* Floating controls over the transcript: one stack, bottom-right, so a second one does not need its
    own corner arithmetic. A `.pane-fab` is a pill; `.is-dim` means it stays out of the way until the
    pointer comes near the corner (or it takes keyboard focus). */
+/* One lane along the bottom of the transcript. The search pill keeps the right corner; the jump pill
+   sits above it while it means "back to the start", and takes the middle of the lane while it means
+   "jump to now" — the one position where nothing else on screen competes with it. */
 .pane-fabs {
     position: absolute;
-    right: 18px;
+    left: 0;
+    right: 0;
     bottom: 14px;
+    height: 28px;
     z-index: 3;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
+    pointer-events: none;
 }
 .pane-fab {
+    position: absolute;
+    right: 18px;
+    bottom: 0;
+    pointer-events: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1604,6 +1610,15 @@ body.surface-notabs #tab-bar {
 .pane-fab.is-text {
     width: auto;
     padding: 4px 10px;
+}
+/* "Back to the start" stacks above the search pill; "jump to now" centres in the lane. */
+#jumpCtl[data-mode='top'] {
+    bottom: 34px;
+}
+#jumpCtl[data-mode='now'] {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
 }
 .pane-fab:hover { opacity: 1; }
 .pane-fab:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }

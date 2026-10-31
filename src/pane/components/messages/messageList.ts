@@ -102,9 +102,10 @@ function updateJumpControl() {
     // reader is looking. The words live in the tooltip and in the accessible name.
     const label = mode === 'now' ? localeText('jumpToNow') : localeText('jumpToTop');
     button.dataset.mode = mode;
+    // "Jump to now" is downward (towards the newest message); "back to the start" is upward.
     button.innerHTML = mode === 'now'
-        ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 12.5 8h-3v5.5h-3V8h-3L8 2.5z"/></svg>'
-        : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3.5 8h3V2.5h3V8h3L8 13.5z"/></svg>';
+        ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3.5 8h3V2.5h3V8h3L8 13.5z"/></svg>'
+        : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 12.5 8h-3v5.5h-3V8h-3L8 2.5z"/></svg>';
     button.title = mode === 'now' ? localeText('jumpToNowHint') : localeText('jumpToTopHint');
     button.setAttribute('aria-label', label);
     // "Jump to now" answers a question the screen no longer answers (where the conversation went);
