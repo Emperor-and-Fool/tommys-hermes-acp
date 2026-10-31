@@ -894,9 +894,16 @@ export class AcpClient {
         this._toolCallTracker.clear();
         // Hermes streams the persisted transcript as `session/update` notifications
         // before answering `session/load`; collect it so the tab can render it.
+        //
+        // `_activeSessionId` has to name the session being loaded *before* the request goes out:
+        // those notifications carry this id, and `_handleSessionUpdate` drops any id that is not
+        // the active one. Setting it afterwards cost every replay on a tab switch.
         const replay: ReplayMessage[] = [];
+        const previousActive = this._activeSessionId;
         this._replaySink = replay;
         this._replayReceived = 0;
+        this._loadedSessionId = sessionId;
+        this._activeSessionId = sessionId;
         this._emitReplayProgress();
         let response: any;
         try {
@@ -904,11 +911,14 @@ export class AcpClient {
                 methods.agent.session.load as any,
                 { ...request, sessionId } as any,
             ) as any;
+        } catch (err) {
+            // The load did not happen: do not leave the client pointing at a session it never got.
+            this._activeSessionId = previousActive;
+            this._loadedSessionId = sessionId;
+            throw err;
         } finally {
             this._replaySink = null;
         }
-        this._loadedSessionId = sessionId;
-        this._activeSessionId = sessionId;
         try {
             this._syncSessionModels(response as any);
         } catch { /* load responses may omit the model block */ }
