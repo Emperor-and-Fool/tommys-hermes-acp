@@ -172,3 +172,21 @@ export function initChatSearchNextClick(): void {
         chatSearchNext.addEventListener('click', function() { gotoChatSearchMatch(1); });
     }
 }
+
+/**
+ * The stack's second control: find in this conversation. It focuses the search field rather than
+ * opening its own UI, so there is one search and one set of arrows.
+ */
+export function initChatSearchFab(): void {
+    const button = byId<HTMLButtonElement>('searchCtl');
+    if (!button) {
+        return;
+    }
+    button.addEventListener('click', function() {
+        if (chatSearchInput.disabled) {
+            return;
+        }
+        chatSearchInput.focus();
+        chatSearchInput.select();
+    });
+}

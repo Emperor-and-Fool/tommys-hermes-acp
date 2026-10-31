@@ -68,7 +68,12 @@
 <div id="tab-bar"></div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">
-    <button id="jumpCtl" class="jump-ctl" type="button" hidden></button>
+    <div id="paneFabs" class="pane-fabs">
+        <button id="jumpCtl" class="pane-fab" type="button" hidden></button>
+        <button id="searchCtl" class="pane-fab is-dim" type="button">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm5.03 8.47 2.5 2.5-.7.7-2.5-2.5.7-.7z"/></svg>
+        </button>
+    </div>
     <!-- The loading state: the identity's icon over the status and a chunk counter. It lives
          OUTSIDE #messages on purpose — the transcript reset rebuilds that container's innerHTML,
          which would delete anything inside it on the first newChat. -->

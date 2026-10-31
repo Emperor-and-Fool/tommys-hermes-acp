@@ -101,6 +101,31 @@ function updateJumpControl() {
     button.dataset.mode = mode;
     button.textContent = mode === 'now' ? '\u2193 ' + localeText('jumpToNow') : '\u2191 ' + localeText('jumpToTop');
     button.title = mode === 'now' ? localeText('jumpToNowHint') : localeText('jumpToTopHint');
+    // "Jump to now" answers a question the screen no longer answers (where the conversation went);
+    // "back to the start" is a convenience, so it stays out of the way until the pointer asks.
+    button.classList.toggle('is-dim', mode === 'top');
+}
+
+/** How close the pointer has to come to the corner before "back to the start" shows itself. */
+const JUMP_REVEAL_ZONE = { right: 150, bottom: 70 };
+
+/** Reveal every dim control in the stack when the pointer comes near the corner it occupies. */
+function revealFabsNear(ev: PointerEvent): void {
+    const stack = byId<HTMLElement>('paneFabs');
+    if (!stack || !messagesEl) {
+        return;
+    }
+    const box = messagesEl.getBoundingClientRect();
+    const near = box.right - ev.clientX <= JUMP_REVEAL_ZONE.right && box.bottom - ev.clientY <= JUMP_REVEAL_ZONE.bottom;
+    stack.querySelectorAll('.pane-fab.is-dim').forEach(function(fab) {
+        fab.classList.toggle('is-revealed', near);
+    });
+}
+
+function hideFabs(): void {
+    byId<HTMLElement>('paneFabs')?.querySelectorAll('.pane-fab').forEach(function(fab) {
+        fab.classList.remove('is-revealed');
+    });
 }
 
 function jumpControlAction(): void {
@@ -128,6 +153,10 @@ export function initJumpControl(): void {
         e.preventDefault();
         jumpControlAction();
     });
+    if (messagesEl) {
+        messagesEl.addEventListener('pointermove', revealFabsNear, { passive: true });
+        messagesEl.addEventListener('pointerleave', hideFabs, { passive: true });
+    }
     updateJumpControl();
 }
 

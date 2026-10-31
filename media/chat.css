@@ -1564,13 +1564,24 @@ body.surface-notabs #tab-bar {
     gap: 6px;
     min-height: 0;
 }
-/* One control, two jobs: "back to the start" while following, "jump to now" while reading higher
-   up. It sits over the transcript's bottom-right corner so it never pushes the messages around. */
-.jump-ctl {
+/* Floating controls over the transcript: one stack, bottom-right, so a second one does not need its
+   own corner arithmetic. A `.pane-fab` is a pill; `.is-dim` means it stays out of the way until the
+   pointer comes near the corner (or it takes keyboard focus). */
+.pane-fabs {
     position: absolute;
     right: 18px;
     bottom: 14px;
     z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+.pane-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     padding: 4px 10px;
     font: inherit;
     font-size: 12px;
@@ -1583,20 +1594,23 @@ body.surface-notabs #tab-bar {
     cursor: pointer;
     opacity: 0.92;
 }
-.jump-ctl:hover { opacity: 1; }
-.jump-ctl:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
-.jump-ctl[hidden] { display: none; }
+.pane-fab svg {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+}
+.pane-fab:hover { opacity: 1; }
+.pane-fab:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
+.pane-fab[hidden] { display: none; }
 
-/* "Back to the start" is only wanted while the pointer is over the transcript; parked permanently in
-   the corner it covers the last lines of the answer. "Jump to now" is the opposite — it has to be
-   visible when the reader is away from the bottom, which is exactly when nothing else says so. */
-.jump-ctl[data-mode='top'] {
+/* Out of the way by default; revealed by proximity, focus, or a mode that must always be visible. */
+.pane-fab.is-dim {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease-out;
 }
-.chat-body:hover .jump-ctl[data-mode='top'],
-.jump-ctl[data-mode='top']:focus-visible {
+.pane-fab.is-dim.is-revealed,
+.pane-fab.is-dim:focus-visible {
     opacity: 0.92;
     pointer-events: auto;
 }
