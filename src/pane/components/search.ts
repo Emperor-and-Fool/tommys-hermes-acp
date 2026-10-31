@@ -68,7 +68,13 @@ function applyChatSearchHighlight() {
         });
     });
 
-    active.group.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Scroll to the match, not to its message: one group can be taller than the pane (the longest
+    // answer in a session here is 68 KB), and centring that group leaves the word hundreds of lines
+    // off-screen, so the view hardly moves and looks like nothing happened.
+    const activeMark = active.group.querySelector('mark.search-mark-active');
+    const scrollTarget: Element = activeMark ?? active.group;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scrollTarget.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
     updateChatSearchUI();
 }
 
