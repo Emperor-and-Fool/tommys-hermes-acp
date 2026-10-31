@@ -140,7 +140,17 @@ export class TabLifecycle {
                 return;
             }
         }
-        this.bindHermesSessionId(acp.activeSessionId);
+        // Whatever `session/new` left open at connect is not an identity. Bind only an id the
+        // catalog names; otherwise leave the tab unbound, so the pane shows "not linked yet"
+        // instead of a plausible-looking empty conversation.
+        const activeId = acp.activeSessionId;
+        if (activeId && session.catalogRow(activeId)) {
+            this.bindHermesSessionId(activeId);
+            return;
+        }
+        this._host.log(
+            `Leaving the tab unbound: ${activeId || '(no session)'} is not a session this profile lists`
+        );
     }
 
     /** Load one session with the replay allowed to paint; false, with a log line, when it fails. */
