@@ -15,7 +15,12 @@ declare function localeText(key: string, fallback?: string, ...args: any[]): str
 interface Window {
     _showThoughts: boolean;
     _showToolCalls: boolean;
-    __tommysQuote: () => string | null;
+    __tommysQuote: () => {
+        blocked?: string;
+        segments?: { role: string; text: string }[];
+        chars?: number;
+        truncated?: boolean;
+    } | null;
     [key: string]: any;
 }
 

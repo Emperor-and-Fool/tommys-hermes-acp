@@ -1,4 +1,4 @@
-import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu } from '../../dom';
+import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu, required } from '../../dom';
 import { state } from '../../state';
 import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';
@@ -12,11 +12,11 @@ export function isLogModalOpen() {
     return !!(logModal && logModal.classList.contains('is-open'));
 }
 
-export function showModal(el) {
+export function showModal(el: HTMLElement) {
     if (el) el.classList.add('is-open');
 }
 
-export function hideModal(el) {
+export function hideModal(el: HTMLElement) {
     if (el) el.classList.remove('is-open');
 }
 
@@ -29,15 +29,17 @@ export function openLogModal() {
 
 export function initDocumentClick(): void {
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.insert-dropdown')) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        if (!target.closest('.insert-dropdown')) {
             closeInsertDropdowns();
         }
-        if (tabContextMenu && !e.target.closest('.tab-context-menu')) {
+        if (tabContextMenu && !target.closest('.tab-context-menu')) {
             hideTabContextMenu();
         }
-        if (state.detectEnvDetailsOpen && !e.target.closest('.detect-env-bar')) {
+        if (state.detectEnvDetailsOpen && !target.closest('.detect-env-bar')) {
             setDetectEnvDetailsOpen(false);
-            const detectToggle = byId('detectEnvToggle');
+            const detectToggle = required('detectEnvToggle');
             if (detectToggle) detectToggle.setAttribute('aria-expanded', 'false');
         }
     });
@@ -50,7 +52,7 @@ export function initDocumentKeydown(): void {
         }
         if (e.key === 'Escape' && state.detectEnvDetailsOpen) {
             setDetectEnvDetailsOpen(false);
-            const detectToggle = byId('detectEnvToggle');
+            const detectToggle = required('detectEnvToggle');
             if (detectToggle) detectToggle.setAttribute('aria-expanded', 'false');
         }
         if (e.key === 'Escape' && state.configureEnvDetectDetailsOpen) {
@@ -62,7 +64,7 @@ export function initDocumentKeydown(): void {
     });
 }
 
-export function setMenuOpen(picker, open) {
+export function setMenuOpen(picker: HTMLElement, open: boolean) {
     if (!picker) {
         return;
     }
@@ -81,7 +83,7 @@ export function closeAllDropdowns() {
  * A toolbar button that opens its picker: one press opens it, a second closes it. `onOpen` runs
  * once the picker is open, so the caller can ask the host for the list it is about to show.
  */
-export function wirePickerButton(button, picker, onOpen): void {
+export function wirePickerButton(button: HTMLElement, picker: HTMLElement, onOpen: () => void): void {
     button.addEventListener('click', function(e) {
         e.stopPropagation();
         const open = picker.dataset.open !== 'true';
@@ -95,10 +97,12 @@ export function wirePickerButton(button, picker, onOpen): void {
 
 export function initDocumentClickDocument(): void {
     document.addEventListener('click', function(e) {
-        if (e.target.closest('.picker')) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        if (target.closest('.picker')) {
             return;
         }
-        if (!e.target.closest('#input-area')) {
+        if (!target.closest('#input-area')) {
             hideFilePicker();
         }
         closeAllDropdowns();

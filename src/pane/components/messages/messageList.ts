@@ -1,11 +1,37 @@
-import { byId, messagesEl } from '../../dom';
+import { byId, chatBodyEl, messagesEl, required } from '../../dom';
 import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
+import { isAtBottom, isPointerNearFabs, jumpControlMode } from '../../../shared/scrollLogic';
 import { escapeHtml } from '../../util/html';
 import { setInputMode, updateQuickActionBtns } from '../composer/composer';
 import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
+
+import type { ChatMessage, HistoryRef, PeerRef, PeerState } from '../../../shared/chat';
+import type { HostToPane } from '../../../shared/webview';
+
+/** What a caller can pass when adding a message; mirrors the addMessage payload's extras. */
+export interface MessageOptions {
+    /** Inline bytes when the pane has them; restored messages carry refs, which the loop skips. */
+    images?: ReadonlyArray<unknown>;
+    history?: HistoryRef;
+    peer?: PeerRef;
+    peerState?: PeerState;
+    restore?: boolean;
+    steer?: boolean;
+    deferMarkdown?: boolean;
+}
+
+/** The pieces buildCard/buildMessage hand to mountMessage. */
+export interface BuiltMessage {
+    card: HTMLElement;
+    auxParts?: {
+        div: HTMLElement; scrollEl: HTMLElement; contentEl: HTMLElement;
+        moreBtn: HTMLElement; lessBtn: HTMLElement; role: string; rawText: string;
+    } | null;
+    historyParts?: { div: HTMLElement; scrollEl: HTMLElement; moreBtn: HTMLElement | null } | null;
+}
 
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
@@ -21,18 +47,17 @@ import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 const RESTORE_BATCH_SIZE = 30;
 
-const SCROLL_BOTTOM_THRESHOLD = 24;
 
-const SCROLL_IDLE_MS = 5000;
+/** Past this much travel the control offers "back to the start". */
 
 function isMessagesAtBottom() {
     if (!messagesEl) {
         return true;
     }
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <= SCROLL_BOTTOM_THRESHOLD;
+    return isAtBottom(messagesEl.scrollTop, messagesEl.scrollHeight, messagesEl.clientHeight);
 }
 
-export function maybeScrollToBottom(force?) {
+export function maybeScrollToBottom(force?: boolean) {
     if (!messagesEl) {
         return;
     }
@@ -43,30 +68,100 @@ export function maybeScrollToBottom(force?) {
     }
 }
 
-function scheduleScrollReenable() {
-    if (state.scrollIdleTimer) {
-        clearTimeout(state.scrollIdleTimer);
+/**
+ * The follow state is the user's, not a timer's.
+ *
+ * This used to re-enable following 5 s after the last scroll, so a reader part-way up a long answer
+ * was yanked to the bottom mid-sentence. Now the pane follows the conversation only while it is at
+ * the bottom; leaving is a decision, and it holds until the reader comes back or asks for "now".
+ */
+function onMessagesScroll() {
+    // The control follows the scroll position even when the *pin* must not: this scroll may be the
+    // pane's own (a restore, a send), and the reader still needs to see where the view now is.
+    const suppressed = Date.now() < state.suppressScrollPinUntil;
+    if (!suppressed) {
+        state.scrollPinnedByUser = !isMessagesAtBottom();
     }
-    state.scrollIdleTimer = setTimeout(function() {
-        state.scrollIdleTimer = null;
-        if (isActivelyStreaming()) {
-            state.scrollPinnedByUser = false;
-            maybeScrollToBottom(true);
-        }
-    }, SCROLL_IDLE_MS);
+    updateJumpControl();
 }
 
-function onMessagesScroll() {
-    if (!isActivelyStreaming()) {
+/** Which way the one control points: "now" while reading higher up, "top" while following. */
+function updateJumpControl() {
+    const button = byId<HTMLButtonElement>('jumpCtl');
+    if (!button || !messagesEl) {
         return;
     }
-    if (Date.now() < state.suppressScrollPinUntil) {
+    const mode = jumpControlMode(state.scrollPinnedByUser, messagesEl.scrollTop);
+    button.hidden = mode === null;
+    if (mode === null) {
         return;
     }
-    if (!isMessagesAtBottom()) {
-        state.scrollPinnedByUser = true;
+    // A glyph, not a sentence: a wide pill covers the last line of the answer, which is where the
+    // reader is looking. The words live in the tooltip and in the accessible name.
+    const label = mode === 'now' ? localeText('jumpToNow') : localeText('jumpToTop');
+    button.dataset.mode = mode;
+    // "Jump to now" is downward (towards the newest message); "back to the start" is upward.
+    button.innerHTML = mode === 'now'
+        ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3.5 8h3V2.5h3V8h3L8 13.5z"/></svg>'
+        : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 12.5 8h-3v5.5h-3V8h-3L8 2.5z"/></svg>';
+    button.title = mode === 'now' ? localeText('jumpToNowHint') : localeText('jumpToTopHint');
+    button.setAttribute('aria-label', label);
+    // "Jump to now" answers a question the screen no longer answers (where the conversation went);
+    // "back to the start" is a convenience, so it stays out of the way until the pointer asks.
+    button.classList.toggle('is-dim', mode === 'top');
+}
+
+/** How close the pointer has to come to the corner before "back to the start" shows itself. */
+/** Reveal every dim control in the stack when the pointer comes near the corner it occupies. */
+function revealFabsNear(ev: PointerEvent): void {
+    const stack = byId<HTMLElement>('paneFabs');
+    const area = chatBodyEl;
+    if (!stack || !area) {
+        return;
     }
-    scheduleScrollReenable();
+    const box = area.getBoundingClientRect();
+    const near = isPointerNearFabs(box, { x: ev.clientX, y: ev.clientY });
+    stack.querySelectorAll('.pane-fab.is-dim').forEach(function(fab) {
+        fab.classList.toggle('is-revealed', near);
+    });
+}
+
+function hideFabs(): void {
+    byId<HTMLElement>('paneFabs')?.querySelectorAll('.pane-fab').forEach(function(fab) {
+        fab.classList.remove('is-revealed');
+    });
+}
+
+function jumpControlAction(): void {
+    if (!messagesEl) {
+        return;
+    }
+    if (state.scrollPinnedByUser) {
+        resetAutoScrollFollow();
+        maybeScrollToBottom(true);
+    } else {
+        // A jump, not a scroll: this distance is thousands of pixels, and a smooth animation over it
+        // lasts longer than the pane's quiet window, so its own scroll events would read as the
+        // reader leaving the bottom and flip the control underneath the click.
+        messagesEl.scrollTop = 0;
+    }
+    updateJumpControl();
+}
+
+export function initJumpControl(): void {
+    const button = byId<HTMLButtonElement>('jumpCtl');
+    if (!button) {
+        return;
+    }
+    button.addEventListener('click', function(e) {
+        e.preventDefault();
+        jumpControlAction();
+    });
+    // `.chat-body` rather than `#messages`: the corner strip below the scroller is part of the same
+    // area, and a pointer resting there should reveal the controls too.
+    chatBodyEl.addEventListener('pointermove', revealFabsNear, { passive: true });
+    chatBodyEl.addEventListener('pointerleave', hideFabs, { passive: true });
+    updateJumpControl();
 }
 
 export function initMessagesElScroll(): void {
@@ -77,18 +172,15 @@ export function initMessagesElScroll(): void {
 
 export function resetAutoScrollFollow() {
     state.scrollPinnedByUser = false;
-    if (state.scrollIdleTimer) {
-        clearTimeout(state.scrollIdleTimer);
-        state.scrollIdleTimer = null;
-    }
+    updateJumpControl();
 }
 
-export function getMessageContentEl(group) {
+export function getMessageContentEl(group: Element) {
     const bubble = group.querySelector('.message') || group;
     return bubble.querySelector('.content') || bubble.querySelector('.aux-body-content');
 }
 
-function assignSessionIndex(group) {
+function assignSessionIndex(group: Element) {
     group.dataset.sessionIndex = String(state.sessionMsgCounter++);
 }
 
@@ -99,7 +191,7 @@ export function reindexSessionIndices() {
     });
 }
 
-export function getGroupRoleLabel(group) {
+export function getGroupRoleLabel(group: Element) {
     if (group.classList.contains('user')) return locale.roleYou;
     if (group.classList.contains('assistant')) return assistantRoleLabel();
     if (group.classList.contains('thought')) return auxiliaryRoleLabel('thought');
@@ -111,7 +203,7 @@ export function groupsInOrder() {
     return Array.from(messagesEl.querySelectorAll('.message-group'));
 }
 
-export function quoteSegmentForGroup(group, range) {
+export function quoteSegmentForGroup(group: Element, range: Range) {
     // Clip against the card's body, never the record: the record also holds the role
     // label and the action chrome, and a quote must not carry either.
     const bubble = group.querySelector('.message') || group;
@@ -143,7 +235,7 @@ export function initDocumentVisibilitychange(): void {
     });
 }
 
-export function getMessagePlainText(group) {
+export function getMessagePlainText(group: Element) {
     const bubble = group.querySelector('.message') || group;
     const content = bubble.querySelector('.content');
     if (content) return content.textContent || '';
@@ -156,7 +248,7 @@ function newMessageId() {
     return 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 }
 
-function buildSelectWrap(group) {
+function buildSelectWrap(group: Element) {
     const selectWrap = document.createElement('label');
     selectWrap.className = 'msg-select-wrap';
     const checkbox = document.createElement('input');
@@ -171,7 +263,7 @@ function buildSelectWrap(group) {
     return selectWrap;
 }
 
-export function createGroup(role, id?) {
+export function createGroup(role: string, id?: string) {
     const group = document.createElement('div');
     group.className = 'message-group ' + role;
     group.id = id || newMessageId();
@@ -184,7 +276,7 @@ export function createGroup(role, id?) {
     return group;
 }
 
-function buildMessage(role, text, options) {
+function buildMessage(role: string, text: string, options?: MessageOptions) {
     const card = document.createElement('div');
     card.className = 'message ' + role;
     const label = document.createElement('div');
@@ -200,7 +292,8 @@ function buildMessage(role, text, options) {
     if (role === 'user' && Array.isArray(images) && images.length > 0) {
         const gallery = document.createElement('div');
         gallery.className = 'message-image-gallery';
-        for (const img of images) {
+        for (const entry of images) {
+            const img = entry as { mimeType?: string; data?: string } | null;
             if (!img || !img.data) continue;
             const el = document.createElement('img');
             el.className = 'message-image';
@@ -228,7 +321,7 @@ function buildMessage(role, text, options) {
     return card;
 }
 
-function buildCard(role, text, options) {
+function buildCard(role: string, text: string, options?: MessageOptions) {
     if (role === 'peer') {
         return { card: buildPeerCard(text, options), auxParts: null };
     }
@@ -254,7 +347,7 @@ function buildCard(role, text, options) {
  * A forwarded session-memory pick also carries its ref, which draws as the attach flow's envelope
  * card (title, session handle, span, count) above the body. The body is that peer's text either way.
  */
-function buildPeerCard(text, options) {
+function buildPeerCard(text: string, options?: MessageOptions) {
     const peer = (options && options.peer) || null;
     const state = (options && options.peerState) || 'pending';
     const card = document.createElement('div');
@@ -323,7 +416,7 @@ function buildPeerCard(text, options) {
 }
 
 /** Deliver or Dismiss came back: settle the card, no re-render. */
-export function applyPeerState(envelopeId, state) {
+export function applyPeerState(envelopeId: string, state: PeerState) {
     const group = document.querySelector('.message-group.peer[data-envelope-id="' + envelopeId + '"]');
     if (!group) return;
     group.dataset.peerState = state;
@@ -344,7 +437,7 @@ export function applyPeerState(envelopeId, state) {
  * the last card. A new pending card after a settled one starts a fresh stack, so a delivered
  * conversation never grows a rail over what came before it.
  */
-function pendingInStack(card) {
+function pendingInStack(card: Element): Element[] {
     const stack = card.closest('.peer-stack');
     if (!stack) {
         return [];
@@ -354,7 +447,7 @@ function pendingInStack(card) {
     );
 }
 
-function appendPeerToStack(group) {
+function appendPeerToStack(group: Element) {
     const last = messagesEl.lastElementChild;
     // Only a stack that still has a pending card takes another one: a queue that has been
     // answered is closed, and a new card after it starts its own rail.
@@ -375,7 +468,7 @@ function appendPeerToStack(group) {
 }
 
 /** Only the last pending card in a stack offers Deliver/Dismiss. */
-function syncPeerStackDecisions(stack) {
+function syncPeerStackDecisions(stack: Element) {
     const items = Array.prototype.slice.call(stack.querySelectorAll(':scope > .message-group.peer'));
     items.forEach(function(item, index) {
         const last = index === items.length - 1;
@@ -384,7 +477,7 @@ function syncPeerStackDecisions(stack) {
     });
 }
 
-function mountMessage(group, built, options) {
+function mountMessage(group: Element, built: BuiltMessage, options?: MessageOptions) {
     const restoring = options && options.restore;
     const role = group.classList[1];
     const container = document.createElement('div');
@@ -420,7 +513,7 @@ function mountMessage(group, built, options) {
     return group.id;
 }
 
-export function appendMessage(role, text, options?) {
+export function appendMessage(role: string, text: string, options?: MessageOptions) {
     const restoring = options && options.restore;
     state.placeholder.style.display = 'none';
 
@@ -428,10 +521,12 @@ export function appendMessage(role, text, options?) {
     if (!restoring && role === 'assistant' && state.streamingMessageId) {
         const last = document.getElementById(state.streamingMessageId);
         if (last) {
-            last.querySelector('.content').textContent = text;
+            const content = last.querySelector('.content');
+            if (content) content.textContent = text;
             last._rawText = text;
             if (chatSearchState.query) scheduleChatSearch();
             maybeScrollToBottom();
+            updateJumpControl();
             return state.streamingMessageId;
         }
     }
@@ -477,24 +572,24 @@ export function appendMessage(role, text, options?) {
     return id;
 }
 
-export function markMissingImages(root, hasImages) {
+export function markMissingImages(root: Element, hasImages: boolean) {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const hits = [];
     let node;
     while ((node = walker.nextNode())) {
-        if (/\[(screenshot|image)\]/i.test(node.textContent)) hits.push(node);
+        if (/\[(screenshot|image)\]/i.test(node.textContent || '')) hits.push(node);
     }
     hits.forEach(function(textNode) {
-        const parts = textNode.textContent.split(/(\[(?:screenshot|image)\])/i);
+        const parts = (textNode.textContent || '').split(/(\[(?:screenshot|image)\])/i);
         const frag = document.createDocumentFragment();
-        let lastNode = null;
-        const appendText = function(value) {
+        let lastNode: Node | null = null;
+        const appendText = function(value: string) {
             if (!value) return;
             let text = value;
             // Only fold the space when the previous sibling is text: a red statement in
             // between keeps the two words apart.
-            if (lastNode && lastNode.nodeType === 3 && /\s$/.test(lastNode.textContent) && /^\s/.test(text)) {
+            if (lastNode && lastNode.nodeType === 3 && /\s$/.test(lastNode.textContent || '') && /^\s/.test(text)) {
                 text = text.replace(/^\s+/, '');
             }
             if (!text) return;
@@ -525,7 +620,7 @@ function resetChatView() {
     clearChatSearch();
     exitMultiSelectMode();
     messagesEl.innerHTML = '<div class="placeholder" id="placeholder">' + escapeHtml(emptyStateText()) + '</div>';
-    state.placeholder = byId('placeholder');
+    state.placeholder = required('placeholder') as HTMLElement;
     state.streamingMessageId = null;
     state.thoughtMsgId = null;
     state.toolCallMap = {};
@@ -542,7 +637,7 @@ export function newChat() {
     resetChatView();
 }
 
-export function restoreHistory(messages, localHistoryOnly) {
+export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolean) {
     cancelSessionMarkdownRender();
     // A freshly restored transcript opens at its end; a pin left over from the previous
     // page would otherwise keep the pane wherever it happened to be.
@@ -572,7 +667,6 @@ export function restoreHistory(messages, localHistoryOnly) {
                 appendMessage(m.role, m.text, {
                     restore: true,
                     deferMarkdown: true,
-                    images: m.images,
                     history: m.history,
                     steer: m.steer === true,
                     peer: m.peer,
@@ -591,7 +685,7 @@ export function restoreHistory(messages, localHistoryOnly) {
     requestAnimationFrame(appendRestoreBatch);
 }
 
-export function isMessageForActiveSession(msg) {
+export function isMessageForActiveSession(msg: { sessionId?: string }) {
     return !msg.sessionId || msg.sessionId === state.lastActiveSessionId;
 }
 
@@ -602,7 +696,7 @@ export function isMessageForActiveSession(msg) {
  * reads that way; appending it live would put it below. Indices are then reassigned in DOM order,
  * which is the same order the stored messages have.
  */
-export function insertBeforeLastUser(role, text, options?) {
+export function insertBeforeLastUser(role: string, text: string, options?: MessageOptions) {
     const users = messagesEl.querySelectorAll('.message-group.user');
     const lastUser = users.length ? users[users.length - 1] : null;
     if (!lastUser || !lastUser.parentNode) {

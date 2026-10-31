@@ -1,5 +1,23 @@
 import { byId, messagesEl, statusText } from '../../dom';
-import type { ApprovalMode } from '../../../shared/webview';
+import type { ApprovalMode, HostToPane } from '../../../shared/webview';
+import type { PermissionOption } from '../../../shared/acp';
+import type { ChatMessage } from '../../../shared/chat';
+
+/** The permissionRequest member of the host-to-pane union. */
+type PermissionRequestMsg = Extract<HostToPane, { type: 'permissionRequest' }>;
+
+/** A live request, or the same card restored from the transcript (which carries the outcome). */
+type PermissionCardInput = {
+    id?: string;
+    title: string;
+    detail?: string;
+    options: PermissionOption[];
+} & Partial<Pick<ChatMessage, 'resolved' | 'outcome' | 'selectedLabel' | 'selectedOptionId'>>;
+
+/** What a caller may pass when building the card. */
+interface PermissionCardOptions {
+    readOnly?: boolean;
+}
 import { post } from '../../post';
 import { state } from '../../state';
 import { createGroup, maybeScrollToBottom } from './messageList';
@@ -13,17 +31,17 @@ const PERM_COLLAPSED_LINES = 3;
 
 const PERM_LINE_HEIGHT_EM = 1.45;
 
-function permissionBodyText(title, detail) {
+function permissionBodyText(title: string, detail?: string): string {
     const parts = [];
     if (title) parts.push(String(title));
     if (detail && String(detail).trim()) parts.push(String(detail).trim());
     return parts.join('\n\n');
 }
 
-function permissionOptionLabel(opt) {
+function permissionOptionLabel(opt: PermissionOption): string {
     const kind = String(opt.kind || '').toLowerCase().replace(/-/g, '_');
     const id = String(opt.optionId || '').toLowerCase().replace(/-/g, '_');
-    const map = {
+    const map: Record<string, string> = {
         allow_once: 'permissionAllowOnce',
         allow_always: 'permissionAllowAlways',
         allow_session: 'permissionAllowSession',
@@ -84,13 +102,13 @@ function getPermissionCollapsedMaxHeight() {
     return (PERM_LINE_HEIGHT_EM * PERM_COLLAPSED_LINES) + 'em';
 }
 
-function permissionDetailOverflows(scrollEl, text) {
+function permissionDetailOverflows(scrollEl: HTMLElement, text: string): boolean {
     if (!scrollEl) return false;
     if (text && text.split('\n').length > PERM_COLLAPSED_LINES) return true;
     return scrollEl.scrollHeight > scrollEl.clientHeight + 1;
 }
 
-export function syncPermissionDetailView(group) {
+export function syncPermissionDetailView(group: HTMLElement) {
     const state = group._permissionState;
     if (!state || !state.scrollEl) return;
     state.textEl.textContent = state.text || '';
@@ -112,13 +130,13 @@ export function syncPermissionDetailView(group) {
     state.cardToggle.setAttribute('aria-expanded', state.cardCollapsed ? 'false' : 'true');
 }
 
-function updatePermissionContent(group, title, detail) {
+function updatePermissionContent(group: HTMLElement, title: string, detail?: string) {
     if (!group._permissionState) return;
     group._permissionState.text = permissionBodyText(title, detail);
     syncPermissionDetailView(group);
 }
 
-export function refreshPermissionOptionLabels(group) {
+export function refreshPermissionOptionLabels(group: HTMLElement) {
     if (!group._permissionState) return;
     group._permissionState.options.forEach(function(opt) {
         const btn = group.querySelector('.permission-btn[data-option-id="' + opt.optionId.replace(/"/g, '\\"') + '"]');
@@ -126,7 +144,7 @@ export function refreshPermissionOptionLabels(group) {
     });
 }
 
-function buildPermissionActions(id, options, readOnly) {
+function buildPermissionActions(id: string, options: PermissionOption[] | undefined, readOnly: boolean) {
     const actions = document.createElement('div');
     actions.className = 'permission-actions';
     if (readOnly) {
@@ -155,7 +173,7 @@ function buildPermissionActions(id, options, readOnly) {
     return actions;
 }
 
-function applyPermissionResolvedUI(group, statusText) {
+function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
     const div = group.querySelector('.message');
     if (!div) {
         return;
@@ -190,7 +208,7 @@ let approvalMode: ApprovalMode = 'unknown';
 
 let approvalModeError = '';
 
-function approvalModeLabel(mode) {
+function approvalModeLabel(mode: ApprovalMode): string {
     if (mode === 'manual') return locale.approvalModeManual || 'Manual';
     if (mode === 'smart') return locale.approvalModeSmart || 'Smart';
     return locale.approvalModeOff || 'Off';
@@ -243,7 +261,7 @@ function buildApprovalBlock() {
  * One card's switch follows the module state. `withError` is false for a card that is being
  * mounted: a failure that happened before it existed is not its error to show.
  */
-function syncApprovalRow(group, withError = true) {
+function syncApprovalRow(group: HTMLElement, withError = true) {
     const block = group.querySelector('.permission-approval-block');
     if (!block) {
         return;
@@ -268,7 +286,7 @@ function syncApprovalRow(group, withError = true) {
 }
 
 /** A locale change: the switch's words are ours, so they move with the rest. */
-export function refreshApprovalModeLabels(group) {
+export function refreshApprovalModeLabels(group: HTMLElement) {
     const block = group.querySelector('.permission-approval-block');
     if (!block) {
         return;
@@ -296,7 +314,7 @@ export function applyApprovalMode(mode: ApprovalMode, error?: string) {
     });
 }
 
-function buildPermissionCard(id, msg, cardOptions) {
+function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?: PermissionCardOptions) {
     const readOnly = !!(cardOptions && cardOptions.readOnly);
 
     const div = document.createElement('div');
@@ -367,28 +385,31 @@ function buildPermissionCard(id, msg, cardOptions) {
     return { card: div, state: state };
 }
 
-function mountPermissionCard(id, msg, cardOptions?) {
+function mountPermissionCard(id: string, msg: PermissionCardInput, cardOptions?: PermissionCardOptions) {
     const group = createGroup('permission', 'perm-' + id);
     group.dataset.permissionId = id;
     const built = buildPermissionCard(id, msg, cardOptions);
     const card = built.card;
-    group._permissionState = built.state;
-    const readOnly = built.state.readOnly;
+    // One local handle: the element property is optional, and narrowing it does not survive into
+    // the click handlers below.
+    const cardState = built.state;
+    group._permissionState = cardState;
+    const readOnly = cardState.readOnly;
 
-    built.state.cardToggle.addEventListener('click', function(e) {
+    cardState.cardToggle.addEventListener('click', function(e) {
         e.stopPropagation();
-        group._permissionState.cardCollapsed = !group._permissionState.cardCollapsed;
-        card.classList.toggle('is-card-collapsed', group._permissionState.cardCollapsed);
+        cardState.cardCollapsed = !cardState.cardCollapsed;
+        card.classList.toggle('is-card-collapsed', cardState.cardCollapsed);
         syncPermissionDetailView(group);
     });
-    built.state.moreBtn.addEventListener('click', function(e) {
+    cardState.moreBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        group._permissionState.detailExpanded = true;
+        cardState.detailExpanded = true;
         syncPermissionDetailView(group);
     });
-    built.state.lessBtn.addEventListener('click', function(e) {
+    cardState.lessBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        group._permissionState.detailExpanded = false;
+        cardState.detailExpanded = false;
         syncPermissionDetailView(group);
     });
 
@@ -414,7 +435,7 @@ function mountPermissionCard(id, msg, cardOptions?) {
     return group;
 }
 
-export function restorePermissionMessage(m) {
+export function restorePermissionMessage(m: ChatMessage) {
     const id = m.permissionId || ('perm_hist_' + (m.timestamp || Date.now()));
     const group = mountPermissionCard(id, {
         title: m.title || m.text || '',
@@ -428,7 +449,7 @@ export function restorePermissionMessage(m) {
     messagesEl.appendChild(group);
 }
 
-export function showPermissionRequest(msg) {
+export function showPermissionRequest(msg: PermissionCardInput) {
     finalizeAssistantBubble();
     state.placeholder.style.display = 'none';
     enableStopAfterAgentOutput();
@@ -446,7 +467,7 @@ export function showPermissionRequest(msg) {
     maybeScrollToBottom();
 }
 
-function resolvePermission(id, optionId, selectedLabel) {
+function resolvePermission(id: string, optionId: string, selectedLabel?: string) {
     const group = pendingPermissions.get(id);
     if (!group) {
         return;
@@ -456,7 +477,7 @@ function resolvePermission(id, optionId, selectedLabel) {
     post({ type: 'permissionResponse', id: id, optionId: optionId });
 }
 
-export function dismissPermissionRequest(id, statusText) {
+export function dismissPermissionRequest(id: string, statusText: string) {
     const group = pendingPermissions.get(id);
     if (!group) {
         return;

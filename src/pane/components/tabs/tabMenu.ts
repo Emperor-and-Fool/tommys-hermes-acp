@@ -16,7 +16,7 @@ export function hideTabContextMenu() {
     }
 }
 
-function positionTabContextMenu(x, y) {
+function positionTabContextMenu(x: number, y: number) {
     if (!tabContextMenu) return;
     tabContextMenu.hidden = false;
     tabContextMenu.style.left = '0px';
@@ -28,7 +28,7 @@ function positionTabContextMenu(x, y) {
     tabContextMenu.style.top = Math.min(y, maxTop) + 'px';
 }
 
-export function showTabContextMenu(sessionId, clientX, clientY) {
+export function showTabContextMenu(sessionId: string, clientX: number, clientY: number) {
     const session = state.lastSessions.find(function(s) { return s.id === sessionId; });
     if (!session || !tabContextMenu) {
         return;
@@ -58,7 +58,7 @@ export function showTabContextMenu(sessionId, clientX, clientY) {
         '<div class="tab-ctx-divider"></div>' +
         '<button type="button" class="tab-ctx-item" data-action="togglePin">' + escapeHtml(pinLabel) + '</button>';
 
-    tabContextMenu.querySelector('[data-action="copySid"]').addEventListener('click', function(e) {
+    tabContextMenu.querySelector('[data-action="copySid"]')?.addEventListener('click', function(e) {
         e.stopPropagation();
         copyToClipboard(sessionId);
     });
@@ -91,12 +91,12 @@ export function showTabContextMenu(sessionId, clientX, clientY) {
     positionTabContextMenu(clientX, clientY);
 }
 
-function startTabRename(sessionId) {
+function startTabRename(sessionId: string) {
     if (!sessionId) {
         return;
     }
     const tabs = tabBar.querySelectorAll('.session-tab');
-    let tab = null;
+    let tab: Element | null = null;
     for (let i = 0; i < tabs.length; i++) {
         if (tabs[i].dataset.id === sessionId) {
             tab = tabs[i];
@@ -107,6 +107,9 @@ function startTabRename(sessionId) {
     if (!tab || !titleEl || tab.classList.contains('editing')) {
         return;
     }
+    // Bound for the nested finish(): narrowing does not survive into a closure.
+    const tabEl = tab;
+    const titleNode = titleEl;
     const record = state.lastSessions.find(function(s) { return s.id === sessionId; });
     const current = (record && record.title) || titleEl.textContent || '';
     const input = document.createElement('input');
@@ -117,14 +120,14 @@ function startTabRename(sessionId) {
     input.spellcheck = false;
     input.setAttribute('aria-label', locale.tabContextRename);
     let finished = false;
-    function finish(commit) {
+    function finish(commit: boolean) {
         if (finished) {
             return;
         }
         finished = true;
-        tab.classList.remove('editing');
+        tabEl.classList.remove('editing');
         if (input.parentNode) {
-            input.parentNode.replaceChild(titleEl, input);
+            input.parentNode.replaceChild(titleNode, input);
         }
         const value = input.value.replace(/\s+/g, ' ').trim();
         if (commit && value && value !== current) {
@@ -149,7 +152,7 @@ function startTabRename(sessionId) {
     input.addEventListener('click', function(e) { e.stopPropagation(); });
     input.addEventListener('dblclick', function(e) { e.stopPropagation(); });
     tab.classList.add('editing');
-    titleEl.parentNode.replaceChild(input, titleEl);
+    titleNode.parentNode?.replaceChild(input, titleNode);
     input.focus();
     input.select();
 }

@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{CSP_SOURCE}} data: https:; media-src {{CSP_SOURCE}} https:; font-src {{CSP_SOURCE}} data:; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{CSP_NONCE}}'; connect-src {{CSP_SOURCE}}; base-uri 'none'; form-action 'none';">
 <link rel="stylesheet" href="{{HIGHLIGHT_CSS_URI}}">
-<script src="{{MARKED_URI}}"></script>
-<script src="{{PURIFY_URI}}"></script>
-<script src="{{HIGHLIGHT_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{MARKED_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{PURIFY_URI}}"></script>
+<script nonce="{{CSP_NONCE}}" src="{{HIGHLIGHT_URI}}"></script>
 <link rel="stylesheet" href="{{CHAT_CSS_URI}}">
 </head>
 <body>
@@ -67,6 +68,12 @@
 <div id="tab-bar"></div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">
+    <div id="paneFabs" class="pane-fabs">
+        <button id="jumpCtl" class="pane-fab" type="button" hidden></button>
+        <button id="searchCtl" class="pane-fab is-dim" type="button">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm5.03 8.47 2.5 2.5-.7.7-2.5-2.5.7-.7z"/></svg>
+        </button>
+    </div>
     <!-- The loading state: the identity's icon over the status and a chunk counter. It lives
          OUTSIDE #messages on purpose — the transcript reset rebuilds that container's innerHTML,
          which would delete anything inside it on the first newChat. -->
@@ -104,6 +111,12 @@
         <button type="button" id="multiSelectDeleteBtn" class="ms-danger" disabled></button>
         <button type="button" id="multiSelectCopyBtn" disabled></button>
         <button type="button" id="multiSelectExportBtn" disabled></button>
+        <div class="ms-search">
+            <input type="search" id="msSearchInput" autocomplete="off" spellcheck="false">
+            <span class="ms-search-count" id="msSearchCount"></span>
+            <button type="button" class="ms-search-nav" id="msSearchPrev" disabled>↑</button>
+            <button type="button" class="ms-search-nav" id="msSearchNext" disabled>↓</button>
+        </div>
         <div class="ms-role-filters" id="historyRoleFilters" hidden>
             <div class="ms-role-row">
                 <label class="ms-role"><input type="checkbox" id="historyRoleUser" checked><span>User</span></label>
@@ -314,10 +327,10 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{CSP_NONCE}}">
     var locale = {{LOCALE_JSON}};
     {{LOCALE_HELPER}}
 </script>
-    <script src="{{CHAT_JS_URI}}"></script>
+    <script nonce="{{CSP_NONCE}}" src="{{CHAT_JS_URI}}"></script>
     </body>
     </html>

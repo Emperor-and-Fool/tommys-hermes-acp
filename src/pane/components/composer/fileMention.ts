@@ -19,7 +19,7 @@ function hideFilePreview() {
     }
 }
 
-export function showFilePreview(path, content, error) {
+export function showFilePreview(path: string, content: string, error?: string) {
     hideFilePreview();
     state.previewTooltip = document.createElement('div');
     state.previewTooltip.className = 'file-preview-tooltip';
@@ -40,7 +40,7 @@ export function showFilePreview(path, content, error) {
     document.body.appendChild(state.previewTooltip);
 }
 
-export function positionFilePreview(anchor) {
+export function positionFilePreview(anchor: HTMLElement) {
     if (!state.previewTooltip || !anchor) return;
     const rect = anchor.getBoundingClientRect();
     const tip = state.previewTooltip.getBoundingClientRect();
@@ -56,10 +56,10 @@ export function positionFilePreview(anchor) {
     state.previewTooltip.style.left = Math.max(8, left) + 'px';
 }
 
-function attachFileRefPreview(link) {
+function attachFileRefPreview(link: HTMLElement) {
     if (link.dataset.previewReady) return;
     link.dataset.previewReady = '1';
-    let enterTimer = null;
+    let enterTimer: ReturnType<typeof setTimeout> | null = null;
     link.addEventListener('mouseenter', function () {
         enterTimer = setTimeout(function () {
             const filePath = link.dataset.path || link.textContent.replace(/^@/, '');
@@ -74,7 +74,7 @@ function attachFileRefPreview(link) {
     });
 }
 
-export function processFileRefs(container) {
+export function processFileRefs(container: Element) {
     if (!container) return;
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
     const nodesToReplace = [];
@@ -83,10 +83,12 @@ export function processFileRefs(container) {
         if (node.parentElement && node.parentElement.closest('pre, code, a.file-ref')) continue;
         const text = node.textContent || '';
         const refRegex = /@([\w./\\\-]+(?:\.[a-zA-Z0-9]+)?)/g;
-        let match;
+        let match: RegExpExecArray | null;
         let lastIdx = 0;
         const parts = [];
         while ((match = refRegex.exec(text)) !== null) {
+            // Captured per iteration: narrowing does not survive into the click handler.
+            const hit = match;
             const before = text.slice(lastIdx, match.index);
             if (before) parts.push(document.createTextNode(before));
             const link = document.createElement('a');
@@ -97,7 +99,7 @@ export function processFileRefs(container) {
             link.dataset.path = match[1];
             link.addEventListener('click', function (e) {
                 e.preventDefault();
-                post({ type: 'openFile', path: match[1] });
+                post({ type: 'openFile', path: hit[1] });
             });
             attachFileRefPreview(link);
             parts.push(link);
@@ -127,7 +129,7 @@ export function hideFilePicker() {
     filePickerEl.innerHTML = '';
 }
 
-export function renderFilePickerItems(files) {
+export function renderFilePickerItems(files: string[]) {
     state.filePickerItems = files || [];
     state.filePickerIndex = 0;
     filePickerEl.innerHTML = '';
@@ -162,7 +164,7 @@ export function updateFilePickerHighlight() {
     });
 }
 
-export function selectFileMention(filePath) {
+export function selectFileMention(filePath: string) {
     if (state.mentionStart < 0) return;
     const val = inputEl.value;
     const before = val.slice(0, state.mentionStart);

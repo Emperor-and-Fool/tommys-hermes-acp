@@ -17,6 +17,13 @@ export interface LocaleStrings {
     newChat: string;
     noActiveTabHint: string;
     sessionNotFound: string;
+    searchOpen: string;
+    searchClose: string;
+    jumpToTop: string;
+    jumpToNow: string;
+    jumpToTopHint: string;
+    jumpToNowHint: string;
+    sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
     modelSwitchIncomplete: string;
@@ -185,6 +192,7 @@ export interface LocaleStrings {
     roleMessage: string;
     permissionTitle: string;
     permissionCancelled: string;
+    permissionTimedOut: string;
     permissionAllowOnce: string;
     permissionAllowAlways: string;
     permissionAllowSession: string;

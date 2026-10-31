@@ -36,6 +36,15 @@ export interface PromptHost {
     awaitSessionReady(): Promise<void>;
 }
 
+/** How long a permission card waits for an answer before the request is cancelled. */
+const PERMISSION_TIMEOUT_MS = 120_000;
+
+interface PendingPermission {
+    resolve: (optionId: string | null) => void;
+    /** Cleared on every exit — a timer that fires after an answer would post a second, wrong one. */
+    timer: ReturnType<typeof setTimeout>;
+}
+
 /** Whether a send may proceed, and whether the reader has already been told why not. */
 export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
 
@@ -54,11 +63,18 @@ export class PromptRunner {
     lastThoughtText = '';
     sendEpoch = 0;
     stallTimer: ReturnType<typeof setTimeout> | undefined;
-    /** Cards waiting for the pane, keyed by id. Turn-scoped: a detach resolves them. */
-    private readonly pendingPermissions = new Map<string, (optionId: string | null) => void>();
+    /** Cards waiting for the pane, keyed by id. Turn-scoped: a detach or the timer resolves them. */
+    private readonly pendingPermissions = new Map<string, PendingPermission>();
     private permissionCounter = 0;
 
-    constructor(private readonly host: PromptHost) {}
+    /**
+     * `permissionTimeoutMs` is a parameter rather than a constant read inside, so a test can watch
+     * an unanswered card expire without waiting two minutes.
+     */
+    constructor(
+        private readonly host: PromptHost,
+        private readonly permissionTimeoutMs: number = PERMISSION_TIMEOUT_MS,
+    ) {}
 
     /**
      * Make sure the active tab has a live ACP session and that the client is bound to it.
@@ -198,7 +214,10 @@ export class PromptRunner {
         this.host.log(`Permission requested: ${request.title.slice(0, 80)}`);
         return new Promise((resolve) => {
             const id = `perm_${++this.permissionCounter}`;
-            this.pendingPermissions.set(id, resolve);
+            // An unanswered card used to wait for the rest of the turn: the ACP request stayed
+            // open, the agent waited, and nothing ever said which side had given up.
+            const timer = setTimeout(() => this._expirePermission(id), this.permissionTimeoutMs);
+            this.pendingPermissions.set(id, { resolve, timer });
             this.host.savePermissionRequest(id, request);
             this.host.post({
                 type: 'permissionRequest',
@@ -216,17 +235,39 @@ export class PromptRunner {
         if (!pending) {
             return;
         }
+        clearTimeout(pending.timer);
         this.pendingPermissions.delete(id);
         if (optionId) {
             const label = this.host.permissionOptionLabel(id, optionId) ?? optionId;
             this.host.log(`Permission approved: ${optionId}`);
             this.host.resolvePermissionHistory(id, 'selected', optionId, label);
-            pending(optionId);
+            pending.resolve(optionId);
             return;
         }
         this.host.log('Permission cancelled');
         this.host.resolvePermissionHistory(id, 'cancelled');
-        pending(null);
+        pending.resolve(null);
+    }
+
+    /**
+     * The card was never answered. Resolve it the way a cancel does — the ACP request has to come
+     * back with something — and leave one line in the transcript, so the turn continuing or
+     * stopping has a stated reason rather than looking like the agent changed its mind.
+     */
+    private _expirePermission(id: string): void {
+        const pending = this.pendingPermissions.get(id);
+        if (!pending) {
+            return;
+        }
+        this.pendingPermissions.delete(id);
+        const seconds = Math.round(this.permissionTimeoutMs / 1000);
+        this.host.log(`Permission timed out after ${seconds}s; the request was cancelled`);
+        this.host.resolvePermissionHistory(id, 'cancelled');
+        this.host.post({ type: 'permissionDismiss', id });
+        const text = t('permissionTimedOut', seconds);
+        this.host.saveMessage('assistant', text);
+        this.host.post({ type: 'addMessage', role: 'assistant', text, sessionId: this.host.sessionId() });
+        pending.resolve(null);
     }
 
     /** Resolve every waiting card as cancelled and dismiss it in the pane. */
@@ -234,9 +275,10 @@ export class PromptRunner {
         if (this.pendingPermissions.size === 0) {
             return;
         }
-        for (const [id, resolve] of this.pendingPermissions) {
+        for (const [id, pending] of this.pendingPermissions) {
+            clearTimeout(pending.timer);
             this.host.resolvePermissionHistory(id, 'cancelled');
-            resolve(null);
+            pending.resolve(null);
             this.host.post({ type: 'permissionDismiss', id });
         }
         this.pendingPermissions.clear();

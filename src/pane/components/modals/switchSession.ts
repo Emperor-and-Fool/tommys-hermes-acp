@@ -1,15 +1,15 @@
-import { byId } from '../../dom';
+import { byId, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { hideModal, showModal } from './modal';
 
 
-function openSwitchSessionModal(sessionId) {
+function openSwitchSessionModal(sessionId: string) {
     state.pendingSwitchSessionId = sessionId;
-    const titleEl = byId('switchSessionModalTitle');
-    const bodyEl = byId('switchSessionModalBody');
-    const stayBtn = byId('switchSessionStayBtn');
-    const confirmBtn = byId('switchSessionConfirmBtn');
+    const titleEl = required('switchSessionModalTitle');
+    const bodyEl = required('switchSessionModalBody');
+    const stayBtn = required('switchSessionStayBtn');
+    const confirmBtn = required('switchSessionConfirmBtn');
     if (titleEl) titleEl.textContent = locale.switchSessionPromptTitle || '';
     if (bodyEl) bodyEl.textContent = locale.switchSessionPromptBody || '';
     if (stayBtn) stayBtn.textContent = locale.switchSessionStay || '';
@@ -22,12 +22,12 @@ function closeSwitchSessionModal() {
     hideModal(switchSessionModal);
 }
 
-function markSwitchQueued(sessionId) {
+function markSwitchQueued(sessionId: string) {
     state.switchQueuedFor = sessionId;
-    const titleEl = byId('switchSessionModalTitle');
-    const bodyEl = byId('switchSessionModalBody');
-    const stayBtn = byId('switchSessionStayBtn');
-    const confirmBtn = byId('switchSessionConfirmBtn');
+    const titleEl = required('switchSessionModalTitle');
+    const bodyEl = required('switchSessionModalBody');
+    const stayBtn = required('switchSessionStayBtn');
+    const confirmBtn = required('switchSessionConfirmBtn');
     if (titleEl) titleEl.textContent = locale.switchSessionQueuedTitle || '';
     if (bodyEl) bodyEl.textContent = locale.switchSessionQueuedBody || '';
     if (stayBtn) stayBtn.hidden = true;
@@ -43,8 +43,8 @@ function markSwitchQueued(sessionId) {
 export function clearSwitchQueued() {
     if (!state.switchQueuedFor) return;
     state.switchQueuedFor = null;
-    const stayBtn = byId('switchSessionStayBtn');
-    const confirmBtn = byId('switchSessionConfirmBtn');
+    const stayBtn = required('switchSessionStayBtn');
+    const confirmBtn = required('switchSessionConfirmBtn');
     if (stayBtn) stayBtn.hidden = false;
     if (confirmBtn) {
         confirmBtn.textContent = locale.switchSessionConfirm || '';
@@ -56,7 +56,7 @@ export function clearSwitchQueued() {
     state.pendingSwitchSessionId = null;
 }
 
-export function requestSwitchSession(sessionId) {
+export function requestSwitchSession(sessionId: string) {
     if (!sessionId || sessionId === state.activeSessionId) {
         return;
     }
@@ -67,11 +67,11 @@ export function requestSwitchSession(sessionId) {
     post({ type: 'switchSession', sessionId: sessionId });
 }
 
-const switchSessionModal = byId('switchSessionModal');
+const switchSessionModal = required('switchSessionModal');
 
-const switchSessionStayBtn = byId('switchSessionStayBtn');
+const switchSessionStayBtn = required('switchSessionStayBtn');
 
-const switchSessionConfirmBtn = byId('switchSessionConfirmBtn');
+const switchSessionConfirmBtn = required('switchSessionConfirmBtn');
 
 export function initSwitchSessionStayBtnClick(): void {
     if (switchSessionStayBtn) {
@@ -82,7 +82,7 @@ export function initSwitchSessionStayBtnClick(): void {
 export function initSwitchSessionConfirmBtnClick(): void {
     if (switchSessionConfirmBtn) {
         switchSessionConfirmBtn.addEventListener('click', function() {
-            const confirmBtn = byId('switchSessionConfirmBtn');
+            const confirmBtn = required('switchSessionConfirmBtn');
             if (confirmBtn && confirmBtn.dataset.queued === 'true') {
                 // Stop the run; the switch is already queued and lands the moment it ends.
                 post({ type: 'cancel' });

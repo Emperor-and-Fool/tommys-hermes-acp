@@ -18,6 +18,7 @@ import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
 import { buildWebviewHtml, identityArtwork } from './webview/html';
+import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
@@ -551,6 +552,13 @@ export class App implements vscode.WebviewViewProvider {
         })();
     }
 
+    /**
+     * `Send Selection to Hermes` arrives as a command rather than from the composer, so it used to
+     * build its own send: no queue, so it could interleave with a tab switch; no zero-tab guard, so
+     * it stored a message against no tab; and its own readiness check, duplicating the one in
+     * `_handleUserMessage`. It now posts the echo and hands the send to the same queue the composer
+     * uses, where the tab exists, the session is bound and the send epoch is checked.
+     */
     public async sendText(text: string): Promise<void> {
         await this._connection.awaitSessionReady();
         await this._models.awaitSwitch();
@@ -562,20 +570,14 @@ export class App implements vscode.WebviewViewProvider {
             vscode.window.showWarningMessage(t('hermesNotConnected'));
             return;
         }
-        this._turn.promptSessionId = this._session.activeId;
-        this._models.snapshotFromProfile();
-        this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
-        this._session.saveOutgoingUser(text);
-        const readiness = await this._turn.ensureSessionReady();
-        if (!readiness.ok) {
-            // Nothing was sent, so say so instead of prompting into a session that is not bound
-            // (or into whichever session the client still had).
-            if (!readiness.notified) {
-                this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
-            }
+        if (this._session.tabs.length === 0) {
+            vscode.window.showWarningMessage(t('noActiveTabHint'));
             return;
         }
-        await this._connection.acp.sendMessage(text);
+        this._enqueueChatOp(async () => {
+            this._postMessage({ type: 'addMessage', role: 'user', text, sessionId: this._session.activeId });
+            await this._handleUserMessage(text);
+        });
     }
 
     /** Commands from extension.ts. The work lives in environment/detection.ts. */
@@ -837,9 +839,14 @@ export class App implements vscode.WebviewViewProvider {
         return {
             log: (line) => this._log(line),
             openExternal: (url) => {
-                if (url) {
-                    void vscode.env.openExternal(vscode.Uri.parse(url));
+                // The pane checks markdown hrefs, but a message body reaches the host through the
+                // same channel: `command:` or `file:` here would turn text into an action.
+                if (!url) { return; }
+                if (!isExternalLinkAllowed(url)) {
+                    this._log(`openExternal refused: ${url.slice(0, 60)}`);
+                    return;
                 }
+                void vscode.env.openExternal(vscode.Uri.parse(url));
             },
             ready: () => this._onWebviewReady(surface),
             enqueueChatOp: (op) => this._enqueueChatOp(op),
@@ -1002,6 +1009,7 @@ export class App implements vscode.WebviewViewProvider {
                     .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', relative))
                     .toString()
                 : undefined,
+            cspSource: webview ? webview.cspSource : undefined,
             themeKind: vscode.window.activeColorTheme.kind,
             locale: getWebviewLocale(),
         });

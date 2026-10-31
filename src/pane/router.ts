@@ -24,7 +24,7 @@ import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionError
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
-import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl } from './dom';
+import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
 import { copyToClipboard } from './util/clipboard';
@@ -70,7 +70,8 @@ export function init(): void {
                     }
                     const id = appendMessage('thought', msg.text);
                     state.thoughtMsgId = id;
-                    setAuxMessageLive(document.getElementById(id), true);
+                    const liveGroup = document.getElementById(id);
+                    if (liveGroup) setAuxMessageLive(liveGroup, true);
                 } else {
                     appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
@@ -350,7 +351,7 @@ export function init(): void {
 
             case 'activeAgent':
                 if (msg.name) {
-                    byId('profileLabel').textContent = msg.name;
+                    required('profileLabel').textContent = msg.name;
                     refreshRoleLabels();
                     applyInputPlaceholder();
                 }
@@ -371,8 +372,8 @@ export function init(): void {
                 if (previewRequests.has(msg.requestId)) {
                     const anchor = previewRequests.get(msg.requestId);
                     previewRequests.delete(msg.requestId);
-                    showFilePreview(msg.path || '', msg.content, msg.error);
-                    positionFilePreview(anchor);
+                    showFilePreview(msg.path || '', msg.content || '', msg.error);
+                    if (anchor) positionFilePreview(anchor);
                 }
                 break;
 

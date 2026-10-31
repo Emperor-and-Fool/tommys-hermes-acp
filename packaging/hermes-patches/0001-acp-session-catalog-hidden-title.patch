@@ -78,7 +78,7 @@ diff --git a/acp_adapter/session.py b/acp_adapter/session.py
 index 1f6b2813bd5..f04cb4094ae 100644
 --- a/acp_adapter/session.py
 +++ b/acp_adapter/session.py
-@@ -207,6 +207,68 @@ class SessionManager:
+@@ -207,6 +207,81 @@ class SessionManager:
          logger.info("Forked ACP session %s -> %s", session_id, new_id)
          return state
  
@@ -94,9 +94,22 @@ index 1f6b2813bd5..f04cb4094ae 100644
 +        if db is None:
 +            return []
 +        normalized_cwd = _normalize_cwd_for_compare(cwd) if cwd else None
++        # 0.22.5 keeps the creating surface in `created_source` and rewrites `source` to
++        # 'local'; 0.22.2 has no such column and `source` still holds the surface. Ask the
++        # method what it accepts instead of keeping a version table: one call, both bases.
++        import inspect
++
++        accepts_local_sources = "local_created_sources" in inspect.signature(
++            db.list_sessions_rich
++        ).parameters
 +        try:
-+            rows = db.list_sessions_rich(source="acp", limit=500, include_hidden=include_hidden,
-+                                         compact_rows=True)
++            if accepts_local_sources:
++                rows = db.list_sessions_rich(source="acp", local_created_sources=["acp"],
++                                             limit=500, include_hidden=include_hidden,
++                                             compact_rows=True)
++            else:
++                rows = db.list_sessions_rich(source="acp", limit=500, include_hidden=include_hidden,
++                                             compact_rows=True)
 +        except Exception:
 +            logger.debug("Failed to load the ACP session catalog", exc_info=True)
 +            return []

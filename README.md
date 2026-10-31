@@ -132,7 +132,7 @@ editing-while-it-runs rhythm that most clients make you fight for.
 git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0001-acp-session-catalog-hidden-title.patch
 git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0002-acp-gateway-ext-methods.patch
 </code></pre>
-<p><code>0001</code> adds the three methods (base <code>0.22.2</code>); <code>0002</code> carries them onto <code>GatewayACPAgent</code>, the class <code>0.22.5</code> actually answers from, because <code>HermesACPAgent</code>&rsquo;s <code>__new__</code> returns one. On <code>0.22.5</code> and later both are required &mdash; <code>0001</code> alone still applies cleanly and changes nothing, which is what makes the failure quiet. They touch only <code>acp_adapter/server.py</code>, <code>acp_adapter/session.py</code> and <code>acp_adapter/gateway_server.py</code>, and only call Hermes&rsquo; own database methods. Re-apply both after any <code>hermes update</code> that drops them; <code>packaging/hermes-patches/CHANGELOG.md</code> records the bases and the symptom when one is missing.</p>
+<p><code>0001</code> adds the three methods (base <code>0.22.2</code>, and it reads the session table in either layout — <code>source</code> on 0.22.2, <code>created_source</code> on 0.22.5, where <code>source</code> is rewritten to <code>local</code>); <code>0002</code> carries them onto <code>GatewayACPAgent</code>, the class <code>0.22.5</code> actually answers from, because <code>HermesACPAgent</code>&rsquo;s <code>__new__</code> returns one. On <code>0.22.5</code> and later both are required &mdash; <code>0001</code> alone still applies cleanly and changes nothing, which is what makes the failure quiet. They touch only <code>acp_adapter/server.py</code>, <code>acp_adapter/session.py</code> and <code>acp_adapter/gateway_server.py</code>, and only call Hermes&rsquo; own database methods. Re-apply both after any <code>hermes update</code> that drops them; <code>packaging/hermes-patches/CHANGELOG.md</code> records the bases and the symptom when one is missing.</p>
 <p><em>Tested on Ubuntu 24.04. Windows is untested &mdash; both the Hermes install location and <code>git apply</code> behave differently there. If you try it, please open an issue and say what happened; this section will then state it honestly rather than guess.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install
@@ -310,6 +310,13 @@ Bundled components keep their own licences: `@agentclientprotocol/sdk` and
 `github-dark.min.css` (highlight.js) BSD-3-Clause; `media/vendor/marked.min.js` MIT.
 
 Neither MIT nor the GPL grant trademark rights: the upstream name "Rina Hermes ACP", the
-`jove-rina` name and the upstream marketplace identity are not used by this project. The
-icon and activity-bar glyph under `media/` are inherited upstream artwork — redistributable,
-but they are not Emperor & Fool branding.
+`jove-rina` name and the upstream marketplace identity are not used by this project.
+
+**The artwork is not ours, and the GPL does not cover it.** The whale under `media/` —
+`icon.png`, `icon.svg`, `icon_fullcolor.png`, `icon_orange.svg`, `icon_SECONDANT.svg` — and
+the activity-bar glyph `activitybar.svg` are *designed by Magnific from Flaticon*, used under
+the [Flaticon Free License](https://media.flaticon.com/license/license.pdf). That licence
+requires attribution, permits recolouring and derivative works, and does not permit
+sublicensing or redistributing the artwork on its own. So it is excluded from the GPL grant
+above: you may redistribute this extension, not the artwork separately, and you may not
+relicense it.

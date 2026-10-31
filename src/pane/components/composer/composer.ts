@@ -1,4 +1,4 @@
-import { byId, cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn } from '../../dom';
+import { byId, cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { appendMessage, resetAutoScrollFollow } from '../messages/messageList';
@@ -10,15 +10,15 @@ import { renderPendingImagesBar } from './images';
 import { clearReplyQuote, withReplyQuote } from './replyQuote';
 
 
-const inputAreaEl = byId('input-area');
+const inputAreaEl = required('input-area');
 
-const inputCompositeEl = byId('inputComposite');
+const inputCompositeEl = required('inputComposite');
 /* The wrapper above #inputComposite. A lookup, so top level is fine. */
 const inputCompositeShellEl = inputCompositeEl ? inputCompositeEl.closest('.input-composite-shell') : null;
 
-const inputQuickPanel = byId('inputQuickPanel');
+const inputQuickPanel = required('inputQuickPanel');
 
-const composerHint = byId('composerHint');
+const composerHint = required('composerHint');
 
 const INPUT_HEIGHT_STORAGE_KEY = 'hermes-chat-input-max-height';
 
@@ -61,7 +61,7 @@ export function syncInputHeightFromContent() {
     inputEl.style.overflowY = inputEl.scrollHeight > max ? 'auto' : 'hidden';
 }
 
-function setInputMaxHeight(px, options) {
+function setInputMaxHeight(px: number, options?: { animate?: boolean; persist?: boolean; explicit?: boolean }) {
     const opts = options || {};
     const clamped = Math.max(INPUT_HEIGHT_MIN, Math.min(px, getInputHeightCeiling()));
     inputAreaEl.style.setProperty('--input-max-height', clamped + 'px');
@@ -95,7 +95,7 @@ export function initInputResizeHandlePointerdown(): void {
         let startY = 0;
         let startHeight = 0;
 
-        function endDrag(e) {
+        function endDrag(e: PointerEvent) {
             if (!dragging) return;
             dragging = false;
             inputResizeHandle.classList.remove('dragging');
@@ -142,9 +142,15 @@ export function maybeFocusInputAfterResponse() {
     });
 }
 
-export const pendingImages = [];
+/** A staged image: what the pane holds between paste and send. */
+export interface PendingImage {
+    mimeType: string;
+    data: string;
+}
 
-export function executeSendMessage(text) {
+export const pendingImages: PendingImage[] = [];
+
+export function executeSendMessage(text: string) {
     hideFilePicker();
     resetAutoScrollFollow();
     const outgoing = withReplyQuote(text);
@@ -184,14 +190,14 @@ function updateStopButtonState(): void {
     }
     const steering = state.isPrompting && stopButtonIntent(inputEl.value) === 'steer';
     cancelBtn.classList.toggle('steer', steering);
-    const stopLabel = byId('stopBtnLabel');
+    const stopLabel = required('stopBtnLabel');
     if (stopLabel) {
         stopLabel.textContent = steering ? (locale.steer || 'Steer') : (locale.stop || 'Stop');
     }
     cancelBtn.title = steering ? (locale.steerHint || '') : (locale.cancelResponse || '');
 }
 
-export function setInputMode(mode) {
+export function setInputMode(mode: 'stop' | 'waiting' | 'send' | 'disabled') {
     const waiting = mode === 'stop' || mode === 'waiting';
     if (inputCompositeEl) {
         inputCompositeEl.classList.toggle('waiting', waiting);
@@ -219,15 +225,28 @@ export function setInputMode(mode) {
     updateStopButtonState();
 }
 
-function setQuickPanelOpen(open) {
+function setQuickPanelOpen(open: boolean) {
     if (!inputQuickPanel || !quickToggleBtn) return;
     inputQuickPanel.classList.toggle('open', open);
     inputQuickPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
     quickToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     quickToggleBtn.title = open ? locale.quickActionsCollapse : locale.quickActionsExpand;
+    // Told, not inferred: the transcript's search button changes shape with this panel, and it is
+    // not the only way to toggle it.
+    document.dispatchEvent(new CustomEvent('hermes:quick-panel', { detail: { open } }));
     if (open && chatSearchInput && !chatSearchInput.disabled) {
         setTimeout(function() { chatSearchInput.focus(); }, 280);
     }
+}
+
+/** Close it from elsewhere (the transcript's search button, when the panel is open). */
+export function closeQuickPanel(): void {
+    setQuickPanelOpen(false);
+}
+
+/** Open the quick-actions panel from elsewhere (the transcript's search button). */
+export function openQuickPanel(): void {
+    setQuickPanelOpen(true);
 }
 
 function toggleQuickPanel() {
@@ -244,7 +263,7 @@ export function updateQuickActionBtns() {
     else if (chatSearchInput && chatSearchInput.value.trim()) scheduleChatSearch();
 }
 
-function flashQuickActionBtn(btn, className?, duration?) {
+function flashQuickActionBtn(btn: HTMLElement, className?: string, duration?: number) {
     if (!btn) return;
     btn.classList.add(className || 'copied');
     setTimeout(function() {
@@ -252,7 +271,7 @@ function flashQuickActionBtn(btn, className?, duration?) {
     }, duration || 1500);
 }
 
-export function showComposerHint(message, seconds?) {
+export function showComposerHint(message: string, seconds?: number) {
     if (!composerHint) return;
     composerHint.textContent = message;
     composerHint.hidden = false;
@@ -322,7 +341,7 @@ export function sendMessage() {
  * Nothing is added to the transcript here: the host answers with the user row, marked as a
  * steer, because only it knows whether the steer was taken or had to go out as a message.
  */
-function steerMessage(text) {
+function steerMessage(text: string) {
     const body = (text || '').trim();
     if (!body) {
         return;
@@ -415,7 +434,7 @@ export function initFontSize(): void {
         ].join(';');
         pill.title = 'Chat font size';
 
-        function mkBtn(txt, fn) {
+        function mkBtn(txt: string, fn: () => void) {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = txt;
@@ -446,7 +465,7 @@ export function initFontSize(): void {
         pill.appendChild(plusBtn);
         target.appendChild(pill);
 
-        function apply(px) {
+        function apply(px: number) {
             size = Math.max(MIN, Math.min(MAX, px));
             document.documentElement.style.setProperty('--chat-fs', size + 'px');
             localStorage.setItem(KEY, String(size));

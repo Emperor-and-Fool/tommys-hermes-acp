@@ -9,57 +9,57 @@ import { applyHistoryPickerLocale } from './components/composer/historyAttach';
 import { updateModelButtonDisplay } from './components/pickers/modelPicker';
 import { profileDisplayName } from './components/pickers/profilePicker';
 import { applyInputPlaceholder } from './components/status/statusBar';
-import { byId, cancelBtn, chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, closedPickerLabel, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, copyLogBtn, copySessionBtn, detectEnvBtn, detectEnvToggle, faqModalBody, inputResizeHandle, messagesEl, modelBtn, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, profileBtn, quickToggleBtn, retryBtn, sendBtn, statusText, tokenUsageRing } from './dom';
+import { byId, cancelBtn, chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, closedPickerLabel, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, copyLogBtn, copySessionBtn, detectEnvBtn, detectEnvToggle, faqModalBody, inputResizeHandle, messagesEl, modelBtn, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, profileBtn, quickToggleBtn, retryBtn, sendBtn, statusText, tokenUsageRing, required } from './dom';
 import { state } from './state';
 
 
 export function applyLocale() {
-    const toolbarStatus = byId('toolbarStatus');
-    const retryBtnEl = byId('retryBtn');
-    const profileBtnEl = byId('profileBtn');
-    const modelBtnEl = byId('modelBtn');
-    const cancelBtnEl = byId('cancelBtn');
-    const filePickerElLocal = byId('filePicker');
+    const toolbarStatus = required('toolbarStatus');
+    const retryBtnEl = required('retryBtn');
+    const profileBtnEl = required('profileBtn');
+    const modelBtnEl = required('modelBtn');
+    const cancelBtnEl = required('cancelBtn');
+    const filePickerElLocal = required('filePicker');
 
     if (toolbarStatus) toolbarStatus.title = locale.connectionStatus;
     if (retryBtnEl) retryBtnEl.title = locale.retry;
-    const detectEnvBtnEl = byId('detectEnvBtn');
+    const detectEnvBtnEl = required('detectEnvBtn');
     if (detectEnvBtnEl) {
         detectEnvBtnEl.textContent = locale.detectEnvironment || '';
         detectEnvBtnEl.title = locale.detectEnvironment || '';
     }
-    const profileLabelText = byId('profileLabelText');
+    const profileLabelText = required('profileLabelText');
     if (profileLabelText) profileLabelText.textContent = locale.profile;
     if (profileBtnEl) profileBtnEl.title = locale.switchProfile;
-    const profilesHeader = byId('profilesHeader');
+    const profilesHeader = required('profilesHeader');
     if (profilesHeader) profilesHeader.textContent = locale.profiles;
     if (modelBtnEl) modelBtnEl.title = locale.switchModel;
-    const modelsHeader = byId('modelsHeader');
+    const modelsHeader = required('modelsHeader');
     if (modelsHeader) modelsHeader.textContent = locale.models;
-    updateModelButtonDisplay(state.lastModelPayload);
+    if (state.lastModelPayload) updateModelButtonDisplay(state.lastModelPayload);
     applyHistoryPickerLocale();
-    const openTabLabelFull = byId('openTabLabelFull');
+    const openTabLabelFull = required('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
     if (openTabBtn) openTabBtn.title = locale.openTab;
     if (closedPickerBtn) closedPickerBtn.title = locale.chooseChat;
-    const closedPickerLabelEl = byId('closedPickerLabel');
+    const closedPickerLabelEl = required('closedPickerLabel');
     if (closedPickerLabelEl && !state.pendingOpenSessionId) {
         closedPickerLabelEl.textContent = locale.chooseChat;
     }
-    const detectEnvClose = byId('detectEnvClose');
+    const detectEnvClose = required('detectEnvClose');
     if (detectEnvClose) {
         detectEnvClose.title = locale.detectEnvironmentClose || '';
         detectEnvClose.setAttribute('aria-label', locale.detectEnvironmentClose || 'Close');
     }
     if (state.detectEnvPanelReady) {
         setDetectEnvDetailsTitle();
-        const toggle = byId('detectEnvToggle');
+        const toggle = required('detectEnvToggle');
         if (toggle) {
             toggle.title = state.detectEnvDetailsOpen
                 ? (locale.detectEnvironmentHideDetails || '')
                 : (locale.detectEnvironmentViewDetails || '');
         }
-        const hint = byId('detectEnvCompactHint');
+        const hint = required('detectEnvCompactHint');
         if (hint) hint.classList.toggle('is-open', state.detectEnvDetailsOpen);
         DETECT_STEP_IDS.forEach(function(stepId) {
             const row = document.getElementById('detectStep-' + stepId);
@@ -109,36 +109,36 @@ export function applyLocale() {
         tokenUsageRing.setAttribute('aria-label', locale.tokenUsage);
     }
     if (sendBtn) sendBtn.textContent = locale.send;
-    const stopBtnLabel = byId('stopBtnLabel');
+    const stopBtnLabel = required('stopBtnLabel');
     if (stopBtnLabel) stopBtnLabel.textContent = locale.stop;
     if (cancelBtnEl) {
         cancelBtnEl.title = locale.cancelResponse;
         cancelBtnEl.setAttribute('aria-label', locale.cancelResponse);
     }
-    const logModalTitle = byId('logModalTitle');
+    const logModalTitle = required('logModalTitle');
     if (logModalTitle) logModalTitle.textContent = locale.hermesLogs;
     const renderBannerText = document.querySelector('#' + SESSION_RENDER_BANNER_ID + ' .session-render-text');
     if (renderBannerText) renderBannerText.textContent = locale.sessionRendering || '';
-    const copyLogBtn = byId('copyLogBtn');
+    const copyLogBtn = required('copyLogBtn');
     if (copyLogBtn) copyLogBtn.textContent = locale.copy;
-    const clearLogBtn = byId('clearLogBtn');
+    const clearLogBtn = required('clearLogBtn');
     if (clearLogBtn) clearLogBtn.textContent = locale.clear;
-    const aboutModalTitle = byId('aboutModalTitle');
+    const aboutModalTitle = required('aboutModalTitle');
     if (aboutModalTitle) aboutModalTitle.textContent = locale.aboutTitle;
-    const helpModalTitle = byId('helpModalTitle');
+    const helpModalTitle = required('helpModalTitle');
     if (helpModalTitle) helpModalTitle.textContent = locale.helpTitle;
-    const helpModalBody = byId('helpModalBody');
+    const helpModalBody = required('helpModalBody');
     if (helpModalBody) helpModalBody.innerHTML = locale.helpHtml;
-    const faqModalTitle = byId('faqModalTitle');
+    const faqModalTitle = required('faqModalTitle');
     if (faqModalTitle) faqModalTitle.textContent = locale.faqTitle;
-    const faqModalBody = byId('faqModalBody');
+    const faqModalBody = required('faqModalBody');
     if (faqModalBody) {
         faqModalBody.innerHTML = locale.faqHtml || '';
         buildFaqAccordion(faqModalBody);
     }
-    const configureEnvModalTitle = byId('configureEnvModalTitle');
+    const configureEnvModalTitle = required('configureEnvModalTitle');
     if (configureEnvModalTitle) configureEnvModalTitle.textContent = locale.configureEnvironmentTitle || '';
-    const configureEnvPathLabel = byId('configureEnvPathLabel');
+    const configureEnvPathLabel = required('configureEnvPathLabel');
     if (configureEnvPathLabel) configureEnvPathLabel.textContent = locale.configureEnvironmentPathLabel || '';
     if (configureEnvPathInput) {
         configureEnvPathInput.placeholder = locale.configureEnvironmentPathPlaceholder || '';
@@ -153,7 +153,7 @@ export function applyLocale() {
     updateConfigureEnvPathClearVisibility();
     if (configureEnvBrowseBtn) configureEnvBrowseBtn.textContent = locale.configureEnvironmentBrowse || '';
     if (configureEnvDetectBtn) configureEnvDetectBtn.textContent = locale.configureEnvironmentDetect || '';
-    const configureEnvCandidatesTitle = byId('configureEnvCandidatesTitle');
+    const configureEnvCandidatesTitle = required('configureEnvCandidatesTitle');
     if (configureEnvCandidatesTitle) {
         configureEnvCandidatesTitle.textContent = locale.configureEnvironmentCandidatesTitle || '';
     }

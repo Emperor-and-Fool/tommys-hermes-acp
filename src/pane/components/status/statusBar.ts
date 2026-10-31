@@ -1,4 +1,4 @@
-import { byId, detectEnvBtn, inputEl, retryBtn, statusText } from '../../dom';
+import { byId, detectEnvBtn, inputEl, retryBtn, statusText, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
@@ -8,10 +8,10 @@ import { profileDisplayName } from '../pickers/profilePicker';
 
 export const TOKEN_RING_RADIUS = 11;
 
-const statusDot = byId('statusDot');
-const loadingBlock = byId('loadingBlock');
-const loadingTitle = byId('loadingTitle');
-const loadingCount = byId('loadingCount');
+const statusDot = required('statusDot');
+const loadingBlock = required('loadingBlock');
+const loadingTitle = required('loadingTitle');
+const loadingCount = required('loadingCount');
 
 /**
  * The loading state: the identity's icon, a heading, and (in the conversation) a chunk counter.
@@ -39,7 +39,7 @@ export function showLoadingBlock(options?: { title?: string; counter?: boolean }
 }
 
 /** One chunk arrived: the count is the only thing that changes. */
-export function updateLoadProgress(received) {
+export function updateLoadProgress(received: number) {
     if (state.currentStatus !== 'connecting') return;
     showLoadingBlock();
     if (loadingCount) loadingCount.textContent = localeText('loadingMessageChunks', String(received));
@@ -52,7 +52,7 @@ export function hideLoadingBlock() {
     if (state.placeholder) state.placeholder.style.display = '';
 }
 
-function updateConnectionActionVisibility(status) {
+function updateConnectionActionVisibility(status: string) {
     const showActions = status === 'error' || (status === 'idle' && state.connectionAttempted);
     if (retryBtn) {
         retryBtn.hidden = !showActions;
@@ -71,7 +71,7 @@ export function bindConnectionErrorActions() {
     if (phDetect) phDetect.addEventListener('click', doDetectEnvironment);
 }
 
-export function buildConnectionErrorPlaceholder(errText) {
+export function buildConnectionErrorPlaceholder(errText: string): string {
     if (state.placeholder) state.placeholder.className = 'placeholder';
     return escapeHtml(errText) +
         '<div class="connection-error-actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">' +
@@ -80,7 +80,7 @@ export function buildConnectionErrorPlaceholder(errText) {
         '</div>';
 }
 
-function updateRetryVisibility(status) {
+function updateRetryVisibility(status: string) {
     updateConnectionActionVisibility(status);
 }
 
@@ -104,14 +104,14 @@ export function emptyStateText() {
 }
 
 function syncEmptyState() {
-    const el = byId('placeholder');
+    const el = required('placeholder');
     if (el) el.textContent = emptyStateText();
 }
 
 /** The status line, the dot, and the pane's empty state — one entry point for all three. */
-export function updateStatus(status, message) {
+export function updateStatus(status: string, message?: string) {
     statusDot.className = 'dot ' + status;
-    const labels = {
+    const labels: Record<string, string> = {
         idle: locale.statusDisconnected,
         connecting: locale.statusConnecting,
         ready: locale.statusReady,
@@ -137,7 +137,8 @@ export function updateStatus(status, message) {
     }
     statusText.textContent = text;
     statusText.title = message && !vendorOverride ? message : text;
-    state.currentStatus = status;
+    // The host decides the status string; the union is this pane's vocabulary for it.
+    state.currentStatus = status as typeof state.currentStatus;
     state.currentStatusMessage = message || '';
     // Every state but connecting belongs to the placeholder, not the loading block.
     if (status === 'connecting') {

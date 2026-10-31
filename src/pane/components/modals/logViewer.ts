@@ -1,14 +1,14 @@
-import { byId, copyLogBtn, logModal } from '../../dom';
+import { byId, copyLogBtn, logModal, required } from '../../dom';
 import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';
 import { hideModal, isLogModalOpen } from './modal';
 
 
-const logFilterError = byId('logFilterError');
+const logFilterError = required('logFilterError');
 
-const logFilterWarning = byId('logFilterWarning');
+const logFilterWarning = required('logFilterWarning');
 
-const logContent = byId('logContent');
+const logContent = required('logContent');
 
 const LOG_SCROLL_BOTTOM_THRESHOLD = 24;
 
@@ -21,7 +21,7 @@ function isLogAtBottom() {
     return logContent.scrollHeight - logContent.scrollTop - logContent.clientHeight <= LOG_SCROLL_BOTTOM_THRESHOLD;
 }
 
-export function maybeScrollLogToBottom(force?) {
+export function maybeScrollLogToBottom(force?: boolean) {
     if (!logContent) {
         return;
     }
@@ -101,7 +101,7 @@ export function renderLogContent() {
 }
 
 export function initLogCloseButton(): void {
-    byId('closeLogBtn').addEventListener('click', function() {
+    required('closeLogBtn').addEventListener('click', function() {
         hideModal(logModal);
     });
 }
@@ -127,7 +127,7 @@ export function initCopyLogBtnClick(): void {
 }
 
 export function initLogClearButton(): void {
-    byId('clearLogBtn').addEventListener('click', function() {
+    required('clearLogBtn').addEventListener('click', function() {
         state.logs = [];
         renderLogContent();
     });

@@ -1,12 +1,14 @@
-import { byId, modelBtn, modelPicker } from '../../dom';
+import { byId, modelBtn, modelPicker, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
+import type { ModelPayload } from '../../state';
+import type { ModelProviderGroup } from '../../../shared/models';
 import { escapeHtml } from '../../util/html';
 import { pickerRowReserve } from '../composer/composer';
 import { closeAllDropdowns, wirePickerButton } from '../modals/modal';
 
 
-const VENDOR_NAMES = {
+const VENDOR_NAMES: Record<string, string> = {
     deepseek: 'DeepSeek',
     openai: 'OpenAI',
     xai: 'xAI',
@@ -15,7 +17,7 @@ const VENDOR_NAMES = {
     huggingface: 'HuggingFace'
 };
 
-function vendorLabel(slug) {
+function vendorLabel(slug: string): string {
     const raw = String(slug || '').trim().replace(/^custom:/i, '');
     if (!raw) return '';
     const known = VENDOR_NAMES[raw.toLowerCase()];
@@ -29,7 +31,7 @@ export function currentProviderVendor() {
     const current = String(payload.currentValueId || '');
     if (!current) return '';
     const groups = Array.isArray(payload.groups) ? payload.groups : [];
-    const usable = function(g) {
+    const usable = function(g: ModelProviderGroup) {
         const name = String((g && (g.name || g.slug)) || '').trim();
         return name && name.toLowerCase() !== 'other' ? name : '';
     };
@@ -54,9 +56,9 @@ export function currentProviderVendor() {
     return prefix && prefix !== current ? vendorLabel(prefix) : '';
 }
 
-const modelLabelEl = byId('modelLabel');
+const modelLabelEl = required('modelLabel');
 
-const modelDropdown = byId('modelDropdown');
+const modelDropdown = required('modelDropdown');
 
 export function initModelBtnClick(): void {
     wirePickerButton(modelBtn, modelPicker, function() {
@@ -68,7 +70,7 @@ export function initModelDropdownClick(): void {
     modelDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
 }
 
-function shouldShowModelPlaceholder(payload) {
+function shouldShowModelPlaceholder(payload: ModelPayload) {
     if (!payload) {
         return true;
     }
@@ -84,7 +86,7 @@ function shouldShowModelPlaceholder(payload) {
     });
 }
 
-export function updateModelButtonDisplay(payload) {
+export function updateModelButtonDisplay(payload: ModelPayload) {
     if (!modelLabelEl || !modelBtn) {
         return;
     }
@@ -102,8 +104,8 @@ export function updateModelButtonDisplay(payload) {
     pickerRowReserve();
 }
 
-export function renderModelList(payload) {
-    const list = byId('modelList');
+export function renderModelList(payload: ModelPayload) {
+    const list = required('modelList');
     state.lastModelPayload = payload;
     state.modelConfigId = payload.configId || '';
     updateModelButtonDisplay(payload);
@@ -136,11 +138,13 @@ export function renderModelList(payload) {
         }).join('');
     }
     list.querySelectorAll('.dropdown-item[data-value]').forEach(function(item) {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(this: HTMLElement) {
+            const valueId = this.dataset.value;
+            if (!valueId) return;
             post({
                 type: 'switchModel',
                 configId: state.modelConfigId,
-                valueId: this.dataset.value
+                valueId
             });
             closeAllDropdowns();
         });

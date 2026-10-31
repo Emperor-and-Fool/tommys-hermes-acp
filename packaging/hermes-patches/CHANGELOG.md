@@ -29,6 +29,23 @@ behind them:
 | `_session/setHidden` | flips `sessions.hidden` — what closing a tab writes | the strip's × must hide, never delete; hide is Hermes-side state that also removes the session from Hermes' own lists and search |
 | `_session/setTitle` | writes the title as `title_source='user'` | ACP has no title method, and a non-`user` title is overwritten by the auto-titler |
 
+**Revision 2026-10-30 — the catalog read on builds that retag `source`.**
+
+0.22.5 stores a session's creating surface in `created_source` and rewrites `source` to `local` for
+every human surface (`gateway/session_policy.py: STORED_AS_LOCAL`, minus `tool`/`oneshot`). The
+original query asked for `source="acp"`, which after that retag matches only rows written before the
+upgrade: the sidebar showed old conversations and silently lost every new one, and a tab whose
+session vanished from the catalog was deleted on the next refresh.
+
+`session_catalog` now asks `list_sessions_rich` whether it accepts `local_created_sources` and passes
+`source="acp", local_created_sources=["acp"]` when it does — Hermes' own predicate, which emits
+`(s.source IN ('acp') OR (s.source='local' AND s.created_source IN ('acp')))` and still leaves the
+`unknown` placeholder unmatched. On 0.22.2 the keyword is absent, `source` still holds the surface,
+and the call stays as it was. No version table: one `inspect.signature` check, both bases.
+
+The same file therefore applies to `d923a5eb487` (0.22.2) and `bf0203a794a` (0.22.5) — verified by
+applying it to a pristine checkout of each.
+
 ## 0002 — the same methods on the gateway agent
 
 - **Date:** 2026-10-30

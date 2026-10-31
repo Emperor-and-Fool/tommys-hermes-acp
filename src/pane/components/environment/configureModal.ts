@@ -1,27 +1,47 @@
-import { byId, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn } from '../../dom';
+import type { HostToPane } from '../../../shared/webview';
+
+type DetectProgressMsg =
+    | Extract<HostToPane, { type: 'detectEnvironmentProgress' }>
+    | Extract<HostToPane, { type: 'configureEnvironmentDetectProgress' }>;
+/** The end message also carries the candidate rows and a summary line the host builds. */
+type DetectEndMsg = (Extract<HostToPane, { type: 'detectEnvironmentEnd' }> |
+    Extract<HostToPane, { type: 'configureEnvironmentDetectEnd' }>) & {
+    executables?: EnvCandidate[];
+    summary?: string;
+};
+
+/** A candidate row the host reports: where it was found and what it claims to be. */
+export interface EnvCandidate {
+    path: string;
+    verified?: boolean;
+    source?: string;
+    version?: string;
+}
+
+import { byId, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { ensureDetectStepsList, formatDetectProgressDisplay, resetDetectStepsList, setDetectEnvIcon, updateDetectStepsList } from './detectPanel';
 
 
-const configureEnvDetectSection = byId('configureEnvDetectSection');
+const configureEnvDetectSection = required('configureEnvDetectSection');
 
-const configureEnvDetectCompactHint = byId('configureEnvDetectCompactHint');
+const configureEnvDetectCompactHint = required('configureEnvDetectCompactHint');
 
-const configureEnvDetectClose = byId('configureEnvDetectClose');
+const configureEnvDetectClose = required('configureEnvDetectClose');
 
-const configureEnvDetectDetails = byId('configureEnvDetectDetails');
+const configureEnvDetectDetails = required('configureEnvDetectDetails');
 
-const configureEnvDetectDetailsTitle = byId('configureEnvDetectDetailsTitle');
+const configureEnvDetectDetailsTitle = required('configureEnvDetectDetailsTitle');
 
-const configureEnvCandidatesSection = byId('configureEnvCandidatesSection');
+const configureEnvCandidatesSection = required('configureEnvCandidatesSection');
 
-const configureEnvCandidatesList = byId('configureEnvCandidatesList');
+const configureEnvCandidatesList = required('configureEnvCandidatesList');
 
-const configureEnvSystemHint = byId('configureEnvSystemHint');
+const configureEnvSystemHint = required('configureEnvSystemHint');
 
-const configureEnvCloseBtn = byId('configureEnvCloseBtn');
+const configureEnvCloseBtn = required('configureEnvCloseBtn');
 
 export function showConfigureEnvDetectPanel() {
     state.configureEnvDetectPanelVisible = true;
@@ -90,7 +110,7 @@ function createConfigureEnvFolderIcon() {
     return svg;
 }
 
-export function setConfigureEnvDetectDetailsOpen(open) {
+export function setConfigureEnvDetectDetailsOpen(open: boolean) {
     state.configureEnvDetectDetailsOpen = !!open;
     if (configureEnvDetectDetails) configureEnvDetectDetails.hidden = !state.configureEnvDetectDetailsOpen;
     if (configureEnvDetectCompactHint) {
@@ -131,7 +151,7 @@ export function updateConfigureEnvSystemHint() {
     }
 }
 
-export function setConfigureEnvDetecting(detecting) {
+export function setConfigureEnvDetecting(detecting: boolean) {
     if (configureEnvBrowseBtn) configureEnvBrowseBtn.disabled = !!detecting;
     if (configureEnvDetectBtn) configureEnvDetectBtn.disabled = !!detecting;
     if (configureEnvSaveBtn) configureEnvSaveBtn.disabled = !!detecting;
@@ -143,7 +163,7 @@ function resetConfigureEnvDetectPanel() {
     state.configureEnvSelectedPath = '';
 }
 
-export function openConfigureEnvModal(currentPath, systemEnvVar, systemEnvTarget) {
+export function openConfigureEnvModal(currentPath: string, systemEnvVar: string, systemEnvTarget: string) {
     if (!configureEnvModal) return;
     state.configureEnvSystemVar = systemEnvVar || 'PATH';
     state.configureEnvSystemTarget = systemEnvTarget || '';
@@ -179,7 +199,7 @@ function initConfigureEnvDetectStart() {
     }
 }
 
-export function updateConfigureEnvDetectProgress(msg) {
+export function updateConfigureEnvDetectProgress(msg: DetectProgressMsg) {
     if (!configureEnvDetectSection || !state.configureEnvDetectPanelVisible) return;
     updateDetectStepsList(
         msg,
@@ -189,13 +209,13 @@ export function updateConfigureEnvDetectProgress(msg) {
     );
 }
 
-function basenameFromPath(filePath) {
+function basenameFromPath(filePath: string): string {
     if (!filePath) return 'hermes';
     const parts = filePath.split(/[/\\]/).filter(Boolean);
     return parts.length ? parts[parts.length - 1] : 'hermes';
 }
 
-function selectConfigureEnvCandidate(path, rowEl) {
+function selectConfigureEnvCandidate(path: string, rowEl: Element) {
     state.configureEnvSelectedPath = path || '';
     if (configureEnvPathInput) {
         configureEnvPathInput.value = state.configureEnvSelectedPath;
@@ -208,7 +228,7 @@ function selectConfigureEnvCandidate(path, rowEl) {
     }
 }
 
-function renderConfigureEnvCandidates(executables) {
+function renderConfigureEnvCandidates(executables: EnvCandidate[]) {
     if (!configureEnvCandidatesSection || !configureEnvCandidatesList || !configureEnvCandidatesEmpty) return;
     configureEnvCandidatesList.textContent = '';
     const list = Array.isArray(executables) ? executables : [];
@@ -308,7 +328,7 @@ function renderConfigureEnvCandidates(executables) {
     });
 }
 
-export function finishConfigureEnvDetect(msg) {
+export function finishConfigureEnvDetect(msg: DetectEndMsg) {
     setConfigureEnvDetecting(false);
     if (msg.status === 'cancelled' || !state.configureEnvDetectPanelVisible) {
         hideConfigureEnvDetectProgress();
@@ -318,6 +338,7 @@ export function finishConfigureEnvDetect(msg) {
     setConfigureEnvDetectDetailsTitle();
     const summaryStatus = msg.status === 'ready' ? 'ok' : (msg.executables && msg.executables.length ? 'ok' : 'fail');
     updateConfigureEnvDetectProgress({
+        type: 'detectEnvironmentProgress',
         step: 'summary',
         status: summaryStatus,
         reportStatus: msg.status,

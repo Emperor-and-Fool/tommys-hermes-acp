@@ -2,6 +2,7 @@ import { byId, tabBar } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
+import type { SessionInfo } from '../../../shared/chat';
 import { newChat } from '../messages/messageList';
 import { requestSwitchSession } from '../modals/switchSession';
 import { showTabContextMenu } from './tabMenu';
@@ -9,7 +10,7 @@ import { showTabContextMenu } from './tabMenu';
 
 const TAB_PIN_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M9.2 1.3 11.5 3.6V6l2.2 2.1v1.2H10v4.2L9 14H7L6 13.5V9.3H2.3V8.1L4.5 6V3.6L6.8 1.3h2.4zm-.9 1.4H7.7L5.9 4.5V6.4L4.3 8h7.4L10.1 6.4V4.5L8.3 2.7z"/></svg>';
 
-function reorderSessionTabs(fromId, toId) {
+function reorderSessionTabs(fromId: string, toId: string) {
     if (!fromId || !toId || fromId === toId || !state.lastSessions.length) {
         return;
     }
@@ -29,21 +30,23 @@ function reorderSessionTabs(fromId, toId) {
     }
     ids.splice(fromIdx, 1);
     ids.splice(toIdx, 0, fromId);
-    const byId = {};
+    const byId: Record<string, SessionInfo> = {};
     state.lastSessions.forEach(function(s) { byId[s.id] = s; });
     state.lastSessions = ids.map(function(id) { return byId[id]; }).filter(Boolean);
     renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
     post({ type: 'reorderSessions', sessionIds: ids });
 }
 
-function wireTabDragDrop(tab) {
+function wireTabDragDrop(tab: HTMLElement) {
     tab.draggable = true;
     tab.addEventListener('dragstart', function(e) {
         if (tab.classList.contains('editing')) {
             e.preventDefault();
             return;
         }
+        if (!e.dataTransfer) return;
         e.dataTransfer.effectAllowed = 'move';
+        if (!e.dataTransfer) return;
         e.dataTransfer.setData('text/plain', tab.dataset.id || '');
         tab.classList.add('dragging');
     });
@@ -55,6 +58,7 @@ function wireTabDragDrop(tab) {
     });
     tab.addEventListener('dragover', function(e) {
         e.preventDefault();
+        if (!e.dataTransfer) return;
         e.dataTransfer.dropEffect = 'move';
         tab.classList.add('drag-over');
     });
@@ -65,15 +69,17 @@ function wireTabDragDrop(tab) {
         e.preventDefault();
         e.stopPropagation();
         tab.classList.remove('drag-over');
+        if (!e.dataTransfer) return;
         const fromId = e.dataTransfer.getData('text/plain');
-        reorderSessionTabs(fromId, tab.dataset.id);
+        const toId = tab.dataset.id;
+        if (fromId && toId) reorderSessionTabs(fromId, toId);
     });
     tab.addEventListener('mousedown', function(e) {
         tab.draggable = !(e.target && e.target.closest && e.target.closest('.tab-close'));
     });
 }
 
-export function renderSessionTabs(sessions, activeId) {
+export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
     state.activeSessionId = activeId || state.activeSessionId;
     state.lastSessions = sessions || [];
     state.lastActiveSessionId = state.activeSessionId;
@@ -85,7 +91,7 @@ export function renderSessionTabs(sessions, activeId) {
         state.pendingTabsRender = { sessions: sessions, activeId: activeId };
         return;
     }
-    const parts = [];
+    const parts: string[] = [];
     sessions.forEach(function(s, index) {
         const active = s.id === state.activeSessionId ? ' active' : '';
         const pinnedClass = s.pinned ? ' pinned' : '';
@@ -104,7 +110,7 @@ export function renderSessionTabs(sessions, activeId) {
     });
     tabBar.innerHTML = parts.join('');
 
-    tabBar.querySelectorAll('.session-tab').forEach(function(tab) {
+    tabBar.querySelectorAll<HTMLElement>('.session-tab').forEach(function(tab) {
         tab.addEventListener('click', function(e) {
             if (e.target && e.target.closest && e.target.closest('.tab-close')) {
                 return;
@@ -112,14 +118,16 @@ export function renderSessionTabs(sessions, activeId) {
             if (tab.classList.contains('editing')) {
                 return;
             }
-            if (tab.dataset.id !== state.activeSessionId) {
-                requestSwitchSession(tab.dataset.id);
+            const id = tab.dataset.id;
+            if (id && id !== state.activeSessionId) {
+                requestSwitchSession(id);
             }
         });
-        tab.addEventListener('contextmenu', function(e) {
+        tab.addEventListener('contextmenu', function(e: MouseEvent) {
             e.preventDefault();
             e.stopPropagation();
-            showTabContextMenu(tab.dataset.id, e.clientX, e.clientY);
+            const id = tab.dataset.id;
+            if (id) showTabContextMenu(id, e.clientX, e.clientY);
         });
         wireTabDragDrop(tab);
     });
