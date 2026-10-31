@@ -1587,6 +1587,20 @@ body.surface-notabs #tab-bar {
 .jump-ctl:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 .jump-ctl[hidden] { display: none; }
 
+/* "Back to the start" is only wanted while the pointer is over the transcript; parked permanently in
+   the corner it covers the last lines of the answer. "Jump to now" is the opposite — it has to be
+   visible when the reader is away from the bottom, which is exactly when nothing else says so. */
+.jump-ctl[data-mode='top'] {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+}
+.chat-body:hover .jump-ctl[data-mode='top'],
+.jump-ctl[data-mode='top']:focus-visible {
+    opacity: 0.92;
+    pointer-events: auto;
+}
+
 .session-render-banner {
     position: absolute;
     top: 12px;

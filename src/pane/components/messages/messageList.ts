@@ -77,10 +77,12 @@ export function maybeScrollToBottom(force?: boolean) {
  * the bottom; leaving is a decision, and it holds until the reader comes back or asks for "now".
  */
 function onMessagesScroll() {
-    if (Date.now() < state.suppressScrollPinUntil) {
-        return;
+    // The control follows the scroll position even when the *pin* must not: this scroll may be the
+    // pane's own (a restore, a send), and the reader still needs to see where the view now is.
+    const suppressed = Date.now() < state.suppressScrollPinUntil;
+    if (!suppressed) {
+        state.scrollPinnedByUser = !isMessagesAtBottom();
     }
-    state.scrollPinnedByUser = !isMessagesAtBottom();
     updateJumpControl();
 }
 
