@@ -206,8 +206,7 @@ export function initChatSearchInputInput(): void {
 }
 
 /** The primary bar owns the arrows in the quick panel; the router's older call sites stay valid. */
-export function initChatSearchPrevClick(): void {}
-export function initChatSearchNextClick(): void {}
+
 
 /**
  * The stack's second control: find in this conversation. The search field lives in quick actions, so

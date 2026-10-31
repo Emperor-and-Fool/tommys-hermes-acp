@@ -62,8 +62,6 @@ export function boot(): void {
     composer.initSendBtnClick();
     composer.initQuickToggleBtnClick();
     search.initChatSearchInputInput();
-    search.initChatSearchPrevClick();
-    search.initChatSearchNextClick();
     multiSelect.initMultiSelectAllBtnClick();
     multiSelect.initMultiSelectDeleteBtnClick();
     multiSelect.initMultiSelectCopyBtnClick();
