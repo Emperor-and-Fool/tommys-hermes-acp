@@ -1620,6 +1620,15 @@ body.surface-notabs #tab-bar {
     right: auto;
     transform: translateX(-50%);
 }
+/* The same button that opened the search becomes the way out of it. */
+.pane-fab.is-close {
+    color: #c0392b;
+    border-color: #c0392b;
+}
+.pane-fab.is-close:hover {
+    color: #fff;
+    background: #c0392b;
+}
 .pane-fab:hover { opacity: 1; }
 .pane-fab:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 .pane-fab[hidden] { display: none; }
@@ -3279,6 +3288,13 @@ mark.search-mark-active {
     top: 0;
     right: 10px;
     transform: translateY(-50%);
+    /* A 16 px hit area with an 11 px glyph on a hairline edge is effectively invisible; this is the
+       only control that reveals search, copy and clear, so it is given a visible chip. */
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--vscode-editorWidget-background, var(--bg));
+    border: 1px solid var(--border);
     z-index: 7;
     background: none;
     border: none;
@@ -3294,13 +3310,14 @@ mark.search-mark-active {
 }
 .quick-toggle-btn:hover {
     color: var(--fg);
+    border-color: var(--fg);
 }
 .quick-toggle-btn[aria-expanded="true"] {
     color: var(--primary);
 }
 .quick-toggle-chevron {
-    width: 11px;
-    height: 11px;
+    width: 13px;
+    height: 13px;
     fill: currentColor;
     transition: transform 0.28s ease;
 }

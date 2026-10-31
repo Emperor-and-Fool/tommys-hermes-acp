@@ -1,5 +1,5 @@
 import { byId, chatSearchInput, chatSearchNext, chatSearchPrev, messagesEl, required } from '../dom';
-import { openQuickPanel } from './composer/composer';
+import { closeQuickPanel, openQuickPanel } from './composer/composer';
 import { wrapTextRange } from './composer/replyQuote';
 import { chatSearchState } from './messages/markdown';
 import { getMessageContentEl, getMessagePlainText } from './messages/messageList';
@@ -208,19 +208,42 @@ export function initChatSearchInputInput(): void {
 /** The primary bar owns the arrows in the quick panel; the router's older call sites stay valid. */
 
 
+const SEARCH_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm5.03 8.47 2.5 2.5-.7.7-2.5-2.5.7-.7z"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 3.3 8 6.9l3.6-3.6.9.9L8.9 7.8l3.6 3.6-.9.9L8 8.7l-3.6 3.6-.9-.9 3.6-3.6L3.5 4.2l.9-.9z"/></svg>';
+
 /**
- * The stack's second control: find in this conversation. The search field lives in quick actions, so
- * the button opens that panel — which already focuses the input once it is open.
+ * The stack's second control: find in this conversation.
+ *
+ * It is one button in two states — the magnifier opens quick actions (where the field lives, and
+ * which focuses it), and while that panel is open it becomes a red cross that closes it. A search
+ * with no visible way out is the state this replaces.
  */
 export function initChatSearchFab(): void {
     const button = byId<HTMLButtonElement>('searchCtl');
     if (!button) {
         return;
     }
+    const paint = (open: boolean): void => {
+        button.innerHTML = open ? CLOSE_ICON : SEARCH_ICON;
+        // While the panel is open the way out must be visible, not hover-gated like the magnifier.
+        button.classList.toggle('is-close', open);
+        button.classList.toggle('is-dim', !open);
+        button.title = open ? localeText('searchClose') : localeText('searchOpen');
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', open ? 'true' : 'false');
+    };
+    document.addEventListener('hermes:quick-panel', function(e) {
+        paint(!!(e as CustomEvent<{ open: boolean }>).detail?.open);
+    });
     button.addEventListener('click', function() {
+        if (button.classList.contains('is-close')) {
+            closeQuickPanel();
+            return;
+        }
         if (chatSearchInput.disabled) {
             return;
         }
         openQuickPanel();
     });
+    paint(false);
 }

@@ -16,6 +16,8 @@ export const zhCn: LocaleStrings = {
     newChat: '新对话',
     noActiveTabHint: '没有打开的对话。使用“打开标签页”以打开已关闭的对话或开始新的对话。',
     sessionNotFound: '此对话没有关联的 Hermes 会话（{0}）。请从已关闭的对话中重新打开。',
+    searchOpen: '搜索此对话',
+    searchClose: '关闭搜索',
     jumpToTop: '回到开头',
     jumpToNow: '跳到最新',
     jumpToTopHint: '滚动到此对话的第一条消息。',

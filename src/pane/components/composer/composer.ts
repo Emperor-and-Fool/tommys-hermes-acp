@@ -231,9 +231,17 @@ function setQuickPanelOpen(open: boolean) {
     inputQuickPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
     quickToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     quickToggleBtn.title = open ? locale.quickActionsCollapse : locale.quickActionsExpand;
+    // Told, not inferred: the transcript's search button changes shape with this panel, and it is
+    // not the only way to toggle it.
+    document.dispatchEvent(new CustomEvent('hermes:quick-panel', { detail: { open } }));
     if (open && chatSearchInput && !chatSearchInput.disabled) {
         setTimeout(function() { chatSearchInput.focus(); }, 280);
     }
+}
+
+/** Close it from elsewhere (the transcript's search button, when the panel is open). */
+export function closeQuickPanel(): void {
+    setQuickPanelOpen(false);
 }
 
 /** Open the quick-actions panel from elsewhere (the transcript's search button). */

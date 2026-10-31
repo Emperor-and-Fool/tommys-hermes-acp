@@ -16,6 +16,8 @@ export const en: LocaleStrings = {
     newChat: 'New Chat',
     noActiveTabHint: 'No chat is open. Use Open to pick a session, or start a new one.',
     sessionNotFound: 'This chat has no Hermes session ({0}). Reopen it from the closed chats.',
+    searchOpen: 'Search this conversation',
+    searchClose: 'Close search',
     jumpToTop: 'Back to the start',
     jumpToNow: 'Jump to now',
     jumpToTopHint: 'Scroll to the first message in this conversation.',
