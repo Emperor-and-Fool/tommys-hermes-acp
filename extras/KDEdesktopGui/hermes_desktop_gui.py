@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -98,6 +100,40 @@ def health_url(dashboard_url: str) -> QUrl:
     return url
 
 
+_EDITOR_CANDIDATES = (("codium", "VSCodium"), ("code", "VS Code"))
+
+
+def editor_command() -> tuple[str, str] | None:
+    """The editor to open from the tray: $HERMES_EDITOR, else the first one on PATH."""
+    override = os.environ.get("HERMES_EDITOR")
+    if override:
+        return override, Path(override).name
+    for name, label in _EDITOR_CANDIDATES:
+        if shutil.which(name):
+            return name, label
+    return None
+
+
+_EDITOR = editor_command()
+EDITOR_NAME = _EDITOR[1] if _EDITOR else "editor"
+
+
+def open_editor() -> None:
+    """Start the editor exactly as the desktop launcher does.
+
+    No window flags: VSCodium then restores the session you closed, which is what a tray
+    entry should do. `--new-window` forces a clean window (and `--reuse-window` only makes
+    sense while one is already open) — both were wrong here.
+    """
+    command = _EDITOR or editor_command()
+    if command is None:
+        return
+    try:
+        subprocess.Popen([command[0]], start_new_session=True)
+    except OSError:
+        pass
+
+
 class Tray(QSystemTrayIcon):
     def __init__(self, window: "DashboardWindow", app: QApplication, dash_url: str, base_icon: QIcon):
         super().__init__(status_icon(base_icon, "unknown"), app)
@@ -111,8 +147,12 @@ class Tray(QSystemTrayIcon):
         self._status_action = self._menu.addAction("Dashboard: checking…")
         self._status_action.setEnabled(False)
         self._menu.addSeparator()
-        self._open_action = self._menu.addAction("Open dashboard")
+        self._open_action = self._menu.addAction("Open Hermes GUI")
         self._open_action.triggered.connect(self.toggle_window)
+        self._editor_action = self._menu.addAction(f"Open {EDITOR_NAME}")
+        self._editor_action.triggered.connect(open_editor)
+        if not editor_command():
+            self._editor_action.setEnabled(False)
         reload_action = self._menu.addAction("Reload")
         reload_action.triggered.connect(window.reload_page)
         self._menu.addSeparator()
