@@ -48,7 +48,8 @@ const RESTORE_BATCH_SIZE = 30;
 
 const SCROLL_BOTTOM_THRESHOLD = 24;
 
-const SCROLL_IDLE_MS = 5000;
+/** Past this much travel the control offers "back to the start". */
+const JUMP_TOP_AFTER_PX = 300;
 
 function isMessagesAtBottom() {
     if (!messagesEl) {
@@ -68,30 +69,64 @@ export function maybeScrollToBottom(force?: boolean) {
     }
 }
 
-function scheduleScrollReenable() {
-    if (state.scrollIdleTimer) {
-        clearTimeout(state.scrollIdleTimer);
-    }
-    state.scrollIdleTimer = setTimeout(function() {
-        state.scrollIdleTimer = null;
-        if (isActivelyStreaming()) {
-            state.scrollPinnedByUser = false;
-            maybeScrollToBottom(true);
-        }
-    }, SCROLL_IDLE_MS);
-}
-
+/**
+ * The follow state is the user's, not a timer's.
+ *
+ * This used to re-enable following 5 s after the last scroll, so a reader part-way up a long answer
+ * was yanked to the bottom mid-sentence. Now the pane follows the conversation only while it is at
+ * the bottom; leaving is a decision, and it holds until the reader comes back or asks for "now".
+ */
 function onMessagesScroll() {
-    if (!isActivelyStreaming()) {
-        return;
-    }
     if (Date.now() < state.suppressScrollPinUntil) {
         return;
     }
-    if (!isMessagesAtBottom()) {
-        state.scrollPinnedByUser = true;
+    state.scrollPinnedByUser = !isMessagesAtBottom();
+    updateJumpControl();
+}
+
+/** Which way the one control points: "now" while reading higher up, "top" while following. */
+function updateJumpControl() {
+    const button = byId<HTMLButtonElement>('jumpCtl');
+    if (!button || !messagesEl) {
+        return;
     }
-    scheduleScrollReenable();
+    const awayFromTop = messagesEl.scrollTop > JUMP_TOP_AFTER_PX;
+    const mode = state.scrollPinnedByUser ? 'now' : (awayFromTop ? 'top' : null);
+    button.hidden = mode === null;
+    if (mode === null) {
+        return;
+    }
+    button.dataset.mode = mode;
+    button.textContent = mode === 'now' ? '\u2193 ' + localeText('jumpToNow') : '\u2191 ' + localeText('jumpToTop');
+    button.title = mode === 'now' ? localeText('jumpToNowHint') : localeText('jumpToTopHint');
+}
+
+function jumpControlAction(): void {
+    if (!messagesEl) {
+        return;
+    }
+    if (state.scrollPinnedByUser) {
+        resetAutoScrollFollow();
+        maybeScrollToBottom(true);
+    } else {
+        // A jump, not a scroll: this distance is thousands of pixels, and a smooth animation over it
+        // lasts longer than the pane's quiet window, so its own scroll events would read as the
+        // reader leaving the bottom and flip the control underneath the click.
+        messagesEl.scrollTop = 0;
+    }
+    updateJumpControl();
+}
+
+export function initJumpControl(): void {
+    const button = byId<HTMLButtonElement>('jumpCtl');
+    if (!button) {
+        return;
+    }
+    button.addEventListener('click', function(e) {
+        e.preventDefault();
+        jumpControlAction();
+    });
+    updateJumpControl();
 }
 
 export function initMessagesElScroll(): void {
@@ -102,10 +137,7 @@ export function initMessagesElScroll(): void {
 
 export function resetAutoScrollFollow() {
     state.scrollPinnedByUser = false;
-    if (state.scrollIdleTimer) {
-        clearTimeout(state.scrollIdleTimer);
-        state.scrollIdleTimer = null;
-    }
+    updateJumpControl();
 }
 
 export function getMessageContentEl(group: Element) {
@@ -459,6 +491,7 @@ export function appendMessage(role: string, text: string, options?: MessageOptio
             last._rawText = text;
             if (chatSearchState.query) scheduleChatSearch();
             maybeScrollToBottom();
+            updateJumpControl();
             return state.streamingMessageId;
         }
     }

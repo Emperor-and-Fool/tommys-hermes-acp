@@ -130,7 +130,6 @@ export interface PaneState {
     previewTooltip: HTMLElement | null;
     quoteActionEl: HTMLElement | null;
     replyQuote: QuotedText | null;
-    scrollIdleTimer: Timer | null;
     scrollPinnedByUser: boolean;
     /** Until this moment, a scroll event is ours (a card collapsing, an auto-scroll), not the
      *  user leaving the bottom, and must not pin the view. */
@@ -226,7 +225,6 @@ export const state: PaneState = {
     previewTooltip: null,
     quoteActionEl: null,
     replyQuote: null,
-    scrollIdleTimer: null,
     scrollPinnedByUser: false,
     suppressScrollPinUntil: 0,
     selectionQuoteTimer: null,

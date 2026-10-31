@@ -31,6 +31,7 @@ export function boot(): void {
     toolCards.initShowThoughtsFlag();
     toolCards.initShowToolCallsFlag();
     messageList.initMessagesElScroll();
+    messageList.initJumpControl();
     logViewer.initLogCloseButton();
     logViewer.initCopyLogBtnClick();
     logViewer.initLogClearButton();

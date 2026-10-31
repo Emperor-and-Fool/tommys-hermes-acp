@@ -17,6 +17,10 @@ export interface LocaleStrings {
     newChat: string;
     noActiveTabHint: string;
     sessionNotFound: string;
+    jumpToTop: string;
+    jumpToNow: string;
+    jumpToTopHint: string;
+    jumpToNowHint: string;
     sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
