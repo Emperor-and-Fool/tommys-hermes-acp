@@ -23,3 +23,10 @@ package-lock.json
 *.vsix
 !secondant/tommys-hermes-secondant.vsix
 *.old
+# `extras/` carries the systray app's sources, which the extension launches.
+# Its build output and venv must not ride along: a .deb sitting in dist/ at
+# packaging time would otherwise land inside the VSIX.
+extras/**/dist/**
+extras/**/build/**
+extras/**/.build-venv/**
+extras/**/__pycache__/**

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hermes Desktop TUI
+Comment=Tray status and window for the local Hermes dashboard
+Exec=/usr/bin/python3 /home/skdj/_GitProjects/emperorandfools-repos/tommys-hermes-acp/extras/KDEdesktopTui/hermes_desktop_gui.py --show
+Icon=/home/skdj/_GitProjects/emperorandfools-repos/tommys-hermes-acp/extras/KDEdesktopTui/icons/hermes-nousresearch-sec.svg
+Terminal=false
+Categories=Development;
+StartupNotify=false
+StartupWMClass=hermes-desktopgui

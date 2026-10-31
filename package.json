@@ -2,7 +2,7 @@
   "name": "tommys-hermes-acp",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",
@@ -113,6 +113,14 @@
         "command": "tommys.configureEnvironment",
         "title": "%commands.tommys.configureEnvironment.title%",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "tommys.installSystray",
+        "title": "%commands.tommys.installSystray.title%"
+      },
+      {
+        "command": "tommys.uninstallSystray",
+        "title": "%commands.tommys.uninstallSystray.title%"
       }
     ],
     "submenus": [
@@ -191,6 +199,16 @@
           "command": "tommys.uninstallSecondant",
           "when": "tommys2Installed",
           "group": "0@2"
+        },
+        {
+          "command": "tommys.installSystray",
+          "when": "!tommysSystrayInstalled",
+          "group": "1@0"
+        },
+        {
+          "command": "tommys.uninstallSystray",
+          "when": "tommysSystrayInstalled",
+          "group": "1@0"
         },
         {
           "command": "tommys.openSettings",
