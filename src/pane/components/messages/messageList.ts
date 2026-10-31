@@ -1,4 +1,4 @@
-import { byId, messagesEl, required } from '../../dom';
+import { byId, chatBodyEl, messagesEl, required } from '../../dom';
 import { post } from '../../post';
 import { assistantRoleLabel } from '../../i18n';
 import { state } from '../../state';
@@ -98,9 +98,15 @@ function updateJumpControl() {
     if (mode === null) {
         return;
     }
+    // A glyph, not a sentence: a wide pill covers the last line of the answer, which is where the
+    // reader is looking. The words live in the tooltip and in the accessible name.
+    const label = mode === 'now' ? localeText('jumpToNow') : localeText('jumpToTop');
     button.dataset.mode = mode;
-    button.textContent = mode === 'now' ? '\u2193 ' + localeText('jumpToNow') : '\u2191 ' + localeText('jumpToTop');
+    button.innerHTML = mode === 'now'
+        ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 12.5 8h-3v5.5h-3V8h-3L8 2.5z"/></svg>'
+        : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3.5 8h3V2.5h3V8h3L8 13.5z"/></svg>';
     button.title = mode === 'now' ? localeText('jumpToNowHint') : localeText('jumpToTopHint');
+    button.setAttribute('aria-label', label);
     // "Jump to now" answers a question the screen no longer answers (where the conversation went);
     // "back to the start" is a convenience, so it stays out of the way until the pointer asks.
     button.classList.toggle('is-dim', mode === 'top');
@@ -112,10 +118,11 @@ const JUMP_REVEAL_ZONE = { right: 150, bottom: 70 };
 /** Reveal every dim control in the stack when the pointer comes near the corner it occupies. */
 function revealFabsNear(ev: PointerEvent): void {
     const stack = byId<HTMLElement>('paneFabs');
-    if (!stack || !messagesEl) {
+    const area = chatBodyEl;
+    if (!stack || !area) {
         return;
     }
-    const box = messagesEl.getBoundingClientRect();
+    const box = area.getBoundingClientRect();
     const near = box.right - ev.clientX <= JUMP_REVEAL_ZONE.right && box.bottom - ev.clientY <= JUMP_REVEAL_ZONE.bottom;
     stack.querySelectorAll('.pane-fab.is-dim').forEach(function(fab) {
         fab.classList.toggle('is-revealed', near);
@@ -153,10 +160,10 @@ export function initJumpControl(): void {
         e.preventDefault();
         jumpControlAction();
     });
-    if (messagesEl) {
-        messagesEl.addEventListener('pointermove', revealFabsNear, { passive: true });
-        messagesEl.addEventListener('pointerleave', hideFabs, { passive: true });
-    }
+    // `.chat-body` rather than `#messages`: the corner strip below the scroller is part of the same
+    // area, and a pointer resting there should reveal the controls too.
+    chatBodyEl.addEventListener('pointermove', revealFabsNear, { passive: true });
+    chatBodyEl.addEventListener('pointerleave', hideFabs, { passive: true });
     updateJumpControl();
 }
 
