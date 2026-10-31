@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-10-31
+
+The systray app becomes something the extension can install for you, and the Qt program behind it
+ships inside the bundle.
+
+### Added
+
+- **A systray app, installable from the menu.** Two entries — *Install Hermes systray app* and
+  *Uninstall Desktop GUI* — each shown only in the state it applies to (`tommysSystrayInstalled`,
+  refreshed by a 10 s watch so the menu follows an install done outside the editor). The installer
+  is launched from the extension's own folder, so a fresh install needs no separate download
+- **`extras/KDEdesktopGui/`** — the Qt program behind that entry: `hermes_desktop_gui.py` (the
+  tray), `installer_gui.py` (the install flow), its icons, a `.desktop` entry, and build scripts
+  for Linux and Windows. It is a separate program, not part of the extension's runtime; the
+  extension only launches the installer — which is why the folder ships in the VSIX rather than
+  living beside it (`systrayInstall.ts` resolves it under `extensionUri`)
+
 ## [2.1.0] - 2026-10-30
 
 The release where the pane stops keeping its own copy of facts the agent already owns, and the
