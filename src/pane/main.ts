@@ -1,4 +1,5 @@
 /* The pane's assembly: every component's init, in the order chat.js ran them. */
+import { byId } from './dom';
 import { post } from './post';
 import * as composer from './components/composer/composer';
 import * as historyAttach from './components/composer/historyAttach';
@@ -33,6 +34,16 @@ export function boot(): void {
     messageList.initMessagesElScroll();
     messageList.initJumpControl();
     search.initChatSearchFab();
+    // The selection toolbar carries the same search, as a second bar over one query.
+    const msInput = byId<HTMLInputElement>('msSearchInput');
+    if (msInput) {
+        search.registerSearchBar({
+            input: msInput,
+            count: byId<HTMLElement>('msSearchCount'),
+            prev: byId<HTMLButtonElement>('msSearchPrev'),
+            next: byId<HTMLButtonElement>('msSearchNext'),
+        });
+    }
     logViewer.initLogCloseButton();
     logViewer.initCopyLogBtnClick();
     logViewer.initLogClearButton();

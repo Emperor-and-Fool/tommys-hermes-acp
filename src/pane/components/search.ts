@@ -1,10 +1,28 @@
 import { byId, chatSearchInput, chatSearchNext, chatSearchPrev, messagesEl, required } from '../dom';
+import { openQuickPanel } from './composer/composer';
 import { wrapTextRange } from './composer/replyQuote';
 import { chatSearchState } from './messages/markdown';
 import { getMessageContentEl, getMessagePlainText } from './messages/messageList';
 
 
-const chatSearchCount = required('chatSearchCount');
+const chatSearchCount = required<HTMLElement>('chatSearchCount');
+
+/**
+ * One search, several bars.
+ *
+ * The transcript has one search: the query, the matches and the active match all live in
+ * `chatSearchState`. What differs is where you type it — the quick-actions panel while reading, the
+ * selection toolbar while picking messages. Each place registers a bar; they share the state, so the
+ * query survives the move between them instead of starting a second, separate search.
+ */
+export interface SearchBar {
+    input: HTMLInputElement;
+    count?: HTMLElement | null;
+    prev?: HTMLButtonElement | null;
+    next?: HTMLButtonElement | null;
+}
+
+const bars: SearchBar[] = [];
 
 function clearSearchMarks() {
     document.querySelectorAll('mark.search-mark').forEach(function(mark) {
@@ -19,21 +37,23 @@ function clearSearchMarks() {
 function updateChatSearchUI() {
     const total = chatSearchState.matches.length;
     const hasQuery = !!chatSearchState.query;
-    if (chatSearchCount) {
-        if (!hasQuery) {
-            chatSearchCount.textContent = '';
-            chatSearchCount.classList.remove('no-match');
-        } else if (total === 0) {
-            chatSearchCount.textContent = '0/0';
-            chatSearchCount.classList.add('no-match');
-        } else {
-            chatSearchCount.textContent = (chatSearchState.current + 1) + '/' + total;
-            chatSearchCount.classList.remove('no-match');
+    bars.forEach(function(bar) {
+        if (bar.count) {
+            if (!hasQuery) {
+                bar.count.textContent = '';
+                bar.count.classList.remove('no-match');
+            } else if (total === 0) {
+                bar.count.textContent = '0/0';
+                bar.count.classList.add('no-match');
+            } else {
+                bar.count.textContent = (chatSearchState.current + 1) + '/' + total;
+                bar.count.classList.remove('no-match');
+            }
         }
-    }
-    const canNav = total > 0;
-    if (chatSearchPrev) chatSearchPrev.disabled = !canNav;
-    if (chatSearchNext) chatSearchNext.disabled = !canNav;
+        const canNav = total > 0;
+        if (bar.prev) bar.prev.disabled = !canNav;
+        if (bar.next) bar.next.disabled = !canNav;
+    });
 }
 
 function applyChatSearchHighlight() {
@@ -79,8 +99,7 @@ function applyChatSearchHighlight() {
 }
 
 function runChatSearch() {
-    if (!chatSearchInput) return;
-    const query = chatSearchInput.value.trim();
+    const query = chatSearchState.query.trim();
     chatSearchState.query = query;
     chatSearchState.matches = [];
     chatSearchState.current = -1;
@@ -124,7 +143,7 @@ export function clearChatSearch() {
         clearTimeout(chatSearchState.timer);
         chatSearchState.timer = null;
     }
-    if (chatSearchInput) chatSearchInput.value = '';
+    bars.forEach(function(bar) { bar.input.value = ''; });
     chatSearchState.query = '';
     chatSearchState.matches = [];
     chatSearchState.current = -1;
@@ -139,43 +158,60 @@ function gotoChatSearchMatch(delta: number) {
     applyChatSearchHighlight();
 }
 
-export function initChatSearchInputInput(): void {
-    if (chatSearchInput) {
-        chatSearchInput.addEventListener('input', scheduleChatSearch);
-        chatSearchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                gotoChatSearchMatch(-1);
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                gotoChatSearchMatch(1);
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (e.shiftKey) gotoChatSearchMatch(-1);
-                else gotoChatSearchMatch(1);
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                clearChatSearch();
-            }
+/**
+ * Wire one bar. Typing in any of them drives the shared query (and mirrors the text into the others);
+ * the arrows and Enter step through the same matches, so the two places behave identically.
+ */
+export function registerSearchBar(bar: SearchBar): void {
+    bars.push(bar);
+    bar.input.addEventListener('input', function() {
+        bars.forEach(function(other) {
+            if (other !== bar) other.input.value = bar.input.value;
         });
+        chatSearchState.query = bar.input.value;
+        scheduleChatSearch();
+    });
+    bar.input.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            gotoChatSearchMatch(-1);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            gotoChatSearchMatch(1);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (e.shiftKey) gotoChatSearchMatch(-1);
+            else gotoChatSearchMatch(1);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            clearChatSearch();
+        }
+    });
+    if (bar.prev) {
+        bar.prev.addEventListener('click', function() { gotoChatSearchMatch(-1); });
     }
+    if (bar.next) {
+        bar.next.addEventListener('click', function() { gotoChatSearchMatch(1); });
+    }
+    updateChatSearchUI();
 }
 
-export function initChatSearchPrevClick(): void {
-    if (chatSearchPrev) {
-        chatSearchPrev.addEventListener('click', function() { gotoChatSearchMatch(-1); });
-    }
+export function initChatSearchInputInput(): void {
+    registerSearchBar({
+        input: chatSearchInput,
+        count: chatSearchCount,
+        prev: chatSearchPrev,
+        next: chatSearchNext,
+    });
 }
 
-export function initChatSearchNextClick(): void {
-    if (chatSearchNext) {
-        chatSearchNext.addEventListener('click', function() { gotoChatSearchMatch(1); });
-    }
-}
+/** The primary bar owns the arrows in the quick panel; the router's older call sites stay valid. */
+export function initChatSearchPrevClick(): void {}
+export function initChatSearchNextClick(): void {}
 
 /**
- * The stack's second control: find in this conversation. It focuses the search field rather than
- * opening its own UI, so there is one search and one set of arrows.
+ * The stack's second control: find in this conversation. The search field lives in quick actions, so
+ * the button opens that panel — which already focuses the input once it is open.
  */
 export function initChatSearchFab(): void {
     const button = byId<HTMLButtonElement>('searchCtl');
@@ -186,7 +222,6 @@ export function initChatSearchFab(): void {
         if (chatSearchInput.disabled) {
             return;
         }
-        chatSearchInput.focus();
-        chatSearchInput.select();
+        openQuickPanel();
     });
 }

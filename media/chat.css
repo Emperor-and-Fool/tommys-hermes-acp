@@ -2059,7 +2059,45 @@ body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
 .multi-select-toolbar button.ms-exit {
     margin-left: 0;
 }
-.multi-select-toolbar .ms-role-filters {
+.multi-select-toolbar /* The same search as the transcript's, with a second bar: it lives here while messages are being
+   picked, and both bars drive the one query. */
+.ms-search {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 180px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--vscode-input-background, var(--bg));
+}
+.ms-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 0;
+}
+.ms-search-count {
+    font-size: 11px;
+    color: var(--dim);
+}
+.ms-search-count.no-match { color: var(--vscode-errorForeground, #c33); }
+.ms-search-nav {
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+}
+.ms-search-nav:disabled { opacity: 0.4; cursor: default; }
+
+.ms-role-filters {
     display: flex;
     flex-direction: column;
     align-items: flex-end;

@@ -236,6 +236,11 @@ function setQuickPanelOpen(open: boolean) {
     }
 }
 
+/** Open the quick-actions panel from elsewhere (the transcript's search button). */
+export function openQuickPanel(): void {
+    setQuickPanelOpen(true);
+}
+
 function toggleQuickPanel() {
     setQuickPanelOpen(!inputQuickPanel.classList.contains('open'));
 }

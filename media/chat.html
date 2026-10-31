@@ -111,6 +111,12 @@
         <button type="button" id="multiSelectDeleteBtn" class="ms-danger" disabled></button>
         <button type="button" id="multiSelectCopyBtn" disabled></button>
         <button type="button" id="multiSelectExportBtn" disabled></button>
+        <div class="ms-search">
+            <input type="search" id="msSearchInput" autocomplete="off" spellcheck="false">
+            <span class="ms-search-count" id="msSearchCount"></span>
+            <button type="button" class="ms-search-nav" id="msSearchPrev" disabled>↑</button>
+            <button type="button" class="ms-search-nav" id="msSearchNext" disabled>↓</button>
+        </div>
         <div class="ms-role-filters" id="historyRoleFilters" hidden>
             <div class="ms-role-row">
                 <label class="ms-role"><input type="checkbox" id="historyRoleUser" checked><span>User</span></label>
