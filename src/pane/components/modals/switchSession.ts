@@ -1,4 +1,4 @@
-import { byId, required } from '../../dom';
+import { required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { hideModal, showModal } from './modal';

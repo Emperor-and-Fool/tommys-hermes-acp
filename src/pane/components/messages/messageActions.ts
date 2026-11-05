@@ -1,4 +1,4 @@
-import { byId, inputEl } from '../../dom';
+import { inputEl } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';

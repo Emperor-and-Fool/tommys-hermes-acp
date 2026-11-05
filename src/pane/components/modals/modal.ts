@@ -1,4 +1,4 @@
-import { byId, closedPicker, configureEnvModal, historyPicker, detectEnvToggle, logModal, modelPicker, profilePicker, tabContextMenu, required } from '../../dom';
+import { closedPicker, configureEnvModal, historyPicker, logModal, modelPicker, profilePicker, tabContextMenu, required } from '../../dom';
 import { state } from '../../state';
 import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';

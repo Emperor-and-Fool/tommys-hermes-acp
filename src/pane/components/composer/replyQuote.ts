@@ -1,4 +1,4 @@
-import { byId, inputEl, messagesEl, required } from '../../dom';
+import { inputEl, messagesEl, required } from '../../dom';
 import { state } from '../../state';
 import type { SelectionCapture } from '../../state';
 import { groupsInOrder, quoteSegmentForGroup } from '../messages/messageList';

@@ -9,7 +9,7 @@ import { applyHistoryPickerLocale } from './components/composer/historyAttach';
 import { updateModelButtonDisplay } from './components/pickers/modelPicker';
 import { profileDisplayName } from './components/pickers/profilePicker';
 import { applyInputPlaceholder } from './components/status/statusBar';
-import { byId, cancelBtn, chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, closedPickerLabel, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, copyLogBtn, copySessionBtn, detectEnvBtn, detectEnvToggle, faqModalBody, inputResizeHandle, messagesEl, modelBtn, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, profileBtn, quickToggleBtn, retryBtn, sendBtn, statusText, tokenUsageRing, required } from './dom';
+import { chatSearchInput, chatSearchNext, chatSearchPrev, clearInputBtn, closedPickerBtn, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, copySessionBtn, inputResizeHandle, messagesEl, multiSelectAllBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, openTabBtn, quickToggleBtn, sendBtn, statusText, tokenUsageRing, required } from './dom';
 import { state } from './state';
 
 

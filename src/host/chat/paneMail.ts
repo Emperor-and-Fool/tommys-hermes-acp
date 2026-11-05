@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import type * as vscode from 'vscode';
-import { PANE_MAIL_DIR, PANE_MAIL_LOG, PaneMailEnvelope, PaneMailMessage, parseEnvelope, serializeEnvelope } from '../../shared/paneMail';
+import { PANE_MAIL_DIR, PANE_MAIL_LOG, PaneMailEnvelope, parseEnvelope, serializeEnvelope } from '../../shared/paneMail';
 import type { HistoryRef } from '../../shared/chat';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 

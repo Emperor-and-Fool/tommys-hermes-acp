@@ -1,4 +1,4 @@
-import { byId, cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn, required } from '../../dom';
+import { cancelBtn, chatBodyEl, chatSearchInput, clearInputBtn, copySessionBtn, inputEl, inputResizeHandle, messagesEl, quickToggleBtn, sendBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { appendMessage, resetAutoScrollFollow } from '../messages/messageList';

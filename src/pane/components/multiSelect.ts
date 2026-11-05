@@ -1,5 +1,5 @@
 import { MAX_HISTORY_MESSAGES } from '../../shared/chat';
-import { byId, historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, required } from '../dom';
+import { historyRoleAssistant, historyRoleFilters, historyRoleThought, historyRoleTool, historyRoleUser, inputEl, messagesEl, multiSelectAllBtn, multiSelectAttachConfirmBtn, multiSelectCopyBtn, multiSelectDeleteBtn, multiSelectExitBtn, multiSelectExportBtn, required } from '../dom';
 import { post } from '../post';
 import { state } from '../state';
 import type { SessionExportAction } from '../../shared/webview';

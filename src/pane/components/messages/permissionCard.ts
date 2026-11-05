@@ -1,10 +1,7 @@
-import { byId, messagesEl, statusText } from '../../dom';
-import type { ApprovalMode, HostToPane } from '../../../shared/webview';
+import { messagesEl } from '../../dom';
+import type { ApprovalMode } from '../../../shared/webview';
 import type { PermissionOption } from '../../../shared/acp';
 import type { ChatMessage } from '../../../shared/chat';
-
-/** The permissionRequest member of the host-to-pane union. */
-type PermissionRequestMsg = Extract<HostToPane, { type: 'permissionRequest' }>;
 
 /** A live request, or the same card restored from the transcript (which carries the outcome). */
 type PermissionCardInput = {

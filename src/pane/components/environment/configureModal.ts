@@ -18,7 +18,7 @@ export interface EnvCandidate {
     version?: string;
 }
 
-import { byId, configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, required } from '../../dom';
+import { configureEnvBrowseBtn, configureEnvCancelBtn, configureEnvCandidatesEmpty, configureEnvDetectBtn, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvDetectSteps, configureEnvDetectToggle, configureEnvModal, configureEnvPathClearBtn, configureEnvPathInput, configureEnvSaveBtn, configureEnvSystemBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';

@@ -16,7 +16,7 @@ interface DetectProgressFields {
 type DetectProgressMsg = Extract<HostToPane, { type: 'detectEnvironmentProgress' }>;
 type DetectEndMsg = Extract<HostToPane, { type: 'detectEnvironmentEnd' }>;
 
-import { byId, detectEnvBtn, detectEnvToggle, required } from '../../dom';
+import { detectEnvBtn, detectEnvToggle, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { doDetectEnvironment } from '../status/statusBar';

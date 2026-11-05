@@ -9,7 +9,6 @@ import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
 
 import type { ChatMessage, HistoryRef, PeerRef, PeerState } from '../../../shared/chat';
-import type { HostToPane } from '../../../shared/webview';
 
 /** What a caller can pass when adding a message; mirrors the addMessage payload's extras. */
 export interface MessageOptions {
@@ -41,7 +40,7 @@ import { updateTokenUsage } from '../status/tokenMeter';
 import { cancelSessionMarkdownRender, chatSearchState, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
-import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
+import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
 import { playHistoryPickerIntro } from '../composer/historyAttach';

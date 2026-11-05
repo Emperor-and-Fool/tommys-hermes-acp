@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
-import * as os from 'os';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';

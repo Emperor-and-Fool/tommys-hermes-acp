@@ -1,4 +1,4 @@
-import { byId, chatBodyEl, messagesEl } from '../../dom';
+import { chatBodyEl, messagesEl } from '../../dom';
 import { state } from '../../state';
 import { escapeHtmlEntities } from '../../util/html';
 import { processFileRefs } from '../composer/fileMention';

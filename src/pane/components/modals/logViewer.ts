@@ -1,4 +1,4 @@
-import { byId, copyLogBtn, logModal, required } from '../../dom';
+import { copyLogBtn, logModal, required } from '../../dom';
 import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';
 import { hideModal, isLogModalOpen } from './modal';

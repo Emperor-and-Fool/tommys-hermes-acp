@@ -1,4 +1,4 @@
-import { byId, modelBtn, modelPicker, required } from '../../dom';
+import { modelBtn, modelPicker, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import type { ModelPayload } from '../../state';

@@ -1,4 +1,4 @@
-import { byId, tokenUsageRing, required } from '../../dom';
+import { tokenUsageRing, required } from '../../dom';
 import { TOKEN_RING_RADIUS } from './statusBar';
 
 
