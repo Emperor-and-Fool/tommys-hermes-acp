@@ -10,12 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Ctrl+C and the context-menu Copy keep a selection made in the pane.** VSCodium 1.143's webview
-  host re-focuses the element that last fired `focusin` before it runs `execCommand('copy')`, and only
-  while `document.activeElement` is `<body>`. In this pane that element is the composer, so the
-  refocus collapsed the selection and the copy came back empty. A `pointerup` listener now focuses a
-  `tabindex="-1"` fallback root for clicks on content, so `activeElement` is never `<body>` when the
-  host copies: transcript, code blocks, aux cards, log/history viewer and the info modals alike.
+- **Ctrl+C keeps a selection made in the pane.** VSCodium 1.143's webview host re-focuses the element
+  that last fired `focusin` before it runs `execCommand('copy')`, and only while
+  `document.activeElement` is `<body>`. In this pane that element is the composer, so the refocus
+  collapsed the selection and the copy came back empty. A primary-button `pointerup` listener now
+  focuses a `tabindex="-1"` fallback root for clicks on content, so `activeElement` is never `<body>`
+  when the host copies: transcript, code blocks, aux cards, log/history viewer and the info modals
+  alike. Non-primary buttons are ignored, so the editor's context menu is no longer dismissed by a
+  focus change on right-button release.
+
 ## [2.1.1] - 2026-10-31
 
 The systray app becomes something the extension can install for you, and the Qt program behind it

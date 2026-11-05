@@ -19,6 +19,10 @@ export function initFocusFallback(): void {
     // Anything that focuses itself on purpose keeps its focus: the fallback is for content only.
     const interactive = 'button, a, input, textarea, select, label, [contenteditable], [role="button"]';
     document.addEventListener('pointerup', function(e) {
+        // Primary button only. A right press opens the editor's context menu in the parent document,
+        // and that menu closes as soon as focus returns to the webview — so refocusing here on the
+        // release dismissed it before the pointer could reach "Copy".
+        if (e.button !== 0) return;
         const target = e.target instanceof Element ? e.target : null;
         if (!target || target.closest(interactive)) return;
         root.focus({ preventScroll: true });
