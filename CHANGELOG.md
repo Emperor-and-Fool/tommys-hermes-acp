@@ -6,7 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.2.0] - 2026-11-05
+
+Peer cards say who forwarded them and who wrote each message, and expire when nobody answers. Copy
+works in the pane again on VSCodium 1.143.
+
+### Added
+
+- **Peer cards name the forwarder and tag each message with its sender.** One bubble per forwarded
+  message, tagged `you@host`; the envelope carries `forwarderProfile`, `forwarderHost`,
+  `forwarderRole` and a `messages` array, each entry recording its own `sentBy`.
+- **An unanswered peer card expires**, like a permission card. A dismissed or expired card is
+  shortened to a note, and a pane re-show or tab switch sweeps timed-out cards. Local peer cards are
+  not part of Hermes' transcript, so a reload rebuilds the transcript without them and the
+  inbox re-injects the undecided ones from its cursor.
+- **`tommys.debugTabSwitch`** (off by default): logs each tab switch and flags a tab bound to a
+  Hermes session that has nothing to show.
+
+### Changed
+
+- **Envelope fields renamed:** `fromProfile`, `fromHost` and `senderRole` become `forwarderProfile`,
+  `forwarderHost` and `forwarderRole`.
+- **One copy of the environment-detection progress formatting**, in `src/shared/detectProgress.ts`.
+  The host's copy was never read and is gone; every branch is pinned by tests in English and
+  Chinese. No change to what the panel shows.
+- Unused imports removed; `noUnusedLocals` is on for the host and the pane.
+- The Chinese README and changelog now say they stop at 1.1.0; the English files are current.
 
 ### Fixed
 
