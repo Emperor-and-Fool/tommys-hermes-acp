@@ -1,19 +1,15 @@
 import type { HostToPane } from '../../../shared/webview';
+import {
+    DETECT_STEP_IDS,
+    detectStepLabel as detectStepLabelFromLocale,
+    formatDetectStepDetail as formatDetectStepDetailFromLocale,
+} from '../../../shared/detectProgress';
+import type { DetectProgressFields, LocaleFill, LocaleLookup } from '../../../shared/detectProgress';
 
-/** The fields every detect-progress message carries, whichever flow sent it. */
-interface DetectProgressFields {
-    step: string;
-    status: string;
-    brief: string;
-    detail?: string;
-    paths?: string[];
-    count?: number;
-    verifiedCount?: number;
-    totalCount?: number;
-    reportStatus?: string;
-}
+export { DETECT_STEP_IDS };
 
-type DetectProgressMsg = Extract<HostToPane, { type: 'detectEnvironmentProgress' }>;
+/** A progress message as the wire carries it — either flow, same fields; the shared rules read them. */
+type DetectProgressMsg = DetectProgressFields & { type: string; brief: string };
 type DetectEndMsg = Extract<HostToPane, { type: 'detectEnvironmentEnd' }>;
 
 import { detectEnvBtn, detectEnvToggle, required } from '../../dom';
@@ -22,59 +18,16 @@ import { state } from '../../state';
 import { doDetectEnvironment } from '../status/statusBar';
 
 
-export const DETECT_STEP_IDS = [
-    'config', 'path_lookup', 'known_path', 'pip', 'python_import', 'hermes_home', 'verify', 'acp_check', 'acp_install', 'summary',
-];
-
-const DETECT_STEP_LOCALE_KEYS: Record<string, string> = {
-    config: 'detectEnvironmentStepConfig',
-    path_lookup: 'detectEnvironmentStepPath',
-    known_path: 'detectEnvironmentStepKnownPath',
-    pip: 'detectEnvironmentStepPip',
-    python_import: 'detectEnvironmentStepPython',
-    hermes_home: 'detectEnvironmentStepHermesHome',
-    verify: 'detectEnvironmentStepVerify',
-    acp_check: 'detectEnvironmentStepAcpCheck',
-    acp_install: 'detectEnvironmentStepAcpInstall',
-    summary: 'detectEnvironmentStepSummary',
-};
+/** The pane's locale, wired into the shared step map and status rules. */
+const lookupLocale: LocaleLookup = (key) => locale[key] || '';
+const fillLocale: LocaleFill = (key, ...args) => localeText(key, ...args);
 
 export function detectStepLabel(stepId: string): string {
-    const key = DETECT_STEP_LOCALE_KEYS[stepId];
-    return key ? (locale[key] || stepId) : stepId;
+    return detectStepLabelFromLocale(stepId, lookupLocale);
 }
 
 function formatDetectStepDetail(msg: DetectProgressFields): string {
-    if (msg.status === 'running') return '…';
-    if (msg.status === 'skip') return locale.detectEnvironmentStepSkipped || 'Skipped';
-    if (msg.step === 'verify') {
-        return localeText(
-            'detectEnvironmentStepVerifyCount',
-            String(msg.verifiedCount != null ? msg.verifiedCount : 0),
-            String(msg.totalCount != null ? msg.totalCount : 0),
-        );
-    }
-    if (msg.step === 'acp_check') {
-        if (msg.status === 'ok') return msg.detail || locale.detectEnvironmentStepAcpOk || '';
-        if (msg.status === 'fail') return msg.detail || locale.detectEnvironmentStepAcpFail || '';
-    }
-    if (msg.step === 'acp_install') {
-        if (msg.status === 'ok') return msg.detail || locale.detectEnvironmentStepAcpInstallOk || '';
-        if (msg.status === 'fail') return msg.detail || locale.detectEnvironmentStepAcpInstallFail || '';
-    }
-    if (msg.step === 'summary') {
-        if (msg.detail) return msg.detail;
-        if (msg.reportStatus === 'ready') return locale.detectEnvironmentSummaryReady || '';
-        if (msg.reportStatus === 'broken') return locale.detectEnvironmentSummaryBroken || '';
-        return locale.detectEnvironmentSummaryInstall || locale.detectEnvironmentSummaryNotFound || '';
-    }
-    if ((msg.count ?? 0) > 0) {
-        const summary = localeText('detectEnvironmentStepFoundCount', String(msg.count));
-        if (msg.detail) return summary + '\n' + msg.detail;
-        return summary;
-    }
-    if (msg.status === 'fail' && msg.detail) return msg.detail;
-    return locale.detectEnvironmentStepNotFound || 'Not found';
+    return formatDetectStepDetailFromLocale(msg, lookupLocale, fillLocale);
 }
 
 export function setDetectEnvIcon(el: Element | null, status: string) {
@@ -163,7 +116,7 @@ export function resetDetectStepsList(stepIdPrefix: string) {
     });
 }
 
-export function updateDetectStepsList(msg: DetectProgressFields, stepIdPrefix: string, compactIconEl?: HTMLElement, compactTextEl?: HTMLElement) {
+export function updateDetectStepsList(msg: DetectProgressMsg, stepIdPrefix: string, compactIconEl?: HTMLElement, compactTextEl?: HTMLElement) {
     const row = document.getElementById(stepIdPrefix + msg.step);
     if (row) {
         row.style.display = '';
