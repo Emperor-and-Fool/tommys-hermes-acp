@@ -22,6 +22,7 @@ import * as statusBar from './components/status/statusBar';
 import * as viewer from './components/viewer/historyViewer';
 import * as i18n from './i18n';
 import * as router from './router';
+import * as focusFallback from './util/focusFallback';
 
 export function boot(): void {
     composer.initInitInputHeight();
@@ -70,6 +71,7 @@ export function boot(): void {
     viewer.initHistoryViewer();
     modal.initDocumentClick();
     modal.initDocumentKeydown();
+    focusFallback.initFocusFallback();
     detectPanel.initDetectEnvToggleClick();
     detectPanel.initDetectEnvCloseBtnClick();
     composer.initClearInputBtnClick();
