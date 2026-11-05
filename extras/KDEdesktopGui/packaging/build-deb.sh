@@ -9,7 +9,7 @@
 set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
-version="${1:-2.1.1}"
+version="${1:-2.2.0}"
 architecture="amd64"
 package_name="hermes-desktopgui"
 output_dir="${project_root}/dist"

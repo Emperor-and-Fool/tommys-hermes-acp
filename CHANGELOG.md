@@ -15,10 +15,11 @@ works in the pane again on VSCodium 1.143.
 
 - **Peer cards name the forwarder and tag each message with its sender.** One bubble per forwarded
   message, tagged `you@host`; the envelope carries `forwarderProfile`, `forwarderHost`,
-  `forwarderRole`, `sentBy` and `peerMessages`.
+  `forwarderRole` and a `messages` array, each entry recording its own `sentBy`.
 - **An unanswered peer card expires**, like a permission card. A dismissed or expired card is
   shortened to a note, and a pane re-show or tab switch sweeps timed-out cards. Local peer cards are
-  not part of Hermes' transcript, so a window reload rebuilds without them.
+  not part of Hermes' transcript, so a reload rebuilds the transcript without them and the
+  inbox re-injects the undecided ones from its cursor.
 - **`tommys.debugTabSwitch`** (off by default): logs each tab switch and flags a tab bound to a
   Hermes session that has nothing to show.
 
