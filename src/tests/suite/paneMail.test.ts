@@ -53,14 +53,14 @@ describe('pane mail', () => {
         const outbox = new PaneMailOutbox(host() as never);
         assert.ok(
             outbox.send(
-                newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'hello', sourceMessageId: 'm1' })
+                newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'hello', sourceMessageId: 'm1' })
             )
         );
 
         const inbox = new PaneMailInbox(host() as never);
         assert.strictEqual(inbox.drain(), 1);
         assert.strictEqual(received.length, 1);
-        assert.strictEqual(received[0].fromProfile, 'pa');
+        assert.strictEqual(received[0].forwarderProfile, 'pa');
         assert.strictEqual(received[0].toProfile, 'dev-vsc');
         assert.strictEqual(received[0].body, 'hello');
         assert.strictEqual(received[0].sourceMessageId, 'm1');
@@ -71,7 +71,7 @@ describe('pane mail', () => {
     });
 
     it('hands an envelope id over once even when the line is written twice', () => {
-        const envelope = newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'twice' });
+        const envelope = newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'twice' });
         const line = serializeEnvelope(envelope);
         fs.appendFileSync(paneMailPaths().log, line + line, 'utf8');
 
@@ -82,8 +82,8 @@ describe('pane mail', () => {
 
     it('ignores what is addressed elsewhere, and still consumes it', () => {
         const outbox = new PaneMailOutbox(host() as never);
-        outbox.send(newEnvelope({ fromProfile: 'pa', toProfile: 'someone-else', body: 'not mine' }));
-        outbox.send(newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'mine' }));
+        outbox.send(newEnvelope({ forwarderProfile: 'pa', toProfile: 'someone-else', body: 'not mine' }));
+        outbox.send(newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'mine' }));
 
         const inbox = new PaneMailInbox(host() as never);
         assert.strictEqual(inbox.drain(), 1);
@@ -93,7 +93,7 @@ describe('pane mail', () => {
 
     it('a card comes back after a reload until it is decided', () => {
         const outbox = new PaneMailOutbox(host() as never);
-        const envelope = newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'still open' });
+        const envelope = newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'still open' });
         outbox.send(envelope);
 
         const first = new PaneMailInbox(host() as never);
@@ -113,7 +113,7 @@ describe('pane mail', () => {
     });
 
     it('leaves a half-written line unread until it is complete', () => {
-        const envelope = newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'split' });
+        const envelope = newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'split' });
         const line = JSON.stringify(envelope);
         fs.appendFileSync(paneMailPaths().log, line.slice(0, 20), 'utf8');
 
@@ -131,13 +131,13 @@ describe('pane mail', () => {
         // exactly that many and silently swallows everything appended afterwards.
         const outbox = new PaneMailOutbox(host() as never);
         outbox.send(
-            newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'a → b — c ‘d’ … e' })
+            newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'a → b — c ‘d’ … e' })
         );
 
         const inbox = new PaneMailInbox(host() as never);
         assert.strictEqual(inbox.drain(), 1);
 
-        outbox.send(newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'after the wide text' }));
+        outbox.send(newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'after the wide text' }));
         assert.strictEqual(inbox.drain(), 1, 'the second envelope must still be reachable');
         assert.deepStrictEqual(
             received.map(envelope => envelope.body),
@@ -147,7 +147,7 @@ describe('pane mail', () => {
 
     it('survives a rolled log: an envelope already taken is not taken again after a reload', () => {
         const outbox = new PaneMailOutbox(host() as never);
-        const envelope = newEnvelope({ fromProfile: 'pa', toProfile: 'dev-vsc', body: 'played twice' });
+        const envelope = newEnvelope({ forwarderProfile: 'pa', toProfile: 'dev-vsc', body: 'played twice' });
         outbox.send(envelope);
 
         const before = new PaneMailInbox(host() as never);
@@ -181,7 +181,7 @@ describe('pane mail', () => {
             to: 2000,
         };
         const line = serializeEnvelope({
-            id: 'e1', writtenAt: 1, fromProfile: 'pa', fromHost: 'h', toProfile: 'dev-vsc',
+            id: 'e1', writtenAt: 1, forwarderProfile: 'pa', forwarderHost: 'h', toProfile: 'dev-vsc',
             body: 'x', history: ref,
         });
         assert.deepStrictEqual(parseEnvelope(line)?.history, { ...ref, anchor: undefined });

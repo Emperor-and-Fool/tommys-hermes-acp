@@ -1,4 +1,4 @@
-import { byId, profileBtn, profilePicker, required } from '../../dom';
+import { profileBtn, profilePicker, required } from '../../dom';
 import { post } from '../../post';
 import { escapeHtml } from '../../util/html';
 import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';

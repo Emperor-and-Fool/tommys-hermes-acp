@@ -31,6 +31,7 @@
   "configuration.title": "Tommys Hermes ACP",
   "configuration.tommys.path.description": "Hermes 可执行文件路径。留空则自动检测。",
   "configuration.tommys.cwd.description": "Hermes 会话的工作目录。默认为工作区根目录。",
+  "configuration.tommys.debugTabSwitch.description": "仅记录标签切换：切换、恢复结果，以及在已绑定 Hermes 会话的标签显示为空时记录 MISMATCH。",
   "configuration.tommys.profile.description": "Hermes profile 名称（对应 hermes --profile <name>）。留空使用默认。",
   "configuration.tommys.showThoughts.description": "在聊天中显示 Agent 的思考过程。",
   "configuration.tommys.showToolCalls.description": "在聊天中显示工具调用通知。",

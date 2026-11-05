@@ -1,9 +1,8 @@
-import { byId, closedPicker, closedPickerBtn, closedPickerLabel, openTabBtn, required } from '../../dom';
+import { closedPicker, closedPickerBtn, closedPickerLabel, openTabBtn, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
-import { newChat } from '../messages/messageList';
-import { closeAllDropdowns, setMenuOpen, wirePickerButton } from '../modals/modal';
+import { setMenuOpen, wirePickerButton } from '../modals/modal';
 
 
 const closedDropdown = required('closedDropdown');

@@ -227,6 +227,12 @@ export interface LocaleStrings {
     peerCardDismiss: string;
     peerCardDelivered: string;
     peerCardDismissed: string;
+    /** "Expired": a peer card nobody answered before the timeout. */
+    peerCardExpired: string;
+    /** "Forward from {0} — cancelled": what a dismissed card keeps. */
+    peerForwardCancelled: string;
+    /** "Forward from {0} — expired": what a card nobody answered keeps. */
+    peerForwardExpired: string;
     /** "{0}@{1}": the sender line on a peer card. */
     peerCardHeader: string;
     multiSelectAll: string;

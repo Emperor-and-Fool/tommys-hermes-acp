@@ -2,8 +2,8 @@ import * as assert from 'assert';
 import { PEER_TURN_SEPARATOR, peerTurnBlock, peerTurnText } from '../../host/chat/peerTurn';
 
 const item = (over: Partial<Parameters<typeof peerTurnBlock>[0]> = {}) => ({
-    fromProfile: 'pa',
-    fromHost: 'HGSjopTop9L',
+    forwarderProfile: 'pa',
+    forwarderHost: 'HGSjopTop9L',
     body: 'look at this',
     ...over,
 });
@@ -75,7 +75,7 @@ describe('peer turn text', () => {
     });
 
     it('joins a stack into one turn, in arrival order, with a rule between items', () => {
-        const turn = peerTurnText([item({ body: 'one' }), item({ body: 'two', fromProfile: 'dev-vsc' })]);
+        const turn = peerTurnText([item({ body: 'one' }), item({ body: 'two', forwarderProfile: 'dev-vsc' })]);
         assert.strictEqual(
             turn,
             '[forwarded from pa@HGSjopTop9L]\n\none' +

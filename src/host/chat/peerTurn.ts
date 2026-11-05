@@ -15,8 +15,12 @@ import { handoverLines } from '../../shared/historyHandover';
  * if it were the whole context.
  */
 export interface PeerTurnItem {
-    fromProfile: string;
-    fromHost: string;
+    /** The pane that forwarded it — not who wrote it. */
+    forwarderProfile: string;
+    forwarderHost: string;
+    forwarderRole?: 'primary' | 'secondant';
+    /** Who wrote it: 'user', 'agent', 'tool', or the profile that forwarded a peer card. */
+    sentBy?: string;
     body: string;
     history?: HistoryRef;
     /** The profile reading this turn. Same as the slice's profile means no cross-profile note. */
@@ -37,12 +41,15 @@ export const PEER_TURN_SEPARATOR = '\n\n---\n\n';
 
 /** One forwarded card as turn text: sender, session handle, how to read more, then the body. */
 export function peerTurnBlock(item: PeerTurnItem): string {
-    const lines = [`[forwarded from ${item.fromProfile}@${item.fromHost}]`];
+    const sender = item.sentBy === 'user'
+        ? `you (${item.forwarderProfile}@${item.forwarderHost}${item.forwarderRole ? ', ' + item.forwarderRole + ' pane' : ''})`
+        : `${item.forwarderProfile}@${item.forwarderHost}`;
+    const lines = [`[forwarded from ${sender}]`];
     const ref = item.history;
     if (ref) {
         lines.push(...handoverLines(ref, {
             readerProfile: item.readerProfile,
-            fallbackProfile: item.fromProfile,
+            fallbackProfile: item.forwarderProfile,
         }));
     }
     return lines.join('\n') + '\n\n' + item.body.trim();

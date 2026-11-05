@@ -8,7 +8,6 @@ import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvI
 import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
 import { applyOtherPaneProfile, insertIntoInput } from './components/messages/messageActions';
 import { applyPeerState } from './components/messages/messageList';
-import { post } from './post';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
 import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
@@ -24,7 +23,7 @@ import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionError
 import { updateTokenUsage } from './components/status/tokenMeter';
 import { renderSessionTabs } from './components/tabs/tabStrip';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
-import { aboutModal, byId, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
+import { aboutModal, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
 import { copyToClipboard } from './util/clipboard';
@@ -44,7 +43,7 @@ export function init(): void {
                     break;
                 }
                 if (msg.role === 'peer') {
-                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history });
+                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history, peerMessages: msg.messages });
                     break;
                 }
                 if (msg.role === 'assistant') {
@@ -166,7 +165,7 @@ export function init(): void {
                 break;
 
             case 'peerActionResult':
-                applyPeerState(msg.envelopeId, msg.state);
+                applyPeerState(msg.envelopeId, msg.state, msg.text);
                 break;
 
             case 'setOtherPaneLive':

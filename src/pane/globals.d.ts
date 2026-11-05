@@ -10,7 +10,7 @@ declare const marked: any;
 declare const DOMPurify: any;
 declare const hljs: any;
 declare let locale: any;
-declare function localeText(key: string, fallback?: string, ...args: any[]): string;
+declare function localeText(key: string, ...args: any[]): string;
 
 interface Window {
     _showThoughts: boolean;

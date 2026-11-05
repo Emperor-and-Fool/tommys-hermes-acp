@@ -1797,6 +1797,27 @@ body.surface-notabs #tab-bar {
 }
 .message.peer {
     border-left: 3px solid var(--peer-accent, var(--primary));
+    /* The card is a container, not a chat bubble: it spans the panel and holds its messages. */
+    width: 100%;
+}
+/* Who forwarded: a pane, so it reads as a label rather than as the author of the text. */
+.message.peer .peer-header {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
+}
+/* One bubble per message, tagged with the sender: "you@host". */
+.message.peer .peer-msg {
+    margin-top: 6px;
+    padding-left: 8px;
+    border-left: 2px solid color-mix(in srgb, var(--peer-accent, var(--primary)) 35%, transparent);
+}
+.message.peer .peer-msg-tag {
+    display: block;
+    font-size: 10px;
+    opacity: 0.7;
+    margin-bottom: 2px;
 }
 /* The sender, as a pill: tinted, small, and in that sender's accent. The rail carries the colour
    for a single card; the pill carries it for every card in a mixed stack. */
@@ -1857,9 +1878,9 @@ body.surface-notabs #tab-bar {
 .message.peer.is-dismissed .peer-status {
     display: block;
 }
-.message.peer.is-dismissed .content {
-    text-decoration: line-through;
+.message.peer .content.is-note {
     opacity: 0.6;
+    font-style: italic;
 }
 
 /* The stack: card above its action bar, in every mode. */

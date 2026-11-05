@@ -26,7 +26,7 @@ export type HostToPane =
     /** The other pane's presence changed: its profile, or nothing when it is gone. */
     | { type: 'setOtherPaneLive'; live: boolean; profile: string }
     /** The answer to Deliver or Dismiss: the card settles into this state. */
-    | { type: 'peerActionResult'; envelopeId: string; state: 'delivered' | 'dismissed' }
+    | { type: 'peerActionResult'; envelopeId: string; state: 'delivered' | 'dismissed' | 'expired'; text?: string }
     /** The profile this pane had is gone: open the dropdown so another can be picked. */
     | { type: 'openProfilePicker' }
     | { type: 'log'; line: string; level: string }
@@ -43,7 +43,7 @@ export type HostToPane =
     | { type: 'newChat' }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
-    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState }
+    | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState; messages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }> }
     | { type: 'finishAssistantBubble'; sessionId?: string }
     | { type: 'undeliveredMessage'; text: string }
     | { type: 'insertInput'; text: string }

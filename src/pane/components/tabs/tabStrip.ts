@@ -1,9 +1,8 @@
-import { byId, tabBar } from '../../dom';
+import { tabBar } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import type { SessionInfo } from '../../../shared/chat';
-import { newChat } from '../messages/messageList';
 import { requestSwitchSession } from '../modals/switchSession';
 import { showTabContextMenu } from './tabMenu';
 

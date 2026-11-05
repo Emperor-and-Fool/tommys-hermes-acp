@@ -236,10 +236,12 @@ export class Sessions {
     /** A forwarded draft: stored like any message, with who sent it and where it stands. */
     savePeerMessage(envelope: {
         id: string;
-        fromProfile: string;
-        fromHost: string;
+        forwarderProfile: string;
+        forwarderHost: string;
         sourceMessageId?: string;
-        senderRole?: 'primary' | 'secondant';
+        forwarderRole?: 'primary' | 'secondant';
+        sentBy?: string;
+        peerMessages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }>;
     }, text: string, history?: HistoryRef): void {
         const record: ChatMessage = {
             role: 'peer',
@@ -247,10 +249,12 @@ export class Sessions {
             timestamp: Date.now(),
             peer: {
                 envelopeId: envelope.id,
-                fromProfile: envelope.fromProfile,
-                fromHost: envelope.fromHost,
+                forwarderProfile: envelope.forwarderProfile,
+                forwarderHost: envelope.forwarderHost,
                 sourceMessageId: envelope.sourceMessageId,
-                senderRole: envelope.senderRole,
+                forwarderRole: envelope.forwarderRole,
+                sentBy: envelope.sentBy,
+                peerMessages: envelope.peerMessages,
             },
             peerState: 'pending',
         };
@@ -261,6 +265,24 @@ export class Sessions {
         }
         this.messages.push(record);
         this.persistMessages();
+    }
+
+    /**
+     * Dismissed or expired: nothing was delivered, so the body has no place in this tab's
+     * conversation. The note keeps the fact and the sender; the original text still lives in the
+     * sender's own session, so nothing is lost by dropping this copy.
+     *
+     * No persistMessages() here on purpose: a transcript is Hermes', and a local peer card is not
+     * part of it. The shortened text lives as long as this tab does — a pane re-show or a tab
+     * switch inside this window shows the note, a window reload rebuilds from Hermes and the card
+     * is simply gone, which is the intended end state for an undelivered forward.
+     */
+    shortenPeerMessage(envelopeId: string, note: string): void {
+        const stored = this.messages.find(m => m.role === 'peer' && m.peer?.envelopeId === envelopeId);
+        if (!stored || stored.peerState === 'delivered') {
+            return;
+        }
+        stored.text = note;
     }
 
     /** Deliver or Dismiss: the first decision stands, and it survives a reload. */

@@ -1,4 +1,4 @@
-import { byId, filePickerEl, inputEl } from '../../dom';
+import { filePickerEl, inputEl } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';

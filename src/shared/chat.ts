@@ -81,6 +81,8 @@ export interface ChatMessage {
     selectedLabel?: string;
     /** Content-addressed attachments for this message: Hermes never stores the bytes. */
     imageRefs?: StoredImageRef[];
+    /** Set on role 'peer': the messages the forward carried, one bubble each after a restore. */
+    peerMessages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }>;
     /** Set on role 'history': which conversation the slice came from. */
     history?: HistoryRef;
     /** Set on a user message that went into a *running* turn rather than starting one. */
@@ -93,17 +95,21 @@ export interface ChatMessage {
 
 /** Who sent a forwarded draft, and which envelope it came in on. */
 export interface PeerRef {
-    fromProfile: string;
-    fromHost: string;
+    forwarderProfile: string;
+    forwarderHost: string;
     sourceMessageId?: string;
     /** The pane-mail envelope id: the dedupe key, and what the actions address. */
     envelopeId: string;
     /** Which side sent it: the accent on the card. */
-    senderRole?: 'primary' | 'secondant';
+    forwarderRole?: 'primary' | 'secondant';
+    /** Who wrote it: 'user', 'agent', 'tool', a profile name, or 'mixed' on the envelope. */
+    sentBy?: string;
+    /** The messages the forward carried, so the card can draw one bubble each. */
+    peerMessages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }>;
 }
 
 /** A peer card is pending until the user delivers or dismisses it. */
-export type PeerState = 'pending' | 'delivered' | 'dismissed';
+export type PeerState = 'pending' | 'delivered' | 'dismissed' | 'expired';
 
 /** The state an action leaves behind: the first decision stands. */
 export function peerStateAfter(current: PeerState, action: 'deliver' | 'dismiss'): PeerState {

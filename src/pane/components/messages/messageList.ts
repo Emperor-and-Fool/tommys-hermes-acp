@@ -9,7 +9,6 @@ import { processFileRefs } from '../composer/fileMention';
 import { exitMultiSelectMode, setGroupSelected, shouldOfferSelection, wireSelectableGroup } from '../multiSelect';
 
 import type { ChatMessage, HistoryRef, PeerRef, PeerState } from '../../../shared/chat';
-import type { HostToPane } from '../../../shared/webview';
 
 /** What a caller can pass when adding a message; mirrors the addMessage payload's extras. */
 export interface MessageOptions {
@@ -18,6 +17,8 @@ export interface MessageOptions {
     history?: HistoryRef;
     peer?: PeerRef;
     peerState?: PeerState;
+    /** The messages the forward carried: one bubble each. */
+    peerMessages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }>;
     restore?: boolean;
     steer?: boolean;
     deferMarkdown?: boolean;
@@ -39,7 +40,7 @@ import { updateTokenUsage } from '../status/tokenMeter';
 import { cancelSessionMarkdownRender, chatSearchState, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
-import { enableStopAfterAgentOutput, isActivelyStreaming } from './streaming';
+import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
 import { playHistoryPickerIntro } from '../composer/historyAttach';
@@ -353,11 +354,12 @@ function buildPeerCard(text: string, options?: MessageOptions) {
     const card = document.createElement('div');
     card.className = 'message peer' + (state === 'pending' ? '' : ' is-' + state);
 
+    // Header: who forwarded it (a pane), never the person who wrote the messages.
     const label = document.createElement('div');
-    label.className = 'label peer-pill';
-    if (peer && peer.senderRole) label.classList.add('is-' + peer.senderRole);
+    label.className = 'label peer-header';
+    if (peer && peer.forwarderRole) label.classList.add('is-' + peer.forwarderRole);
     label.textContent = peer
-        ? (locale.peerCardHeader || '{0}@{1}').replace('{0}', peer.fromProfile).replace('{1}', peer.fromHost)
+        ? `${locale.peerCardForwardedBy || 'Forwarded by'}: ${peer.forwarderProfile}`
         : '';
     card.appendChild(label);
 
@@ -368,12 +370,31 @@ function buildPeerCard(text: string, options?: MessageOptions) {
         card.appendChild(envelope.div);
     }
 
-    const content = document.createElement('div');
-    content.className = 'content';
-    // Built here, not left to the session sweep: a peer card arrives live, and the sweep only runs
-    // after a restore — which is why forwarded markdown used to sit there as literal characters.
-    content.innerHTML = renderMarkdown(text);
-    card.appendChild(content);
+    // One bubble per message. `sentBy` speaks about the person; the forwarder only says which
+    // pane relayed it, so the tag reads "you@host" or "agent@host".
+    const messages = options?.peerMessages?.length
+        ? options.peerMessages
+        : [{ text, sentBy: peer?.sentBy }];
+    if (state === 'pending') {
+        for (const message of messages) {
+            const bubble = document.createElement('div');
+            bubble.className = 'peer-msg';
+            const tag = document.createElement('span');
+            tag.className = 'peer-msg-tag';
+            tag.textContent = `${message.sentBy === 'user' ? 'you' : (message.sentBy || 'agent')}@${peer?.forwarderHost || ''}`;
+            bubble.appendChild(tag);
+            const content = document.createElement('div');
+            content.className = 'content';
+            content.innerHTML = renderMarkdown(message.text);
+            bubble.appendChild(content);
+            card.appendChild(bubble);
+        }
+    } else {
+        const content = document.createElement('div');
+        content.className = 'content is-note';
+        content.textContent = text;
+        card.appendChild(content);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'peer-actions';
@@ -403,32 +424,51 @@ function buildPeerCard(text: string, options?: MessageOptions) {
     });
     actions.appendChild(deliverBtn);
     actions.appendChild(dismissBtn);
-    card.appendChild(actions);
+    // An expired card keeps its body and its sender, and loses its buttons: the deadline is
+    // the same 120 s the permission cards use, so nothing sits there waiting to be answered.
+    if (state === 'pending') {
+        card.appendChild(actions);
+    }
 
     const settled = document.createElement('div');
     settled.className = 'peer-status';
     settled.textContent = state === 'delivered'
         ? (locale.peerCardDelivered || 'Delivered to agent')
-        : (locale.peerCardDismissed || 'Dismissed');
+        : state === 'expired'
+            ? (locale.peerCardExpired || 'Expired')
+            : (locale.peerCardDismissed || 'Dismissed');
     card.appendChild(settled);
 
     return card;
 }
 
 /** Deliver or Dismiss came back: settle the card, no re-render. */
-export function applyPeerState(envelopeId: string, state: PeerState) {
+export function applyPeerState(envelopeId: string, state: PeerState, text?: string) {
     const group = document.querySelector('.message-group.peer[data-envelope-id="' + envelopeId + '"]');
     if (!group) return;
     group.dataset.peerState = state;
     const card = group.querySelector('.message.peer');
     if (!card) return;
-    card.classList.remove('is-delivered', 'is-dismissed');
+    card.classList.remove('is-delivered', 'is-dismissed', 'is-expired');
     card.classList.add('is-' + state);
+    if (state !== 'pending') {
+        const actions = card.querySelector('.peer-actions');
+        if (actions) actions.remove();
+    }
+    // Dismissed or expired: nothing was delivered, so the body gives way to the one line that
+    // says what happened — the original text stays in the sender's own session.
+    const content = card.querySelector('.content');
+    if (content && text && state !== 'delivered') {
+        content.textContent = text;
+        content.classList.add('is-note');
+    }
     const status = card.querySelector('.peer-status');
     if (status) {
         status.textContent = state === 'delivered'
             ? (locale.peerCardDelivered || 'Delivered to agent')
-            : (locale.peerCardDismissed || 'Dismissed');
+            : state === 'expired'
+                ? (locale.peerCardExpired || 'Expired')
+                : (locale.peerCardDismissed || 'Dismissed');
     }
 }
 
@@ -460,7 +500,7 @@ function appendPeerToStack(group: Element) {
         target = document.createElement('div');
         target.className = 'peer-stack';
         // The rail takes the stack's first sender; each card's pill carries its own identity.
-        target.dataset.senderRole = group.dataset.senderRole || 'secondant';
+        target.dataset.forwarderRole = group.dataset.forwarderRole || 'secondant';
         messagesEl.appendChild(target);
     }
     target.appendChild(group);
@@ -534,7 +574,7 @@ export function appendMessage(role: string, text: string, options?: MessageOptio
     const group = createGroup(role);
     if (role === 'peer' && options && options.peer) {
         group.dataset.envelopeId = options.peer.envelopeId;
-        group.dataset.senderRole = options.peer.senderRole || 'secondant';
+        group.dataset.forwarderRole = options.peer.forwarderRole || 'secondant';
         group.dataset.peerState = options.peerState || 'pending';
     }
     // Forwarding a history card should hand the other pane the ref, not a paragraph that
@@ -671,6 +711,7 @@ export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolea
                     steer: m.steer === true,
                     peer: m.peer,
                     peerState: m.peerState,
+                    peerMessages: m.peerMessages,
                 });
             }
         }

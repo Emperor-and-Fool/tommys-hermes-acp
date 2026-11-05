@@ -2,7 +2,7 @@
   "name": "tommys-hermes-acp",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",
@@ -334,6 +334,11 @@
             "%configuration.tommys.chatSurface.editor.description%"
           ],
           "description": "%configuration.tommys.chatSurface.description%"
+        },
+        "tommys.debugTabSwitch": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.tommys.debugTabSwitch.description%"
         }
       }
     }

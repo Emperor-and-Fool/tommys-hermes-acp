@@ -16,10 +16,8 @@ import { t } from '../i18n';
 import { identity, setting, settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import {
-    detectStepLabel,
     formatDetectBrokenMessage,
     formatDetectProgressPercent,
-    formatDetectStepDetail,
     formatDetectSummaryForReport,
 } from './detectFormat';
 import { detectHermesEnvironment } from './hermesEnvironmentDetect';
@@ -45,15 +43,8 @@ export interface DetectionHost {
     resetViewTitle(): void;
 }
 
-interface DetectStepLogEntry {
-    step: HermesDetectStepId;
-    label: string;
-    detail: string;
-    status: HermesDetectStepStatus;
-}
 
 export class EnvironmentDetection {
-    private _detectStepLog: DetectStepLogEntry[] = [];
     private _lastDetectReport: HermesEnvironmentReport | undefined;
     private _detectInProgress = false;
     private _detectAbortController?: AbortController;
@@ -107,31 +98,14 @@ export class EnvironmentDetection {
 
     clear(): void {
         this._host.resetViewTitle();
-        this._detectStepLog = [];
         this._lastDetectReport = undefined;
         this._setDetectContext(false, false);
-    }
-
-    private _recordDetectStep(event: HermesDetectProgressEvent): void {
-        const entry: DetectStepLogEntry = {
-            step: event.step,
-            label: detectStepLabel(event.step),
-            detail: formatDetectStepDetail(event),
-            status: event.status,
-        };
-        const index = this._detectStepLog.findIndex((item) => item.step === event.step);
-        if (index >= 0) {
-            this._detectStepLog[index] = entry;
-        } else {
-            this._detectStepLog.push(entry);
-        }
     }
 
     async runWithUi(
         configuredPath?: string,
         mode: 'connect' | 'manual' | 'configure' = 'manual',
     ): Promise<HermesEnvironmentReport> {
-        this._detectStepLog = [];
         this._detectAbortController?.abort();
         this._detectAbortController = new AbortController();
         const signal = this._detectAbortController.signal;
@@ -152,7 +126,6 @@ export class EnvironmentDetection {
                 } else {
                     this._postProgress(event, 'detectEnvironmentProgress');
                 }
-                this._recordDetectStep(event);
             },
         });
         this._detectAbortController = undefined;
@@ -175,7 +148,6 @@ export class EnvironmentDetection {
             reportStatus: report.status,
             detail: summaryText,
         };
-        this._recordDetectStep(summaryEvent);
         if (useConfigurePanel) {
             this._postProgress(summaryEvent, 'configureEnvironmentDetectProgress');
             this._host.post({

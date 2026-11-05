@@ -1,4 +1,4 @@
-import { aboutModal, byId, faqModal, faqModalBody, helpModal, required } from '../../dom';
+import { aboutModal, faqModal, faqModalBody, helpModal, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';

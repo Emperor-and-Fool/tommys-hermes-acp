@@ -10,18 +10,46 @@
  */
 import type { HistoryRef } from './chat';
 
+/**
+ * One message inside an envelope: the text, and who wrote it.
+ *
+ * An envelope can carry several, which is what lets the card draw one bubble per message instead
+ * of one fused paragraph. `sentBy` here is the sender of this message; the envelope's `forwarder*`
+ * fields are the pane that relayed it. The envelope itself has no sender.
+ */
+export interface PaneMailMessage {
+    text: string;
+    /**
+     * Who wrote this message: `'user'`, `'agent'`, `'tool'`, or the profile that forwarded it when
+     * the message was itself a peer card. Read at selection time, because that is the only place
+     * the origin is still known — a flattened body cannot tell you afterwards.
+     */
+    sentBy?: string;
+    sourceMessageId?: string;
+}
+
 export interface PaneMailEnvelope {
     /** Dedupe key: the same envelope read twice must inject once. */
     id: string;
     /** Epoch ms, for the reader's eyes and for ordering. */
     writtenAt: number;
-    /** Who forwarded it. */
-    fromProfile: string;
-    fromHost: string;
+    /**
+     * Who forwarded it: a pane, not a person. The profile and host name the forwarding side;
+     * `forwarderRole` says which pane acted. Nothing here identifies who wrote the text.
+     */
+    forwarderProfile: string;
+    forwarderHost: string;
+    forwarderRole?: 'primary' | 'secondant';
     /** Who it is for. A reader ignores everything else. */
     toProfile: string;
     /** The forwarded message, verbatim. */
     body: string;
+    /**
+     * The messages themselves, in order, each with its own sender. This is the only place a sender
+     * is recorded: an envelope has a forwarder, not an author.
+     */
+    
+    messages?: PaneMailMessage[];
     /** The forwarded message's local id, for traceability. */
     sourceMessageId?: string;
     /**
@@ -67,26 +95,54 @@ export function parseEnvelope(line: string): PaneMailEnvelope | null {
         return null;
     }
     try {
-        const value = JSON.parse(text) as Partial<PaneMailEnvelope>;
+        const value = JSON.parse(text) as Partial<PaneMailEnvelope> & {
+            fromProfile?: unknown;
+            fromHost?: unknown;
+            senderRole?: unknown;
+        };
+        // Envelopes written before the forwarder rename carry the old names: read both, so a
+        // non-empty log never has to be rolled (the standing rule) to stay readable.
+        const forwarderProfile = typeof value.forwarderProfile === 'string'
+            ? value.forwarderProfile
+            : typeof value.fromProfile === 'string' ? value.fromProfile : undefined;
+        const forwarderHost = typeof value.forwarderHost === 'string'
+            ? value.forwarderHost
+            : typeof value.fromHost === 'string' ? value.fromHost : undefined;
+        const rawRole = value.forwarderRole ?? value.senderRole;
+        const forwarderRole = rawRole === 'primary' || rawRole === 'secondant' ? rawRole : undefined;
         if (
             typeof value.id !== 'string' ||
-            typeof value.fromProfile !== 'string' ||
+            typeof forwarderProfile !== 'string' ||
             typeof value.toProfile !== 'string' ||
             typeof value.body !== 'string'
         ) {
             return null;
         }
+        const messages = Array.isArray(value.messages)
+            ? (value.messages as PaneMailMessage[])
+                .filter(m => m && typeof m.text === 'string')
+                .map(m => ({
+                    text: m.text,
+                    // Keep the sender verbatim: it may be 'user', 'agent', 'tool' or a profile name,
+                    // and collapsing it here is what made every message read as "you".
+                    sentBy: typeof m.sentBy === 'string' && m.sentBy.trim() ? m.sentBy.trim() : undefined,
+                    sourceMessageId: typeof m.sourceMessageId === 'string' ? m.sourceMessageId : undefined,
+                }))
+            : undefined;
         return {
             id: value.id,
             writtenAt: typeof value.writtenAt === 'number' ? value.writtenAt : 0,
-            fromProfile: value.fromProfile,
-            fromHost: typeof value.fromHost === 'string' ? value.fromHost : '',
+            forwarderProfile,
+            forwarderHost: typeof forwarderHost === 'string' ? forwarderHost : '',
+            forwarderRole,
             toProfile: value.toProfile,
             body: value.body,
+            messages,
             sourceMessageId: typeof value.sourceMessageId === 'string' ? value.sourceMessageId : undefined,
-            history: parseHistory((value as Partial<PaneMailEnvelope>).history),
+            history: parseHistory(value.history),
         };
     } catch {
         return null;
     }
 }
+

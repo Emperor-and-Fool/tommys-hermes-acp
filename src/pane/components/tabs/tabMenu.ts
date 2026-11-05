@@ -1,4 +1,4 @@
-import { byId, tabBar, tabContextMenu } from '../../dom';
+import { tabBar, tabContextMenu } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';

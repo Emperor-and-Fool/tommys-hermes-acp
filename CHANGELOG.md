@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.2.0] - 2026-11-05
+
+Peer cards say who forwarded them and who wrote each message, and expire when nobody answers. Copy
+works in the pane again on VSCodium 1.143.
+
+### Added
+
+- **Peer cards name the forwarder and tag each message with its sender.** One bubble per forwarded
+  message, tagged `you@host`; the envelope carries `forwarderProfile`, `forwarderHost`,
+  `forwarderRole`, `sentBy` and `peerMessages`.
+- **An unanswered peer card expires**, like a permission card. A dismissed or expired card is
+  shortened to a note, and a pane re-show or tab switch sweeps timed-out cards. Local peer cards are
+  not part of Hermes' transcript, so a window reload rebuilds without them.
+- **`tommys.debugTabSwitch`** (off by default): logs each tab switch and flags a tab bound to a
+  Hermes session that has nothing to show.
+
+### Changed
+
+- **Envelope fields renamed:** `fromProfile`, `fromHost` and `senderRole` become `forwarderProfile`,
+  `forwarderHost` and `forwarderRole`.
+- **One copy of the environment-detection progress formatting**, in `src/shared/detectProgress.ts`.
+  The host's copy was never read and is gone; every branch is pinned by tests in English and
+  Chinese. No change to what the panel shows.
+- Unused imports removed; `noUnusedLocals` is on for the host and the pane.
+- The Chinese README and changelog now say they stop at 1.1.0; the English files are current.
+
+### Fixed
+
+- **Ctrl+C keeps a selection made in the pane.** VSCodium 1.143's webview host re-focuses the element
+  that last fired `focusin` before it runs `execCommand('copy')`, and only while
+  `document.activeElement` is `<body>`. In this pane that element is the composer, so the refocus
+  collapsed the selection and the copy came back empty. A primary-button `pointerup` listener now
+  focuses a `tabindex="-1"` fallback root for clicks on content, so `activeElement` is never `<body>`
+  when the host copies: transcript, code blocks, aux cards, log/history viewer and the info modals
+  alike. Non-primary buttons are ignored, so the editor's context menu is no longer dismissed by a
+  focus change on right-button release.
+
 ## [2.1.1] - 2026-10-31
 
 The systray app becomes something the extension can install for you, and the Qt program behind it
