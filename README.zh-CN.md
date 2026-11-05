@@ -1,3 +1,9 @@
+> **此文件已停止维护。** 最后一次同步为 1.1.0 版本（插件当前为 2.1.1），内容可能已经过时。
+> 英文版 [README.md](README.md) 为准确来源。
+>
+> **This document is no longer maintained** — last synced at 1.1.0. The English [README.md](README.md)
+> is authoritative.
+
 <div align="center">
 
 <img src="media/icon.png" alt="Rina Hermes ACP 图标" width="128" />

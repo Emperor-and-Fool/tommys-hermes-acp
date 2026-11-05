@@ -1,5 +1,12 @@
 # 更新日志
 
+> **此文件已停止维护。** 最后一次同步为 1.1.0 版本（插件当前为 2.1.1），之后的变更没有翻译。
+> 英文版 [CHANGELOG.md](CHANGELOG.md) 为准确来源。
+>
+> **This document is no longer maintained** — last synced at 1.1.0. The English
+> [CHANGELOG.md](CHANGELOG.md) is authoritative.
+
+
 **Rina Hermes ACP** 的所有重要变更均记录于此。
 
 本文档为**简体中文**版本。默认语言（英文）见 [CHANGELOG.md](CHANGELOG.md)。
