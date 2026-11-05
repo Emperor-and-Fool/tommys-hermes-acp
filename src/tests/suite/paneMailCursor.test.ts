@@ -8,8 +8,8 @@ let seq = 0;
 const envelope = (toProfile: string, body = 'draft'): PaneMailEnvelope => ({
     id: `env-${++seq}`,
     writtenAt: 1,
-    fromProfile: 'pa',
-    fromHost: 'host',
+    forwarderProfile: 'pa',
+    forwarderHost: 'host',
     toProfile,
     body,
 });

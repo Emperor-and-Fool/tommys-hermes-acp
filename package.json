@@ -334,6 +334,11 @@
             "%configuration.tommys.chatSurface.editor.description%"
           ],
           "description": "%configuration.tommys.chatSurface.description%"
+        },
+        "tommys.debugTabSwitch": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.tommys.debugTabSwitch.description%"
         }
       }
     }

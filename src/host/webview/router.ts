@@ -43,7 +43,7 @@ export interface RouterHost {
     syncModels(): Promise<void>;
     postProfileList(): void;
     /** Trade a message with the sibling pane through the shared mailbox. */
-    forwardMessage(text: string, sourceMessageId?: string, history?: HistoryRef): void;
+    forwardMessage(text?: string, sourceMessageId?: string, history?: HistoryRef, body?: string): void;
     /** The two decisions a peer card offers. */
     deliverPeer(envelopeId: string): void;
     dismissPeer(envelopeId: string): void;

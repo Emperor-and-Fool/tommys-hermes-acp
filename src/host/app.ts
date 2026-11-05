@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
+import * as os from 'os';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
@@ -39,6 +40,9 @@ import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './e
 import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
+
+/** How long an unanswered peer card keeps its buttons. Mirrors the permission-card timeout. */
+const PEER_CARD_TIMEOUT_MS = 120_000;
 
 export class App implements vscode.WebviewViewProvider {
 
@@ -692,7 +696,7 @@ export class App implements vscode.WebviewViewProvider {
      * than reading a description of itself.
      */
     private _forwardHistoryPick(pick: HistoryPick): void {
-        this.forwardMessage(historySliceBody(pick.ref, pick.messages), undefined, pick.ref);
+        this.forwardMessage(undefined, undefined, pick.ref, historySliceBody(pick.ref, pick.messages));
     }
 
     /**
@@ -814,6 +818,7 @@ export class App implements vscode.WebviewViewProvider {
         this._postMessage({ type: 'activeAgent', name: this._profiles.displayName });
         this._models.postList();
         if (surface.role === 'chat') {
+            this.expireStalePeers();
             this._lifecycle.restoreMessages(surface);
         }
         if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel
@@ -1043,9 +1048,17 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
-    public forwardMessage(text: string, sourceMessageId?: string, history?: HistoryRef): void {
-        const body = (text || '').trim();
-        if (!body || !this._mail) {
+    public forwardMessage(text?: string, sourceMessageId?: string, history?: HistoryRef, body?: string): void {
+        // The message is the one whose text the pane just handed over: found in the array by that
+        // text, so role and content come from the record rather than from what the card shows.
+        const wanted = (text || '').trim();
+        const record = wanted
+            ? this._session.messages.slice().reverse().find(message => (message.text || '').trim() === wanted)
+            : undefined;
+        // A session-memory slice is not a transcript record: it arrives as its own body.
+        const content = record ? record.text : (body || '');
+        const role = record ? record.role : 'history';
+        if (!content || !this._mail) {
             return;
         }
         const other = this._mail.presence.other();
@@ -1055,11 +1068,17 @@ export class App implements vscode.WebviewViewProvider {
         }
         const sent = this._mail.outbox.send(
             newEnvelope({
-                fromProfile: this._ownProfile(),
+                forwarderProfile: this._ownProfile(),
+                forwarderRole: this._id.role,
                 // The address, not the display name: a profile with a space is keyed by its
                 // sanitized form, and the recipient compares in that form.
                 toProfile: other.address,
-                body,
+                body: content,
+                messages: [{
+                    role,
+                    content,
+                    sourceMessageId,
+                }],
                 sourceMessageId,
                 // A session-memory pick travels with its ref: the recipient draws the envelope.
                 history,
@@ -1072,14 +1091,18 @@ export class App implements vscode.WebviewViewProvider {
 
     /** A forwarded draft arrived: a card in the transcript, with two decisions on it. */
     private _receivePeer(envelope: PaneMailEnvelope): void {
-        const senderRole: 'primary' | 'secondant' = this._id.role === 'primary' ? 'secondant' : 'primary';
+        // The envelope now says which pane sent it; the old derivation stays for envelopes written
+        // before that field existed.
+        const forwarderRole: 'primary' | 'secondant' =
+            envelope.forwarderRole ?? (this._id.role === 'primary' ? 'secondant' : 'primary');
         this._session.savePeerMessage(
             {
                 id: envelope.id,
-                fromProfile: envelope.fromProfile,
-                fromHost: envelope.fromHost,
+                forwarderProfile: envelope.forwarderProfile,
+                forwarderHost: envelope.forwarderHost,
                 sourceMessageId: envelope.sourceMessageId,
-                senderRole,
+                forwarderRole,
+                peerMessages: envelope.messages,
             },
             envelope.body,
             envelope.history
@@ -1092,13 +1115,70 @@ export class App implements vscode.WebviewViewProvider {
             history: envelope.history,
             peer: {
                 envelopeId: envelope.id,
-                fromProfile: envelope.fromProfile,
-                fromHost: envelope.fromHost,
+                forwarderProfile: envelope.forwarderProfile,
+                forwarderHost: envelope.forwarderHost,
                 sourceMessageId: envelope.sourceMessageId,
-                senderRole,
+                forwarderRole,
+                peerMessages: envelope.messages,
             },
             peerState: 'pending',
+            messages: envelope.messages,
         });
+        this._schedulePeerExpiry(envelope.id);
+    }
+
+    /**
+     * A peer card is a question with two answers, and an unanswered one used to keep its buttons
+     * forever. Like a permission card it now expires: after this long the buttons go and the card
+     * reads as expired. The state lives in this tab's memory — a reload rebuilds the transcript
+     * from Hermes, where a local peer card does not exist, so there is nothing to persist.
+     */
+    private readonly _peerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    private _schedulePeerExpiry(envelopeId: string): void {
+        this._clearPeerTimer(envelopeId);
+        this._peerTimers.set(envelopeId, setTimeout(() => {
+            this._peerTimers.delete(envelopeId);
+            this._expirePeer(envelopeId);
+        }, PEER_CARD_TIMEOUT_MS));
+    }
+
+    private _clearPeerTimer(envelopeId: string): void {
+        const timer = this._peerTimers.get(envelopeId);
+        if (timer) {
+            clearTimeout(timer);
+            this._peerTimers.delete(envelopeId);
+        }
+    }
+
+    private _expirePeer(envelopeId: string): void {
+        const stored = this._session.messages.find(
+            m => m.role === 'peer' && m.peer?.envelopeId === envelopeId
+        );
+        if (!stored || stored.peerState === 'delivered') {
+            return;
+        }
+        this._session.setPeerState(envelopeId, 'expired');
+        this._mail?.inbox.acknowledge(envelopeId);
+        const note = t('peerForwardExpired', stored.peer?.forwarderProfile ?? '');
+        this._session.shortenPeerMessage(envelopeId, note);
+        this._postMessage({ type: 'peerActionResult', envelopeId, state: 'expired', text: note });
+        this._log(`Peer card expired unanswered: ${envelopeId}`);
+    }
+
+    /** A pane re-show or tab switch must not resurrect timed-out cards as buttons: sweep on restore. */
+    public expireStalePeers(): void {
+        const cutoff = Date.now() - PEER_CARD_TIMEOUT_MS;
+        for (const message of this._session.messages) {
+            const envelopeId = message.peer?.envelopeId;
+            if (message.role !== 'peer' || message.peerState !== 'pending' || !envelopeId) {
+                continue;
+            }
+            if ((message.timestamp || 0) > cutoff) {
+                continue;
+            }
+            this._expirePeer(envelopeId);
+        }
     }
 
     /** The pending peer cards in this tab, in arrival order: what one stack decision acts on. */
@@ -1113,7 +1193,17 @@ export class App implements vscode.WebviewViewProvider {
         const stored = this._session.messages.find(
             m => m.role === 'peer' && m.peer?.envelopeId === envelopeId
         );
+        this._clearPeerTimer(envelopeId);
         if (!stored || !stored.peer || stored.peerState !== 'pending') {
+            // Already answered, or the record is gone: settle the card on screen instead of
+            // leaving buttons that do nothing when pressed.
+            this._postMessage({
+                type: 'peerActionResult',
+                envelopeId,
+                state: stored?.peerState === 'delivered' || stored?.peerState === 'dismissed'
+                    ? stored.peerState
+                    : 'expired',
+            });
             return;
         }
         const state = peerStateAfter(stored.peerState, 'deliver') as 'delivered' | 'dismissed';
@@ -1123,8 +1213,10 @@ export class App implements vscode.WebviewViewProvider {
         this._mail?.inbox.acknowledge(envelopeId);
         this._postMessage({ type: 'peerActionResult', envelopeId, state });
         const turn = peerTurnBlock({
-            fromProfile: stored.peer.fromProfile,
-            fromHost: stored.peer.fromHost,
+            forwarderProfile: stored.peer.forwarderProfile,
+            forwarderHost: stored.peer.forwarderHost,
+            forwarderRole: stored.peer.forwarderRole,
+            sentBy: stored.peer.sentBy,
             body: stored.text,
             history: stored.history,
             // A forward to our own profile is a handover, not a grant: no cross-profile note.
@@ -1135,12 +1227,24 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Dismiss: the card settles and nothing is sent to any agent. */
     public dismissPeer(envelopeId: string): void {
+        this._clearPeerTimer(envelopeId);
+        const stored = this._session.messages.find(
+            m => m.role === 'peer' && m.peer?.envelopeId === envelopeId
+        );
         const state = peerStateAfter('pending', 'dismiss') as 'delivered' | 'dismissed';
-        if (!this._session.setPeerState(envelopeId, state)) {
+        this._session.setPeerState(envelopeId, state);
+        this._mail?.inbox.acknowledge(envelopeId);
+        if (!stored) {
+            this._postMessage({ type: 'peerActionResult', envelopeId, state: 'expired' });
             return;
         }
-        this._mail?.inbox.acknowledge(envelopeId);
-        this._postMessage({ type: 'peerActionResult', envelopeId, state });
+        if (stored.peerState === 'delivered') {
+            this._postMessage({ type: 'peerActionResult', envelopeId, state: 'delivered' });
+            return;
+        }
+        const note = t('peerForwardCancelled', stored.peer?.forwarderProfile ?? '');
+        this._session.shortenPeerMessage(envelopeId, note);
+        this._postMessage({ type: 'peerActionResult', envelopeId, state, text: note });
     }
 
     /**
@@ -1156,8 +1260,10 @@ export class App implements vscode.WebviewViewProvider {
         }
         const turn = peerTurnText(
             pending.map(message => ({
-                fromProfile: message.peer!.fromProfile,
-                fromHost: message.peer!.fromHost,
+                forwarderProfile: message.peer!.forwarderProfile,
+                forwarderHost: message.peer!.forwarderHost,
+                forwarderRole: message.peer!.forwarderRole,
+                sentBy: message.peer!.sentBy,
                 body: message.text,
                 history: message.history,
                 readerProfile: this._ownProfile(),
@@ -1255,6 +1361,7 @@ export class App implements vscode.WebviewViewProvider {
 
         this._postMessage({ type: 'newChat' });
         await this._connection.connect(this._profiles.selectionId || undefined);
+        this.expireStalePeers();
         this._lifecycle.restoreMessages();
     }
 

@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import type * as vscode from 'vscode';
-import { PANE_MAIL_DIR, PANE_MAIL_LOG, PaneMailEnvelope, parseEnvelope, serializeEnvelope } from '../../shared/paneMail';
+import { PANE_MAIL_DIR, PANE_MAIL_LOG, PaneMailEnvelope, PaneMailMessage, parseEnvelope, serializeEnvelope } from '../../shared/paneMail';
 import type { HistoryRef } from '../../shared/chat';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 
@@ -343,19 +343,31 @@ export function planDrain(
 
 /** One envelope, built where the host knows all four names. */
 export function newEnvelope(input: {
-    fromProfile: string;
+    forwarderProfile: string;
+    forwarderRole?: 'primary' | 'secondant';
     toProfile: string;
     body: string;
+    /** The messages as the array holds them. They are written with the card's field names. */
+    messages?: Array<{ role: string; content: string; sourceMessageId?: string }>;
     sourceMessageId?: string;
     history?: HistoryRef;
 }): PaneMailEnvelope {
     return {
         id: crypto.randomUUID(),
         writtenAt: Date.now(),
-        fromProfile: input.fromProfile,
-        fromHost: os.hostname(),
+        forwarderProfile: input.forwarderProfile,
+        forwarderHost: os.hostname(),
+        forwarderRole: input.forwarderRole,
         toProfile: input.toProfile,
         body: input.body,
+        // The array says role/content; the card reads sentBy/text. The one place they meet.
+        messages: input.messages
+            ? input.messages.map(message => ({
+                text: message.content,
+                sentBy: message.role,
+                sourceMessageId: message.sourceMessageId,
+            }))
+            : undefined,
         sourceMessageId: input.sourceMessageId,
         history: input.history,
     };

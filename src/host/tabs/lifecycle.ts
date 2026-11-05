@@ -342,12 +342,27 @@ export class TabLifecycle {
             && this._host.promptSessionId() === this._host.session.activeId;
     }
 
+    /** `tommys.debugTabSwitch`: four lines per switch, nothing else, off by default. */
+    private _tabSwitchDebug(): boolean {
+        try {
+            return vscode.workspace.getConfiguration('tommys').get<boolean>('debugTabSwitch', false) === true;
+        } catch {
+            return false;
+        }
+    }
+
     async switchTo(
         sessionId: string,
         options?: { skipSaveCurrent?: boolean; interrupt?: boolean }
     ): Promise<void> {
         if (sessionId === this._host.session.activeId) {
             return;
+        }
+        const debug = this._tabSwitchDebug();
+        const startedAt = Date.now();
+        const fromId = this._host.session.activeId;
+        if (debug) {
+            this._host.log(`switch → ${fromId} → ${sessionId}`);
         }
         if (!(await this.endPromptBeforeSwitch(options))) {
             return;
@@ -374,6 +389,14 @@ export class TabLifecycle {
         // A forward is addressed to the agent, not to a conversation: whatever is still undecided
         // belongs in the tab now on screen.
         this._host.reinjectOpenPeers?.();
+        if (debug) {
+            const count = this._host.session.messages.length;
+            const bound = this._host.session.tabs.find(rec => rec.id === sessionId)?.hermesSessionId;
+            this._host.log(`restore ← ${sessionId}: ${count} message(s), ${Date.now() - startedAt}ms`);
+            if (bound && count === 0) {
+                this._host.log(`MISMATCH ${sessionId}: bound to Hermes session ${bound} but nothing to show`);
+            }
+        }
         await this._host.syncModelStateForCurrentSession();
         this._host.syncPromptUiIfReturningToOwner();
     }

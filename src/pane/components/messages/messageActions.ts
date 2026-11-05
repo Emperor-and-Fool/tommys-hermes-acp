@@ -78,7 +78,8 @@ export function attachMessageActions(group: Element, inner: Element) {
         }
         post({
             type: 'forwardMessage',
-            text: text,
+            // The click names the message: its index in the transcript the host holds.
+            text,
             sourceMessageId: group.dataset && group.dataset.messageId ? group.dataset.messageId : undefined,
             // A session-memory card forwards its ref: the other pane draws the envelope from it
             // instead of reading a description of itself.

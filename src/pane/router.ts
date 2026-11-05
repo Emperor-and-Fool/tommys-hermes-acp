@@ -44,7 +44,7 @@ export function init(): void {
                     break;
                 }
                 if (msg.role === 'peer') {
-                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history });
+                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history, peerMessages: msg.messages });
                     break;
                 }
                 if (msg.role === 'assistant') {
@@ -166,7 +166,7 @@ export function init(): void {
                 break;
 
             case 'peerActionResult':
-                applyPeerState(msg.envelopeId, msg.state);
+                applyPeerState(msg.envelopeId, msg.state, msg.text);
                 break;
 
             case 'setOtherPaneLive':
