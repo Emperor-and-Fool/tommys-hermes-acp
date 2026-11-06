@@ -352,7 +352,7 @@
     "build:pane": "esbuild src/pane/main.ts --bundle --format=iife --target=es2020 --outfile=media/pane.js",
     "predeploy": "node scripts/packageSecondant.mjs",
     "deploy": "node scripts/deploy.mjs",
-    "package": "node scripts/packageSecondant.mjs && npx --no-install @vscode/vsce package",
+    "package": "node scripts/packageSecondant.mjs && npx --no-install @vscode/vsce package --out dist/",
     "package:secondant": "node scripts/packageSecondant.mjs",
     "test": "node ./out/tests/runTest.js"
   },
