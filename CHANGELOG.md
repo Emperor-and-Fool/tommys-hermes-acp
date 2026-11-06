@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   narrow sidebar instead of the strip scrolling after the second one. Titles still ellipsise,
   and the editor-panel rail keeps its full-width rows.
 
+### Fixed
+
+- **The tray window retries once when its first load failed.** At autostart the window loads the
+  dashboard before `hermes-dashboard.service` may be listening, and QtWebEngine then kept its
+  error page until *Reload* was pressed. The window now tracks `loadFinished` and reloads once on
+  being shown — only when that load failed and the status probe says the dashboard answers, so a
+  page that loaded fine is never reloaded.
+
 ## [2.2.0] - 2026-11-05
 
 Peer cards say who forwarded them and who wrote each message, and expire when nobody answers. Copy
