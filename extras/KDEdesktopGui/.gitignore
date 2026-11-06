@@ -5,6 +5,4 @@
 build/
 __pycache__/
 *.pyc
-dist/*.deb
 dist/**/hermesdesktopgui/
-dist/*.zip
