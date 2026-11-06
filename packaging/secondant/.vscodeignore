@@ -37,3 +37,4 @@ extras/**/dist/**
 extras/**/build/**
 extras/**/.build-venv/**
 extras/**/__pycache__/**
+dist/**
