@@ -82,7 +82,7 @@ Autostart the *server* with the systemd unit (see the `hermes-agent` skill), and
 this app either from the menu entry or a second user unit:
 
 ```
-ExecStart=/usr/bin/python3 %h/_GitProjects/emperorandfools-repos/tommys-hermes-acp/extras/KDEdesktopTui/hermes_desktop_gui.py
+ExecStart=/usr/bin/python3 %h/_GitProjects/emperorandfools-repos/tommys-hermes-acp/extras/KDEdesktopGui/hermes_desktop_gui.py
 ```
 
 ## Windows
