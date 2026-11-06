@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+
+- **Session tabs share the strip before it scrolls.** The 300px is a ceiling for a long title,
+  not a fixed width: a tab may now shrink to 72px, so several conversations stay visible in a
+  narrow sidebar instead of the strip scrolling after the second one. Titles still ellipsise,
+  and the editor-panel rail keeps its full-width rows.
+
 ## [2.2.0] - 2026-11-05
 
 Peer cards say who forwarded them and who wrote each message, and expire when nobody answers. Copy

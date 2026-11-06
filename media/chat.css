@@ -1334,6 +1334,7 @@ body.surface-rail #tab-bar::-webkit-scrollbar {
 body.surface-rail .session-tab {
     width: 100%;
     max-width: none;
+    flex-shrink: 0;
     border-right: none;
     border-radius: 4px;
 }
@@ -1354,8 +1355,12 @@ body.surface-notabs #tab-bar {
     border-right: 1px solid var(--border);
     cursor: pointer;
     white-space: nowrap;
-    max-width: 160px;
-    flex-shrink: 0;
+    /* Share the strip before it scrolls, the way the editor's own tabs do: the 300px is a
+       ceiling for a long title, not a fixed width, and 72px keeps the tab readable when many
+       are open. The rail below opts out - a vertical list has no row to share. */
+    max-width: 300px;
+    min-width: 72px;
+    flex-shrink: 1;
     background: transparent;
     border-top: 2px solid transparent;
     user-select: none;
