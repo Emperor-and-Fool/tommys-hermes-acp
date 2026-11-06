@@ -33,3 +33,7 @@ out/host/extension.js
 out/host/extension.js.map
 out/host/secondantInstall.js
 out/host/secondantInstall.js.map
+extras/**/dist/**
+extras/**/build/**
+extras/**/.build-venv/**
+extras/**/__pycache__/**
