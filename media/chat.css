@@ -210,34 +210,34 @@ body.vscode-high-contrast-light {
    The collapsible header/body that thinking and tool cards share.
    Written once; :is(.thought, .tool) keeps the specificity the
    old per-role pairs had. */
-.message:is(.thought, .tool) .aux-header {
+.message:is(.thought, .tool, .history) .aux-header {
     margin-bottom: 4px;
 }
-.message:is(.thought, .tool) .aux-body-scroll {
+.message:is(.thought, .tool, .history) .aux-body-scroll {
     font-size: 12px;
     line-height: 1.35;
     color: var(--fg);
     word-break: break-word;
 }
-.message:is(.thought, .tool) .aux-body-scroll.is-collapsed {
+.message:is(.thought, .tool, .history) .aux-body-scroll.is-collapsed {
     overflow: auto;
     scrollbar-width: thin;
 }
-.message:is(.thought, .tool) .aux-body-content > :first-child {
+.message:is(.thought, .tool, .history) .aux-body-content > :first-child {
     margin-top: 0;
 }
-.message:is(.thought, .tool) .aux-body-content > :last-child {
+.message:is(.thought, .tool, .history) .aux-body-content > :last-child {
     margin-bottom: 0;
 }
-.message:is(.thought, .tool) .aux-body-content p {
+.message:is(.thought, .tool, .history) .aux-body-content p {
     margin: 0 0 4px;
 }
-.message:is(.thought, .tool) .aux-body-controls {
+.message:is(.thought, .tool, .history) .aux-body-controls {
     display: flex;
     gap: 8px;
     margin-top: 4px;
 }
-.message:is(.thought, .tool) .aux-body-toggle {
+.message:is(.thought, .tool, .history) .aux-body-toggle {
     background: transparent;
     border: none;
     color: var(--primary);
@@ -245,10 +245,10 @@ body.vscode-high-contrast-light {
     font-size: 11px;
     padding: 0;
 }
-.message:is(.thought, .tool) .aux-body-toggle:hover {
+.message:is(.thought, .tool, .history) .aux-body-toggle:hover {
     text-decoration: underline;
 }
-.message:is(.thought, .tool) .aux-body-toggle[hidden] {
+.message:is(.thought, .tool, .history) .aux-body-toggle[hidden] {
     display: none;
 }
 
@@ -1801,6 +1801,7 @@ body.surface-notabs #tab-bar {
     --peer-accent: #e67e22;
 }
 .message.peer {
+    --card-accent: var(--peer-accent, var(--primary));
     border-left: 3px solid var(--peer-accent, var(--primary));
     /* The card is a container, not a chat bubble: it spans the panel and holds its messages. */
     width: 100%;
@@ -1812,17 +1813,28 @@ body.surface-notabs #tab-bar {
     letter-spacing: 0.02em;
     opacity: 0.8;
 }
-/* One bubble per message, tagged with the sender: "you@host". */
-.message.peer .peer-msg {
+/* One message inside a card, tagged with its sender: a forwarded draft and an attached history
+   slice stack the same way. The card supplies --card-accent; the pill names the sender and the
+   rail ties the bubble to the card it belongs to. */
+.tagged-msg {
     margin-top: 6px;
     padding-left: 8px;
-    border-left: 2px solid color-mix(in srgb, var(--peer-accent, var(--primary)) 35%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--card-accent, var(--primary)) 35%, transparent);
 }
-.message.peer .peer-msg-tag {
-    display: block;
+.tagged-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
     font-size: 10px;
-    opacity: 0.7;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--card-accent, var(--primary)) 18%, transparent);
+    color: color-mix(in srgb, var(--card-accent, var(--primary)) 72%, var(--fg));
     margin-bottom: 2px;
+}
+.tagged-msg .content {
+    margin-top: 4px;
 }
 /* The sender, as a pill: tinted, small, and in that sender's accent. The rail carries the colour
    for a single card; the pill carries it for every card in a mixed stack. */
@@ -3549,8 +3561,14 @@ mark.search-mark-active {
 
 /* History card — an attached slice of another conversation. */
 .message.history {
+    /* A card around a slice of another conversation: it sat flat on the pane background, so the
+       next card's surface ran straight into its text. */
+    --card-accent: var(--primary);
+    background: color-mix(in srgb, var(--fg) 6%, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 22%, var(--border));
     border-left: 2px solid var(--border);
-    padding-left: 6px;
+    border-radius: 6px;
+    padding: 6px 10px;
 }
 .message.history .aux-label {
     font-style: italic;

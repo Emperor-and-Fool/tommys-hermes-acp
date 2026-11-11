@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An attached history slice reads as a conversation.** The history card used to sit flat on the
+  pane background — no surface, and one monospace block for every message — so the next card's
+  surface ran straight into its text. It now has a card of its own and one bubble per attached
+  message, each tagged with its sender; the bubble is the same `tagged-msg` template a forwarded
+  draft draws with. Bodies that are not attaches keep the quoted-text form.
 - **Session tabs share the strip before it scrolls.** The 300px is a ceiling for a long title,
   not a fixed width: a tab may now shrink to 72px, so several conversations stay visible in a
   narrow sidebar instead of the strip scrolling after the second one. Titles still ellipsise,

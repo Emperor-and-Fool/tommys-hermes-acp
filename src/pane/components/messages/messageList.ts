@@ -37,12 +37,13 @@ export interface BuiltMessage {
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
-import { cancelSessionMarkdownRender, chatSearchState, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
+import { cancelSessionMarkdownRender, chatSearchState, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
+import { buildTaggedMessage } from './taggedMessage';
 import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 
@@ -377,17 +378,9 @@ function buildPeerCard(text: string, options?: MessageOptions) {
         : [{ text, sentBy: peer?.sentBy }];
     if (state === 'pending') {
         for (const message of messages) {
-            const bubble = document.createElement('div');
-            bubble.className = 'peer-msg';
-            const tag = document.createElement('span');
-            tag.className = 'peer-msg-tag';
-            tag.textContent = `${message.sentBy === 'user' ? 'you' : (message.sentBy || 'agent')}@${peer?.forwarderHost || ''}`;
-            bubble.appendChild(tag);
-            const content = document.createElement('div');
-            content.className = 'content';
-            content.innerHTML = renderMarkdown(message.text);
-            bubble.appendChild(content);
-            card.appendChild(bubble);
+            // The tag speaks about the person; the forwarder only says which pane relayed it.
+            const tag = `${message.sentBy === 'user' ? 'you' : (message.sentBy || 'agent')}@${peer?.forwarderHost || ''}`;
+            card.appendChild(buildTaggedMessage(message.text, tag));
         }
     } else {
         const content = document.createElement('div');

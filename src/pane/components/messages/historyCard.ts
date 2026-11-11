@@ -1,4 +1,6 @@
 import type { HistoryRef } from '../../../shared/chat';
+import { parseAttachLines } from '../../../shared/attachLines';
+import { buildTaggedMessage, senderLabel } from './taggedMessage';
 
 /** Local date and time, so a span reads as something a person can place. */
 function formatSpan(from?: number, to?: number): string {
@@ -15,9 +17,12 @@ function formatSpan(from?: number, to?: number): string {
  * body with the same toggles. The meta line says how much came across and, when the lookup found
  * them, the real session handle and span; otherwise the quote the agent can search for.
  *
+ * The body is one tagged bubble per attached message (`taggedMessage.ts`), the same builder a
+ * forwarded card uses, so a slice reads as a conversation and not as one wall of text.
+ *
  * `withBody: false` draws the header and meta only. A forwarded peer message uses that: the
  * envelope says *which* conversation the text came from, and the text below it is that peer's own
- * body, rendered as markdown rather than the attach flow's plain quoted lines.
+ * body, rendered as markdown rather than the attach flow's quoted lines.
  */
 /** 5 lines at the aux line-height of 1.35em, the same cap a thought card takes. */
 const COLLAPSED_MAX_HEIGHT = '6.75em';
@@ -63,10 +68,19 @@ export function buildHistoryCard(text: string, ref?: HistoryRef, withBody = true
     // The class alone does not cap anything; without this the card renders at full height
     // and the toggles below have nothing to expand or collapse.
     scrollEl.style.maxHeight = COLLAPSED_MAX_HEIGHT;
-    const contentEl = document.createElement('div');
-    contentEl.className = 'aux-body-content';
-    contentEl.textContent = text || '';
-    scrollEl.appendChild(contentEl);
+    // One bubble per attached message, each naming its sender, so a slice reads as a conversation
+    // rather than as one wall of text. A body that is not an attach keeps the quoted-text form.
+    const parsed = parseAttachLines(text || '');
+    if (parsed.length) {
+        for (let i = 0; i < parsed.length; i++) {
+            scrollEl.appendChild(buildTaggedMessage(parsed[i].text, senderLabel(parsed[i].role)));
+        }
+    } else {
+        const contentEl = document.createElement('div');
+        contentEl.className = 'aux-body-content';
+        contentEl.textContent = text || '';
+        scrollEl.appendChild(contentEl);
+    }
     wrap.appendChild(scrollEl);
 
     const controls = document.createElement('div');
