@@ -133,8 +133,8 @@ export interface SessionInfo {
     updatedAt: number;
     modelId?: string;
     modelLabel?: string;
-    /** Pinned tabs stay at the front and reorder only within pinned group. */
-    pinned?: boolean;
+    /** Sticky tabs stay at the front and reorder only within sticky group. */
+    sticky?: boolean;
     /**
      * Hermes-side session id backing this tab. Local ids stay for tab/UI history;
      * this is the id ACP `session/load` addresses, so a tab survives reconnects.
@@ -142,6 +142,33 @@ export interface SessionInfo {
     hermesSessionId?: string;
     /** Working directory the Hermes session was created in (used when resuming). */
     cwd?: string;
+    /**
+     * The workspace this tab was opened in: its `.code-workspace` file, else the window's root
+     * folder. Where `cwd` is what the agent runs in and Hermes hands back on every read, this is
+     * ours: a copy taken at open time, so a session can be moved between workspaces later.
+     */
+    workspace?: string;
+    /** The project folder this tab was moved into. Absent means the plane below the folders. */
+    folder?: string;
+}
+
+/** One workspace this editor has opened: where it is, and when it last was. */
+export interface WorkspaceEntry {
+    path: string;
+    lastSeen: number;
+}
+
+/**
+ * A project folder: the name he gives a group of tabs, and the workspace it is connected to.
+ *
+ * The connection is what makes the folder a parent: its tabs are the ones opened in that
+ * workspace, unless a tab was moved into it by hand.
+ */
+export interface ProjectFolder {
+    id: string;
+    name: string;
+    /** The registry path of the workspace this folder belongs to. */
+    workspace: string;
 }
 
 /** What Hermes reports for one session. Only the fields the index actually reads. */

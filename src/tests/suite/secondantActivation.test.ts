@@ -15,6 +15,9 @@ const quietHost = (): SessionsHost & { lines: string[] } => {
         log: (line: string) => { lines.push(line); },
         updatePanelTitle: () => {},
         modelLabel: () => undefined,
+            currentWorkspace: () => '',
+            workspaces: () => [],
+            folders: () => [],
     };
 };
 

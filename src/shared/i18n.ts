@@ -253,8 +253,14 @@ export interface LocaleStrings {
     tabContextCloseLeft: string;
     tabContextCloseRight: string;
     tabContextCloseAll: string;
-    tabContextPin: string;
-    tabContextUnpin: string;
+    createProjectFolder: string;
+    tabContextMoveFolder: string;
+    tabContextRenameFolder: string;
+    tabContextDeleteFolder: string;
+    tabContextMoveWorkspace: string;
+    tabContextNoFolder: string;
+    tabContextSticky: string;
+    tabContextUnstick: string;
     copySid: string;
     sessionExportSessionId: string;
     sessionExportModel: string;

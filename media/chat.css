@@ -1321,7 +1321,7 @@ body.surface-rail #tab-bar {
     align-items: stretch;
     gap: 2px;
     padding: 4px;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -1341,9 +1341,91 @@ body.surface-rail .session-tab {
 body.surface-rail .session-tab .tab-close {
     margin-left: auto;
 }
+/* The rail's own action, centred in the space the chat list leaves empty. Hidden in the side-bar
+   surface, where that space below the strip is the transcript. */
+#rail-footer {
+    display: none;
+}
+body.surface-rail #rail-footer {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+}
+body.surface-rail #rail-footer .button {
+    max-width: 100%;
+}
+body.surface-rail #rail-footer input {
+    width: 100%;
+}
 /* Editor panel: the conversation only, the rail carries the tabs. */
 body.surface-notabs #tab-bar {
     display: none !important;
+}
+/* Project folders: parents in the rail, a labelled run of tabs in the side-bar strip. The tab
+   markup is unchanged, so click, drag and close keep working wherever a tab is drawn. */
+.tab-group,
+.tab-group-tabs {
+    display: contents;
+}
+.tab-group-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* The caret says whether the folder is open; a closed folder keeps only its header. */
+.tab-group-caret {
+    font-size: 9px;
+    line-height: 1;
+    opacity: 0.75;
+}
+.tab-group.is-collapsed .tab-group-tabs {
+    display: none;
+}
+body.surface-rail .tab-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+body.surface-rail .tab-group-header {
+    padding: 2px 4px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-width: none;
+}
+body.surface-rail .tab-group-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    /* No width: the margin and padding below would push a 100% box past the rail's edge and
+       clip the close button. A stretched flex item already fills what is left. */
+    margin-left: 6px;
+    padding-left: 6px;
+    border-left: 1px solid var(--border);
+}
+/* The plane follows the folders: one gap says the run below is not in the group above it. */
+body.surface-rail .tab-group + .tab-group--plane {
+    margin-top: 8px;
+}
+/* The plane: no folder, so no indent and no rail — the placement is the whole message. */
+body.surface-rail .tab-group--plane .tab-group-tabs {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
 }
 .session-tab {
     display: inline-flex;
@@ -1416,7 +1498,7 @@ body.surface-notabs #tab-bar {
     opacity: 1;
     color: var(--error);
 }
-.session-tab .tab-pin-icon {
+.session-tab .tab-sticky-icon {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -1425,13 +1507,13 @@ body.surface-notabs #tab-bar {
     opacity: 0.85;
     line-height: 1;
 }
-.session-tab .tab-pin-icon svg {
+.session-tab .tab-sticky-icon svg {
     width: 11px;
     height: 11px;
     fill: currentColor;
     display: block;
 }
-#tab-bar .tab-pin-separator {
+#tab-bar .tab-sticky-separator {
     align-self: stretch;
     width: 1px;
     background: color-mix(in srgb, var(--primary) 35%, var(--border));

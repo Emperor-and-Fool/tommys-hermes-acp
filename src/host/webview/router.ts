@@ -34,7 +34,12 @@ export interface RouterHost {
     handleReorderSessions(ids: unknown): void;
     handleCloseSessions(sessionId: string, mode: unknown): Promise<void>;
     handleRenameSession(sessionId: unknown, title: unknown): Promise<void>;
-    handleTogglePinSession(sessionId: string): void;
+    handleToggleStickySession(sessionId: string): void;
+    handleMoveToWorkspace(sessionId: string, workspace: string): void;
+    handleCreateProjectFolder(name: string): void;
+    handleRenameProjectFolder(folderId: string, name: string): void;
+    handleDeleteProjectFolder(folderId: string): void;
+    handleSetSessionFolder(sessionId: string, folderId: string): void;
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void;
     handleSwitchAgent(name: string): void;
     handleSwitchSession(sessionId: string, interrupt: boolean): void;
@@ -106,8 +111,23 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
         case 'renameSession':
             void host.handleRenameSession(message.sessionId, message.title);
             break;
-        case 'togglePinSession':
-            host.handleTogglePinSession(message.sessionId);
+        case 'toggleStickySession':
+            host.handleToggleStickySession(message.sessionId);
+            break;
+        case 'moveToWorkspace':
+            host.handleMoveToWorkspace(message.sessionId, message.workspace);
+            break;
+        case 'createProjectFolder':
+            host.handleCreateProjectFolder(message.name);
+            break;
+        case 'renameProjectFolder':
+            host.handleRenameProjectFolder(message.folderId, message.name);
+            break;
+        case 'deleteProjectFolder':
+            host.handleDeleteProjectFolder(message.folderId);
+            break;
+        case 'setSessionFolder':
+            host.handleSetSessionFolder(message.sessionId, message.folderId);
             break;
         case 'sessionExport':
             host.handleSessionExport(message.sessionId, message.action, message.indices);

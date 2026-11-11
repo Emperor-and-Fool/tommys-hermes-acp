@@ -2,7 +2,7 @@ import type { SessionInfo } from '../../shared/chat';
 
 /**
  * The bookkeeping rules of the tab index: registering a tab, and the two order rules the strip
- * has — pinned first, and pins stay inside their own group.
+ * has — sticky first, and pins stay inside their own group.
  *
  * Pure array-in/array-out, so each rule can be read and tested on its own. The panel keeps
  * the writes and the posts.
@@ -10,21 +10,23 @@ import type { SessionInfo } from '../../shared/chat';
 
 export function registerSession(
     sessions: SessionInfo[],
-    entry: { id: string; title: string; now?: number }
+    entry: { id: string; title: string; now?: number; workspace?: string }
 ): SessionInfo[] {
     if (sessions.some(session => session.id === entry.id)) {
         return sessions;
     }
     const now = entry.now ?? Date.now();
-    return [
-        {
-            id: entry.id,
-            title: entry.title,
-            createdAt: parseInt(entry.id, 36) || now,
-            updatedAt: now,
-        },
-        ...sessions,
-    ];
+    const record: SessionInfo = {
+        id: entry.id,
+        title: entry.title,
+        createdAt: parseInt(entry.id, 36) || now,
+        updatedAt: now,
+    };
+    // Absent stays absent: a tab opened with no workspace gains no empty field.
+    if (entry.workspace) {
+        record.workspace = entry.workspace;
+    }
+    return [record, ...sessions];
 }
 
 /**
@@ -39,39 +41,76 @@ export function hermesSessionIdFor(sessions: SessionInfo[], tabId: string): stri
     return record?.hermesSessionId || tabId;
 }
 
-/** Pinned first, then the most recently updated. The one order rule the strip has. */
-function sortPinnedFirst(sessions: SessionInfo[]): SessionInfo[] {
+/**
+ * Move a tab to another workspace.
+ *
+ * The only write path for the tag: `cwd` is Hermes' to report and gets overwritten on every
+ * catalog read, where this field is ours and rides forward untouched.
+ */
+export function moveSessionToWorkspace(sessions: SessionInfo[], sessionId: string, workspace: string): SessionInfo[] {
+    const index = sessions.findIndex(session => session.id === sessionId);
+    if (index < 0 || !workspace || sessions[index].workspace === workspace) {
+        return sessions;
+    }
+    const next = sessions.slice();
+    next[index] = { ...sessions[index], workspace };
+    return next;
+}
+
+/**
+ * Put a tab in a project folder, or back on the plane when `folderId` is empty.
+ *
+ * `folder` is a folder id, not a name: a rename must not move the tabs that belong to it.
+ */
+export function moveSessionToFolder(sessions: SessionInfo[], sessionId: string, folderId: string): SessionInfo[] {
+    const index = sessions.findIndex(session => session.id === sessionId);
+    if (index < 0 || (sessions[index].folder || '') === folderId) {
+        return sessions;
+    }
+    const next = sessions.slice();
+    const record: SessionInfo = { ...sessions[index] };
+    if (folderId) {
+        record.folder = folderId;
+    } else {
+        delete record.folder;
+    }
+    next[index] = record;
+    return next;
+}
+
+/** Sticky first, then the most recently updated. The one order rule the strip has. */
+function sortStickyFirst(sessions: SessionInfo[]): SessionInfo[] {
     return [...sessions].sort((a, b) => {
-        if (!!a.pinned !== !!b.pinned) {
-            return a.pinned ? -1 : 1;
+        if (!!a.sticky !== !!b.sticky) {
+            return a.sticky ? -1 : 1;
         }
         return b.updatedAt - a.updatedAt;
     });
 }
 
-export function normalizePinnedOrder(sessions: SessionInfo[]): SessionInfo[] {
-    return sortPinnedFirst(sessions);
+export function normalizeStickyOrder(sessions: SessionInfo[]): SessionInfo[] {
+    return sortStickyFirst(sessions);
 }
 
 /**
  * Toggle a pin. The tab is stamped as just updated, so it sorts into place by the one order
- * rule: pinned tabs first, then the most recent — which is where the user just put it.
+ * rule: sticky tabs first, then the most recent — which is where the user just put it.
  */
-export function pinSession(sessions: SessionInfo[], sessionId: string, now: number = Date.now()): SessionInfo[] {
+export function stickSession(sessions: SessionInfo[], sessionId: string, now: number = Date.now()): SessionInfo[] {
     const index = sessions.findIndex(record => record.id === sessionId);
     if (index === -1) {
         return sessions;
     }
     const next = sessions.map((record, position) =>
-        position === index ? { ...record, pinned: !record.pinned, updatedAt: now } : record
+        position === index ? { ...record, sticky: !record.sticky, updatedAt: now } : record
     );
-    return sortPinnedFirst(next);
+    return sortStickyFirst(next);
 }
 
 /**
  * Apply the order the strip reported. In our model a tab is one session, so the strip sends
  * everything it shows: tabs it does not mention are appended rather than dropped, and ids it
- * invents are ignored. Pinned tabs stay at the front whatever order arrived.
+ * invents are ignored. Sticky tabs stay at the front whatever order arrived.
  */
 export function reorderSessions(sessions: SessionInfo[], ids: unknown[]): SessionInfo[] | null {
     const order = ids.filter((id): id is string => typeof id === 'string');
@@ -83,5 +122,5 @@ export function reorderSessions(sessions: SessionInfo[], ids: unknown[]): Sessio
         .filter(session => position.has(session.id))
         .sort((a, b) => (position.get(a.id) as number) - (position.get(b.id) as number));
     const rest = sessions.filter(session => !position.has(session.id));
-    return normalizePinnedOrder([...placed, ...rest]);
+    return normalizeStickyOrder([...placed, ...rest]);
 }

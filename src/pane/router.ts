@@ -274,6 +274,8 @@ export function init(): void {
 
             case 'sessionList':
                 if ((msg.sessions || []).length) state.paneHintText = '';
+                state.lastWorkspaces = msg.workspaces || [];
+                state.lastFolders = msg.folders || [];
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
                 renderHistorySessionList();
                 if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {

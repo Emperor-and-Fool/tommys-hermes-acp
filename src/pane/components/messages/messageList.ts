@@ -65,7 +65,7 @@ export function maybeScrollToBottom(force?: boolean) {
     if (!messagesEl) {
         return;
     }
-    if (force || !state.scrollPinnedByUser) {
+    if (force || !state.scrollHeldByUser) {
         // This scroll is ours; the event it fires is not the user leaving the bottom.
         state.suppressScrollPinUntil = Date.now() + 200;
         messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -84,7 +84,7 @@ function onMessagesScroll() {
     // pane's own (a restore, a send), and the reader still needs to see where the view now is.
     const suppressed = Date.now() < state.suppressScrollPinUntil;
     if (!suppressed) {
-        state.scrollPinnedByUser = !isMessagesAtBottom();
+        state.scrollHeldByUser = !isMessagesAtBottom();
     }
     updateJumpControl();
 }
@@ -95,7 +95,7 @@ function updateJumpControl() {
     if (!button || !messagesEl) {
         return;
     }
-    const mode = jumpControlMode(state.scrollPinnedByUser, messagesEl.scrollTop);
+    const mode = jumpControlMode(state.scrollHeldByUser, messagesEl.scrollTop);
     button.hidden = mode === null;
     if (mode === null) {
         return;
@@ -140,7 +140,7 @@ function jumpControlAction(): void {
     if (!messagesEl) {
         return;
     }
-    if (state.scrollPinnedByUser) {
+    if (state.scrollHeldByUser) {
         resetAutoScrollFollow();
         maybeScrollToBottom(true);
     } else {
@@ -175,7 +175,7 @@ export function initMessagesElScroll(): void {
 }
 
 export function resetAutoScrollFollow() {
-    state.scrollPinnedByUser = false;
+    state.scrollHeldByUser = false;
     updateJumpControl();
 }
 
@@ -686,7 +686,7 @@ export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolea
     cancelSessionMarkdownRender();
     // A freshly restored transcript opens at its end; a pin left over from the previous
     // page would otherwise keep the pane wherever it happened to be.
-    state.scrollPinnedByUser = false;
+    state.scrollHeldByUser = false;
     state.streamingMessageId = null;
     state.thoughtMsgId = null;
     state.toolCallMap = {};

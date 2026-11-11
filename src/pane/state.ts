@@ -1,5 +1,5 @@
 /* Pane state shared by more than one module. Reads and writes go through `state.x`. */
-import type { SessionInfo } from '../shared/chat';
+import type { ProjectFolder, SessionInfo, WorkspaceEntry } from '../shared/chat';
 import type { CatalogSession } from '../shared/acp';
 import type { ModelListItem, ModelProviderGroup } from '../shared/models';
 
@@ -108,6 +108,12 @@ export interface PaneState {
     viewerSessionId: string;
     lastSelectionQuote: SelectionCapture | null;
     lastSessions: SessionInfo[];
+    /** The workspaces the host last reported: what the tab's "move to" list offers. */
+    lastWorkspaces: WorkspaceEntry[];
+    /** The project folders the host last reported: the strip's parents, and the menu's list. */
+    lastFolders: ProjectFolder[];
+    /** Folders the user closed, by id: their tabs are hidden until it is opened again. */
+    collapsedFolders: Set<string>;
     logScrollIdleTimer: Timer | null;
     logScrollPinnedByUser: boolean;
     logs: LogLine[];
@@ -130,7 +136,7 @@ export interface PaneState {
     previewTooltip: HTMLElement | null;
     quoteActionEl: HTMLElement | null;
     replyQuote: QuotedText | null;
-    scrollPinnedByUser: boolean;
+    scrollHeldByUser: boolean;
     /** Until this moment, a scroll event is ours (a card collapsing, an auto-scroll), not the
      *  user leaving the bottom, and must not pin the view. */
     suppressScrollPinUntil: number;
@@ -204,6 +210,9 @@ export const state: PaneState = {
     viewerSessionId: '',
     lastSelectionQuote: null,
     lastSessions: [],
+    lastWorkspaces: [],
+    lastFolders: [],
+    collapsedFolders: new Set<string>(),
     logScrollIdleTimer: null,
     logScrollPinnedByUser: false,
     logs: [],
@@ -225,7 +234,7 @@ export const state: PaneState = {
     previewTooltip: null,
     quoteActionEl: null,
     replyQuote: null,
-    scrollPinnedByUser: false,
+    scrollHeldByUser: false,
     suppressScrollPinUntil: 0,
     selectionQuoteTimer: null,
     sessionMarkdownPending: false,

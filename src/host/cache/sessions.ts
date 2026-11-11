@@ -1,12 +1,14 @@
-import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, PeerState, ProjectFolder, SessionInfo, StoredImageRef, WorkspaceEntry } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
 import {
-    normalizePinnedOrder,
-    pinSession,
+    moveSessionToFolder,
+    moveSessionToWorkspace,
+    normalizeStickyOrder,
+    stickSession,
     registerSession,
     reorderSessions,
 } from '../tabs/tabs';
@@ -20,6 +22,12 @@ export interface SessionsHost {
     log(line: string): void;
     updatePanelTitle(): void;
     modelLabel(): string | undefined;
+    /** The workspace this window is, read when a tab record is created. */
+    currentWorkspace(): string;
+    /** Every workspace this editor has opened: what a "move to" menu offers. */
+    workspaces(): WorkspaceEntry[];
+    /** The project folders he named, in the order the strip draws them. */
+    folders(): ProjectFolder[];
 }
 
 /**
@@ -89,11 +97,13 @@ export class Sessions {
                 existing.title = firstUser;
             }
         } else {
+            const workspace = this.host.currentWorkspace();
             this.tabs.unshift({
                 id: this.activeId,
                 title: firstUser || t('newChat'),
                 createdAt: parseInt(this.activeId, 36) || Date.now(),
                 updatedAt: Date.now(),
+                ...(workspace ? { workspace } : {}),
             });
         }
         if (this.saveCatalog()) {
@@ -106,6 +116,7 @@ export class Sessions {
         const next = registerSession(this.tabs, {
             id: this.activeId,
             title: this._tabTitle() || t('newChat'),
+            workspace: this.host.currentWorkspace(),
         });
         if (next === this.tabs) {
             return;
@@ -120,6 +131,8 @@ export class Sessions {
             type: 'sessionList',
             sessions: this.tabs,
             activeSessionId: this.activeId,
+            workspaces: this.host.workspaces(),
+            folders: this.host.folders(),
         });
     }
 
@@ -145,11 +158,11 @@ export class Sessions {
 
     private loadCatalog(): void {
         this.tabs = this.store.readCatalog();
-        this.normalizePinned();
+        this.normalizeSticky();
     }
 
-    private normalizePinned(): void {
-        this.tabs = normalizePinnedOrder(this.tabs);
+    private normalizeSticky(): void {
+        this.tabs = normalizeStickyOrder(this.tabs);
     }
 
     /**
@@ -458,14 +471,59 @@ export class Sessions {
         this.postList();
     }
 
-    handleTogglePinSession(sessionId: string): void {
-        const next = pinSession(this.tabs, sessionId);
+    handleToggleStickySession(sessionId: string): void {
+        const next = stickSession(this.tabs, sessionId);
         if (next === this.tabs) {
             return;
         }
         this.tabs = next;
-        const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
-        this.host.log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
+        const stickyNow = !!next.find(record => record.id === sessionId)?.sticky;
+        this.host.log(`${stickyNow ? 'Sticky' : 'Drop'} session ${sessionId}`);
+        this.saveCatalog();
+        this.postList();
+    }
+
+    /** Move one tab to another workspace: our tag, so no catalog read can put it back. */
+    setWorkspace(sessionId: string, workspace: string): void {
+        const next = moveSessionToWorkspace(this.tabs, sessionId, workspace);
+        if (next === this.tabs) {
+            return;
+        }
+        this.tabs = next;
+        this.host.log(`Session ${sessionId} moved to workspace ${workspace}`);
+        this.saveCatalog();
+        this.postList();
+    }
+
+    /** A folder is gone: every tab that was in it goes back to the plane. */
+    clearFolder(folderId: string): void {
+        if (!folderId) {
+            return;
+        }
+        let changed = false;
+        const next = this.tabs.map(session => {
+            if (session.folder !== folderId) {
+                return session;
+            }
+            changed = true;
+            return { ...session, folder: undefined };
+        });
+        if (!changed) {
+            return;
+        }
+        this.tabs = next;
+        this.host.log(`Folder ${folderId} removed: its tabs are back on the plane`);
+        this.saveCatalog();
+    }
+
+    /** Put one tab in a folder, or back on the plane. */
+    setFolder(sessionId: string, folderId: string): void {
+        const next = moveSessionToFolder(this.tabs, sessionId, folderId);
+        if (next === this.tabs) {
+            return;
+        }
+        this.tabs = next;
+        this.host.log(`Session ${sessionId} -> folder ${folderId || '(none)'}`);
         this.saveCatalog();
         this.postList();
     }

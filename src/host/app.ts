@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
+import { WorkspaceStore } from './cache/workspaceStore';
+import { WorkspaceIdentity } from './workspace/identity';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
@@ -98,6 +100,10 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Bytes Hermes never stores: content-addressed images and the index that finds them. */
     private _attachments: AttachmentStore;
+    /** Where every workspace this editor has opened is recorded, above the profiles. */
+    private _workspaces: WorkspaceStore;
+    /** The window's workspace, and the one subscription that follows it. */
+    private _identity: WorkspaceIdentity;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -266,6 +272,11 @@ export class App implements vscode.WebviewViewProvider {
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
         this._attachments = new AttachmentStore(this._historyDir);
+        this._workspaces = new WorkspaceStore(this._historyDir);
+        this._identity = new WorkspaceIdentity({
+            log: (line) => this._log(line),
+            onWorkspace: (value) => { this._workspaces.register(value); },
+        });
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
         const initialTarget = this._profiles.seed();
@@ -274,6 +285,9 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
             modelLabel: () => this._models.currentLabel,
+            currentWorkspace: () => this._identity.current(),
+            workspaces: () => this._workspaces.read(),
+            folders: () => this._workspaces.folders(),
         });
         this._session.init();
         this._startPaneMail();
@@ -326,6 +340,7 @@ export class App implements vscode.WebviewViewProvider {
         });
 
         context.subscriptions.push(
+            this._identity.start(),
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
@@ -868,7 +883,32 @@ export class App implements vscode.WebviewViewProvider {
             handleReorderSessions: (ids) => this._session.handleReorderSessions(ids),
             handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
             handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
-            handleTogglePinSession: (sessionId) => this._session.handleTogglePinSession(sessionId),
+            handleToggleStickySession: (sessionId) => this._session.handleToggleStickySession(sessionId),
+            handleMoveToWorkspace: (sessionId, workspace) => this._session.setWorkspace(sessionId, workspace),
+            handleCreateProjectFolder: (name) => {
+                const folder = this._workspaces.createFolder(name, this._identity.current());
+                this._log(folder
+                    ? `Project folder "${folder.name}" connected to ${folder.workspace}`
+                    : 'Project folder: a blank name creates nothing');
+                this._session.postList();
+            },
+            handleRenameProjectFolder: (folderId, name) => {
+                const folder = this._workspaces.renameFolder(folderId, name);
+                this._log(folder
+                    ? `Project folder ${folder.id} is now "${folder.name}"`
+                    : 'Project folder rename: blank name or no change');
+                this._session.postList();
+            },
+            handleDeleteProjectFolder: (folderId) => {
+                const removed = this._workspaces.deleteFolder(folderId);
+                this._log(removed
+                    ? `Project folder ${folderId} removed; its tabs are back on the plane`
+                    : `Project folder ${folderId}: nothing to delete`);
+                // The folder goes, its tabs stay: a group is a view, not an owner.
+                this._session.clearFolder(folderId);
+                this._session.postList();
+            },
+            handleSetSessionFolder: (sessionId, folderId) => this._session.setFolder(sessionId, folderId),
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
                 this._approvalModes.clear();
