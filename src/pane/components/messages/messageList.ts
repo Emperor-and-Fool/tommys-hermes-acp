@@ -44,6 +44,8 @@ import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
 import { buildTaggedMessage } from './taggedMessage';
+import { buildReplyQuoteBlock } from './replyQuoteCard';
+import { parseReplyQuote } from '../../../shared/replyQuoteText';
 import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 
@@ -285,6 +287,16 @@ function buildMessage(role: string, text: string, options?: MessageOptions) {
     label.className = 'label';
     label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
     card.appendChild(label);
+    // A reply carries its quote inside the text, because that is what the agent receives. Draw it
+    // as the panel the composer showed while composing, not as the markers.
+    if (role === 'user') {
+        const quote = parseReplyQuote(text);
+        if (quote.segments.length) {
+            const title = String(locale.replyTitle || '{count}').replace('{count}', String(quote.segments.length));
+            card.appendChild(buildReplyQuoteBlock(quote.segments, title));
+            text = quote.rest;
+        }
+    }
     const content = document.createElement('div');
     content.className = 'content';
     content.textContent = text;

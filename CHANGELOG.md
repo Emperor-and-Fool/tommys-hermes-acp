@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A sent reply keeps the quote panel it was composed with.** The reply is text —
+  `[replying-to]` … `[/replying-to]` around the quoted messages — so after sending, the message
+  showed the markers verbatim. The transcript now reads the block back and draws the panel the
+  composer showed: the title with the count, one row per quoted message, and the caret that
+  collapses it. The markers still travel to the agent unchanged.
 - **An attached history slice reads as a conversation.** The history card used to sit flat on the
   pane background — no surface, and one monospace block for every message — so the next card's
   surface ran straight into its text. It now has a card of its own and one bubble per attached

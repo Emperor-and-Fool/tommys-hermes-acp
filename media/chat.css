@@ -2480,6 +2480,12 @@ body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
 }
 .reply-quote.is-collapsed .reply-quote-body { display: none; }
 .reply-quote-segment { margin: 0 0 4px; }
+/* A sent reply keeps the panel it was composed with: the quote sits inside the user card,
+   above the user's own words. */
+.message .reply-quote {
+    margin: 2px 0 6px;
+    max-width: 100%;
+}
 .reply-quote-role { color: var(--dim); font-weight: 600; }
 .composer-hint {
     display: flex;
