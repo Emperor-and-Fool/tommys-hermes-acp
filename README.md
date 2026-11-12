@@ -1,10 +1,11 @@
-<div align="center"> <img src="media/icon_fullcolor.png" alt="Tommys Hermes ACP icon" width="128" /> <br /> <h1>Tommys Hermes ACP 2.0</h1> <p><strong><a href="https://hermes-agent.nousresearch.com">Hermes</a> in your editor, with the three moves you won't find in most agent clients: steer a run while it is running, pull context out of any of your other conversations, and run a second independent agent beside the first.</strong></p> </div>
+<div align="center"> <img src="media/icon_fullcolor.png" alt="Tommys Hermes ACP icon" width="128" /> <br /> <h1>Tommys Hermes ACP</h1> <p><strong><a href="https://hermes-agent.nousresearch.com">Hermes</a> in your editor, with the three moves you won't find in most agent clients: steer a run while it is running, pull context out of any of your other conversations, and run a second independent agent beside the first.</strong></p> </div>
 
 ---
 
 > **TL;DR** — Two Hermes agents in one editor window, on separate profiles.
 > Steer a run while it runs. Pull context from any of your sessions.
-> The panes allows agents to hand each other work, with you as the gate.
+> The panes allow agents to hand each other work, with you as the gate.
+> Projects group the tabs of one piece of work; the rail shows and sets the permission mode.
 
 ## What this is
 
@@ -27,6 +28,8 @@ That's the shape of this: two agents, their challenge, your call.
 Enjoy the game!
 
 Thomas Kai Tchong
+
+<img src="media/two-agents-side-by-side.png" alt="Two Hermes agents side by side in one VSCodium window: the primary on the left, with a blue accent; the secondant on the right, with an orange rule across its toolbar." width="880" />
 
 <details>
 <summary><strong>Read more — what the two agents do</strong></summary>
@@ -51,7 +54,6 @@ handle reads outside its own profile — along with the call that reads more of 
 </ul>
 <p>The channel is a file under your Hermes home. No service, no port, no network: it carries
 your own messages under your own permissions, and you sit in the middle of every hop.</p>
-<img src="media/two-agents-side-by-side.png" alt="Two Hermes agents side by side in one VSCodium window: the primary on the left, labelled Profile dev-vsc, with a blue accent; the secondant on the right, labelled Profile pa, with an orange accent across its toolbar." width="880" />
 
 <h2>Steer a run while it runs</h2>
 <p>With a turn in flight, type into the composer and <strong>Stop becomes Steer</strong>. Your words go
@@ -79,6 +81,38 @@ re-attaching.</li>
 Thought and Tool messages, so you can carry a question and its answer without dragging
 forty tool calls along, or include the reasoning when you need it.</li>
 </ul>
+<h2>Projects — a folder for one piece of work</h2>
+<p>The strip already holds your tabs; a project is a named folder inside the strip that holds the
+tabs of one piece of work. <strong>Create Project</strong> sits under the tab list. From the
+folder's own header you rename it or delete it — deleting lets its tabs fall back to the plane,
+nothing is closed — and a tab dragged onto a folder joins it.</p>
+<ul>
+<li><strong>A new tab is born where the work is.</strong> Created while a project is in use, it joins
+that project instead of landing on the plane and having to be dragged out of it.</li>
+<li><strong>The tree follows you without arguing.</strong> A start or a reload shows every folder
+open, because that is how the workspace reads at a glance. From the first session switch on, the
+folder you are working in stays open with the one you were in before it, and the rest fold — so a
+session can be opened just to read something, the working one returned to, and both stay unfolded.
+Your own folding is left alone until the next switch.</li>
+<li><strong>Sticky is a tab's own state</strong> — <strong>Make It Sticky</strong> in the tab's menu,
+<strong>Drop</strong> to undo it. Sticky tabs sit above the rest; the rest stays newest-first.</li>
+</ul>
+<h2>The permission mode is a place in the rail</h2>
+<p>The rail's button reads <strong>Permissions:</strong> followed by the mode in force — Man, Smart,
+None or ALL — in that mode's own accent: blue, green, orange, and red for the one that glows. Press
+it and a row opens under the toolbar with the same Manual · Smart · None switch a permission card
+carries. One renderer, mounted in both places, so the two cannot disagree about the mode.</p>
+<ul>
+<li><strong>None is not silence.</strong> It asks you nothing, but the profile's own deny rules still
+block. ALL is the step past that: the deny list is cleared, which is why the red button arms first,
+saves the list to a JSON file before touching anything, and stops if that save fails. A
+<strong>Restore deny rules</strong> link stays beside it while a backup exists.</li>
+<li><strong>ALL is a recorded state, not an inference.</strong> A reload does not change its mind,
+and any deliberate choice of a mode ends it — choosing None included.</li>
+<li><strong>The mode is read, not remembered.</strong> The button asks Hermes when the pane loads,
+and again when the row opens, so a mode you changed in a terminal shows up instead of being
+contradicted.</li>
+</ul>
 <h2>The rest of the client</h2>
 <p>Sidebar or editor pane, your choice · tabs with rename and reopen · streaming markdown
 with syntax highlighting · image paste and image-only prompts · <code>@</code> file mentions ·
@@ -88,8 +122,9 @@ viewer · environment detection that finds a Hermes install and repairs <code>PA
 English and Simplified Chinese throughout, including Hermes' own permission wording.</p>
 <h2>Quieter touches</h2>
 <ul>
-<li><strong>Approvals carry their own mode switch</strong> — Manual · Smart · Off on the pending card,
-written through to the profile and applied to every other waiting card.</li>
+<li><strong>Approvals carry their own mode switch</strong> — Manual · Smart · None on the pending card,
+the same switch the rail's row draws, written through to the profile and applied to every other
+waiting card.</li>
 <li><strong>The agent's structured questions render as forms</strong>, not as dead prompts.</li>
 <li><strong>Consecutive tool calls fold into one card</strong>, so a dozen reads do not bury the answer.</li>
 <li><strong>Thoughts and tool cards grow with the text while live</strong>, then collapse to a readable
@@ -98,7 +133,15 @@ pushing the answer off-screen afterwards.</li>
 <li><strong>Loading looks deliberate</strong> — the pane's own icon, pulsing, with a live count of the
 messages arriving from Hermes beneath it.</li>
 <li><strong>A message Hermes never received is caught</strong> — the last few user turns live in a small
-sidecar, and the agent's replay is checked against it before the transcript is replaced.</li>
+sidecar, and the agent's replay is checked against it before the transcript is replaced. Nothing is
+pre-filled: a notice with <strong>Restore</strong> and <strong>Discard</strong> appears only when a
+send genuinely died between the pane and the agent.</li>
+<li><strong>A gate's note is a card of its own</strong> — "flagged … and auto-approved by smart
+approval" draws as a dark card with the reason in orange, not as a line buried inside the tool that
+ran.</li>
+<li><strong>What you attach comes back as what it was</strong> — an attached history slice draws as a
+card with one bubble per message, each tagged with its sender, and a reply you sent redraws as the
+quote panel it was composed with, caret and all.</li>
 </ul>
 
 </details>
@@ -136,10 +179,11 @@ git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0002-acp-ga
 <p><em>Tested on Ubuntu 24.04. Windows is untested &mdash; both the Hermes install location and <code>git apply</code> behave differently there. If you try it, please open an issue and say what happened; this section will then state it honestly rather than guess.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install
-npm run package                                     # compile + bundle the pane + vsix
-codium --install-extension ./tommys-hermes-acp-2.0.0.vsix --force
+npm run package                                     # compile + bundle the pane + vsix into dist/
+codium --install-extension ./dist/tommys-hermes-acp-<version>.vsix --force
 </code></pre>
-<p><code>npm run package</code> bundles the secondant VSIX inside the primary. <code>npm run package:secondant</code>
+<p><code>npm run package</code> writes the VSIX into <code>dist/</code> and bundles the secondant VSIX
+inside it. <code>npm run package:secondant</code>
 builds that companion on its own; users never need it, because the primary installs it from a
 command.</p>
 <p><code>npm run deploy</code> is the fast path while developing: it compiles, rebuilds the pane bundle
@@ -200,6 +244,11 @@ and copies everything into the installed extension directory, verifying each fil
 <td>Named agent configurations</td>
 <td><code>[]</code></td>
 </tr>
+<tr>
+<td><code>tommys.debugTabSwitch</code></td>
+<td>Log each tab switch, and flag a tab bound to a Hermes session that shows nothing</td>
+<td><code>false</code></td>
+</tr>
 </tbody></table>
 <p>The secondant exposes the same keys under <code>tommys2.*</code>.</p>
 <pre><code class="language-json">"tommys.agents": [
@@ -221,6 +270,12 @@ and copies everything into the installed extension directory, verifying each fil
 6. For a second agent, run **Install secondant** from the command palette. It appears as a
    second activity-bar container with its own orange accent. **Uninstall secondant** takes
    it out again, version directories included.
+7. **Create Project** under the tab list groups tabs into a folder. Drag a tab onto a folder to
+   move it there; rename or delete the folder from its own header. A tab made while a project is
+   in use is born in it.
+8. The **Permissions: …** button above the toolbar shows the profile's permission mode and opens
+   the switch that sets it. The red button beside the switch is the one that clears your deny
+   rules — it arms first, and saves them to a JSON file before it touches anything.
 
 > Opening a tab for a session Hermes knows resumes it over ACP (`session/load`), and the
 > transcript arrives from Hermes itself — nothing is read back from a local copy.
@@ -241,8 +296,10 @@ and copies everything into the installed extension directory, verifying each fil
 
 ## Known issues
 
-- **Approval-mode switch** — the Manual · Smart · Off toggle on permission cards exists
-  but has not been tested end-to-end. It may not write through to the profile correctly.
+- **Approval-mode switch** — Manual · Smart · None exists in the permission card and in the rail's
+  row, and the mode is read back from Hermes on load, but the full round trip has not been exercised
+  end-to-end on every platform. A change made outside the editor shows up at the next read, not
+  instantly.
 - **Thought segment heuristic** — the pane uses a prefix test to decide whether a thought
   chunk continues the current card or starts a new one. If a genuinely new segment opens
   with the same text as the end of the previous one, it is treated as a continuation.
@@ -291,6 +348,21 @@ are all new work. The upstream MIT notice is retained in full; see Licence below
   the same Deliver gate in front of it.
 - **Hermes upstream PR** — contribute the ACP session catalog, hidden and title methods
   back to Hermes as a proper pull request.
+
+## Under the hood
+
+Three records sit behind the tab strip, and each is keyed by an id that outlives a rename:
+
+- **A workspace is identified by its path, not by a number minted at registration.** Rewrite or
+  truncate the registry and the same id comes back, so tabs and projects cannot be orphaned by it.
+- **The tab catalog and the project list are per profile**; the workspace registry is global,
+  because a workspace is an editor fact rather than an agent's. Each carries a foreign-key-shaped id
+  rather than a path or a name. A project is a view: deleting one clears the reference on its tabs
+  and closes nothing.
+- **The tree is on disk for whatever wants to read it.** `tree-current.json` in the profile's storage
+  holds this window's projects, their tabs and the active session; `tree-passive.json` holds the
+  workspace you were in before. A session is told both paths on its first turn in a workspace, which
+  is how a second agent can answer "which session lives where" without being asked.
 
 ## Licence and attribution
 
