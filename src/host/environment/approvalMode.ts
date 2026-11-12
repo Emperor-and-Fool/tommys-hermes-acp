@@ -11,11 +11,17 @@ import { runHermesCommand } from './profileDiscovery';
 import { normalizeHermesCliProfile } from './hermesProfile';
 import type { ApprovalMode } from '../../shared/webview';
 
-/** The modes a card may offer, in the order it shows them. */
+/** The modes Hermes accepts, as `config get approvals.mode` reports them. */
 export const APPROVAL_MODES: readonly string[] = ['manual', 'smart', 'off'];
 
-/** One mode the CLI can be set to: everything `ApprovalMode` allows except `unknown`. */
-export type SettableApprovalMode = Exclude<ApprovalMode, 'unknown'>;
+/**
+ * The modes this front-end may set. `off` is read but never written: silencing every prompt in
+ * the profile is a deliberate act, taken in Hermes itself, not a click inside a card.
+ */
+export const SETTABLE_APPROVAL_MODES: readonly string[] = ['manual', 'smart'];
+
+/** One mode the pane can write: everything Hermes accepts except `unknown` and `off`. */
+export type SettableApprovalMode = Exclude<ApprovalMode, 'unknown' | 'off'>;
 
 /** What `config get approvals.mode` printed, trimmed and lower-cased; `unknown` if it is not ours. */
 export function parseApprovalMode(raw: unknown): ApprovalMode {
@@ -25,7 +31,7 @@ export function parseApprovalMode(raw: unknown): ApprovalMode {
 
 /** Whether a value the pane sent may be written. */
 export function isSettableApprovalMode(value: unknown): value is SettableApprovalMode {
-    return typeof value === 'string' && APPROVAL_MODES.indexOf(value) >= 0;
+    return typeof value === 'string' && SETTABLE_APPROVAL_MODES.indexOf(value) >= 0;
 }
 
 /** Read the profile's mode. A missing CLI or a failed call is `unknown`, never an exception. */

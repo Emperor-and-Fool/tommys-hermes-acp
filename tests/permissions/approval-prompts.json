@@ -1,0 +1,54 @@
+{
+  "purpose": "Reproduce the three approval outcomes on demand: a silent smart APPROVE, a card, and a session grant that silences the repeat. Every command is flagged by Hermes' detector and is harmless if it runs.",
+  "how": "Run ONE step per agent `terminal` call. A command run inside `execute_code` never reaches the approval gate, so it proves nothing here.",
+  "setup": "mkdir -p /tmp/hap && printf 'x\\n' > /tmp/hap/x.txt",
+  "steps": [
+    {
+      "id": "smart-silent",
+      "mode": "smart",
+      "command": "python3 -c \"print('smart approves this without asking')\"",
+      "detector": "script execution via -e/-c flag",
+      "expect": "no card; the tool result carries approval: 'Command was flagged (script execution via -e/-c flag) and auto-approved by smart approval.'"
+    },
+    {
+      "id": "smart-card",
+      "mode": "smart",
+      "command": "systemctl stop ssh",
+      "detector": "stop/restart system service",
+      "expect": "guardian does not approve: either a card (DENY/ESCALATE) or a hard block. As a normal user the command fails with 'Interactive authentication required' if it is ever run."
+    },
+    {
+      "id": "manual-card",
+      "mode": "manual",
+      "command": "chmod 777 /tmp/hap",
+      "detector": "world/other-writable permissions",
+      "expect": "card with Allow / Allow for session / Deny. Manual asks every time, whatever the guardian would have said."
+    },
+    {
+      "id": "session-grant",
+      "mode": "manual",
+      "command": "chmod 777 /tmp/hap",
+      "detector": "world/other-writable permissions",
+      "expect": "no card at all, and no approval note: the session grant from the previous step answers it. This is the only step that proves session scope, because a new prompt would look identical to step 3."
+    },
+    {
+      "id": "arm-then-auto-session",
+      "mode": "smart, then manual",
+      "command": "chmod 777 /tmp/hap",
+      "detector": "world/other-writable permissions",
+      "expect": "card shows Allow / Deny with the greyed session answer. Flip the row to Manual: the session answer goes live. Press it: the card takes Allow once and says the session answer is set for the next request. The NEXT flagged command is answered with session by the pane itself and never reaches you."
+    },
+    {
+      "id": "smart-denied-scope",
+      "mode": "smart",
+      "command": "rm -rf /home/skdj/.cache/hap",
+      "detector": "recursive delete",
+      "expect": "if the guardian denies, the card must show Allow and Deny only, with the greyed 'Allow for session' beside them carrying the balloon 'For session, set to manual'."
+    }
+  ],
+  "notes": [
+    "approvals.mode is profile-wide: it applies to the CLI and every pane, not just this tab.",
+    "The option set is fixed when Hermes creates the request; switching the mode on an open card cannot add the session answer to it.",
+    "A session grant lives in memory for that ACP session and dies with it; it never reaches command_allowlist."
+  ]
+}

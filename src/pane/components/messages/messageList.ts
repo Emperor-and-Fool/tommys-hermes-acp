@@ -285,7 +285,9 @@ function buildMessage(role: string, text: string, options?: MessageOptions) {
     card.className = 'message ' + role;
     const label = document.createElement('div');
     label.className = 'label';
-    label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
+    label.textContent = role === 'user' ? locale.roleYou
+        : role === 'approval' ? (locale.approvalNoteLabel || 'Approval')
+        : assistantRoleLabel();
     card.appendChild(label);
     // A reply carries its quote inside the text, because that is what the agent receives. Draw it
     // as the panel the composer showed while composing, not as the markers.
@@ -430,7 +432,8 @@ function buildPeerCard(text: string, options?: MessageOptions) {
     actions.appendChild(deliverBtn);
     actions.appendChild(dismissBtn);
     // An expired card keeps its body and its sender, and loses its buttons: the deadline is
-    // the same 120 s the permission cards use, so nothing sits there waiting to be answered.
+    // the host's own peer-card timer (PEER_CARD_TIMEOUT_MS), so nothing sits there waiting to
+    // be answered.
     if (state === 'pending') {
         card.appendChild(actions);
     }

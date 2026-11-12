@@ -24,6 +24,13 @@ import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming
 export const pendingPermissions = new Map<string, any>();
 
 
+/**
+ * Set when the session answer was pressed on a card that could not send it: that card takes
+ * allow-once, and the next permission request in this pane is answered with session on its own.
+ * One request, not a standing policy — a pane-wide auto-answer would approve commands nobody read.
+ */
+let sessionAnswerArmed = false;
+
 const PERM_COLLAPSED_LINES = 3;
 
 const PERM_LINE_HEIGHT_EM = 1.45;
@@ -141,6 +148,51 @@ export function refreshPermissionOptionLabels(group: HTMLElement) {
     });
 }
 
+/** Both tokens an option carries, normalised: the wire id and the ACP kind. */
+function optionTokens(opt: PermissionOption): string[] {
+    return [String(opt.optionId || ''), String(opt.kind || '')]
+        .map(function(token) { return token.toLowerCase().replace(/-/g, '_'); });
+}
+
+/** The session scope Hermes accepts (id `allow_session`; its ACP kind is `allow_always`). */
+function isSessionScope(opt: PermissionOption): boolean {
+    return optionTokens(opt).some(function(token) {
+        return token.indexOf('allow') >= 0 && token.indexOf('session') >= 0;
+    });
+}
+
+function isAllowOption(opt: PermissionOption): boolean {
+    return optionTokens(opt).some(function(token) { return token.indexOf('allow') === 0; });
+}
+
+function isRejectOption(opt: PermissionOption): boolean {
+    return optionTokens(opt).some(function(token) {
+        return token.indexOf('reject') === 0 || token.indexOf('deny') === 0;
+    });
+}
+
+function isAlwaysScope(opt: PermissionOption): boolean {
+    return optionTokens(opt).some(function(token) { return token.indexOf('always') >= 0; });
+}
+
+/**
+ * The three answers a card offers, in this order: allow (this command), session, cancel.
+ *
+ * Hermes may send five (`allow_always` and `deny_always` included); the card keeps the three a
+ * reader can decide at a glance, and the permanent allowlist stays a deliberate CLI act
+ * (`hermes approvals`) rather than a button pressed mid-turn.
+ */
+function cardAnswers(options: PermissionOption[] | undefined): PermissionOption[] {
+    const list = options || [];
+    const session = list.find(isSessionScope);
+    const once = list.find(function(opt) {
+        return isAllowOption(opt) && !isSessionScope(opt) && !isAlwaysScope(opt);
+    });
+    const cancel = list.find(function(opt) { return isRejectOption(opt) && !isAlwaysScope(opt); })
+        || list.find(isRejectOption);
+    return [once, session, cancel].filter(Boolean) as PermissionOption[];
+}
+
 function buildPermissionActions(id: string, options: PermissionOption[] | undefined, readOnly: boolean) {
     const actions = document.createElement('div');
     actions.className = 'permission-actions';
@@ -148,17 +200,15 @@ function buildPermissionActions(id: string, options: PermissionOption[] | undefi
         actions.style.display = 'none';
         return actions;
     }
-    (options || []).forEach(function(opt) {
+    const answers = cardAnswers(options);
+    answers.forEach(function(opt) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'permission-btn button';
         btn.dataset.optionId = opt.optionId;
-        const kind = String(opt.kind || '').toLowerCase();
-        const idLower = String(opt.optionId || '').toLowerCase();
-        if (kind.indexOf('allow') === 0 || idLower.indexOf('allow') === 0) {
+        if (isAllowOption(opt)) {
             btn.classList.add('allow', 'button--primary');
-        } else if (kind.indexOf('reject') === 0 || kind.indexOf('deny') === 0
-            || idLower.indexOf('reject') >= 0 || idLower.indexOf('deny') >= 0) {
+        } else {
             btn.classList.add('reject', 'button--reject');
         }
         btn.textContent = permissionOptionLabel(opt);
@@ -167,6 +217,32 @@ function buildPermissionActions(id: string, options: PermissionOption[] | undefi
         });
         actions.appendChild(btn);
     });
+    // A gate that offered no session scope still names the choice and how to unlock it: the
+    // moment the first card appears is when a reader wants "for session", so the instruction
+    // belongs on the card, not in a document read later. Not `disabled`: a disabled button does
+    // not reliably show its balloon, and this one exists to be read.
+    if (!answers.some(isSessionScope)) {
+        const once = answers.find(isAllowOption);
+        const hint = document.createElement('button');
+        hint.type = 'button';
+        hint.className = 'permission-btn button is-unavailable is-session-hint';
+        hint.dataset.optionId = 'allow_session';
+        hint.textContent = locale.permissionAllowSession || 'Allow for session';
+        hint.title = locale.permissionSessionNeedsManual || 'For session, set to manual';
+        hint.setAttribute('aria-disabled', 'true');
+        hint.addEventListener('click', function(e) {
+            e.stopPropagation();
+            // This card cannot send `allow_session` — Hermes built its answer list without it, so
+            // the answer would be mapped to a deny. It takes allow-once instead and arms the NEXT
+            // request for the session answer, which is a list that does carry it.
+            if (hint.getAttribute('aria-disabled') === 'true' || !once) {
+                return;
+            }
+            sessionAnswerArmed = true;
+            resolvePermission(id, once.optionId, locale.permissionSessionArmed || permissionOptionLabel(once));
+        });
+        actions.appendChild(hint);
+    }
     return actions;
 }
 
@@ -198,7 +274,12 @@ function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
 }
 
 /** The modes the switch offers, in the order it shows them. */
-const APPROVAL_MODE_CHOICES: Array<Exclude<ApprovalMode, 'unknown'>> = ['manual', 'smart', 'off'];
+/**
+ * The modes this front-end may set. `off` is deliberately absent: it silences every prompt in
+ * the profile, and a switch inside a card you are already reading is no place for a one-click
+ * way into that. Turning approvals off is a deliberate act, done in Hermes itself.
+ */
+const APPROVAL_MODE_CHOICES: Array<'manual' | 'smart'> = ['manual', 'smart'];
 
 /** The last `approvalMode` message, and why a write did not take. */
 let approvalMode: ApprovalMode = 'unknown';
@@ -247,6 +328,15 @@ function buildApprovalBlock() {
         row.appendChild(btn);
     });
     block.appendChild(row);
+    // A profile that is off can be read here but not switched back here: the row offers manual
+    // and smart only, so this line states the fact and names the command that changes it.
+    const off = document.createElement('div');
+    off.className = 'permission-approval-off';
+    off.hidden = true;
+    off.textContent = locale.approvalModeOffHere || 'Approvals are off (set in Hermes)';
+    off.title = locale.approvalModeOffHint
+        || 'Hermes is running without approval prompts for this profile. Turn it back on with: hermes config set approvals.mode smart';
+    block.appendChild(off);
     const error = document.createElement('div');
     error.className = 'permission-approval-error';
     error.hidden = true;
@@ -274,6 +364,20 @@ function syncApprovalRow(group: HTMLElement, withError = true) {
             btn.classList.toggle('is-selected', selected);
             btn.disabled = !known;
         });
+    }
+    // The session answer on a card that could not offer it: live exactly while the profile is on
+    // manual, because that is the mode in which the next request carries the session answer.
+    block.querySelectorAll('.permission-btn.is-session-hint').forEach(function(btn) {
+        const live = approvalMode === 'manual';
+        btn.classList.toggle('is-unavailable', !live);
+        btn.setAttribute('aria-disabled', live ? 'false' : 'true');
+        btn.title = live
+            ? (locale.permissionSessionArmedHint || 'Allow once now, and answer the next request for the session')
+            : (locale.permissionSessionNeedsManual || 'For session, set to manual');
+    });
+    const offLine = block.querySelector('.permission-approval-off');
+    if (offLine) {
+        offLine.hidden = approvalMode !== 'off';
     }
     const error = block.querySelector('.permission-approval-error');
     if (error) {
@@ -458,10 +562,29 @@ export function showPermissionRequest(msg: PermissionCardInput) {
         updatePermissionContent(pendingPermissions.get(id), msg.title, msg.detail);
         return;
     }
+    if (sessionAnswerArmed) {
+        sessionAnswerArmed = false;
+        const sessionOption = (msg.options || []).find(isSessionScope);
+        if (sessionOption) {
+            // Armed by the previous card's session press: this request carries the answer it could
+            // not send, so it is answered here — and the card stays as the record of that.
+            const group = mountPermissionCard(id, msg);
+            messagesEl.appendChild(group);
+            pendingPermissions.set(id, group);
+            resolvePermission(id, sessionOption.optionId, locale.permissionAllowSession || 'Allow for session');
+            maybeScrollToBottom();
+            return;
+        }
+    }
     const group = mountPermissionCard(id, msg);
     messagesEl.appendChild(group);
     pendingPermissions.set(id, group);
     maybeScrollToBottom();
+}
+
+/** A rebuilt pane starts unarmed: the armed answer belonged to the conversation that set it. */
+export function disarmSessionAnswer(): void {
+    sessionAnswerArmed = false;
 }
 
 function resolvePermission(id: string, optionId: string, selectedLabel?: string) {

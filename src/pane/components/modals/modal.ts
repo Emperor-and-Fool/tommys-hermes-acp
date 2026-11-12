@@ -4,7 +4,7 @@ import { hideFilePicker } from '../composer/fileMention';
 import { closeConfigureEnvModal, setConfigureEnvDetectDetailsOpen } from '../environment/configureModal';
 import { setDetectEnvDetailsOpen } from '../environment/detectPanel';
 import { closeInsertDropdowns } from '../messages/messageActions';
-import { hideTabContextMenu } from '../tabs/tabMenu';
+import { hideTabContextMenu } from '../workspace/sessionTab';
 import { maybeScrollLogToBottom, renderLogContent, resetLogAutoScrollFollow } from './logViewer';
 
 
