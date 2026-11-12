@@ -30,6 +30,22 @@ export interface LocaleStrings {
     openTab: string;
     chooseChat: string;
     closedSessionsHeader: string;
+    /** Rail button that opens the permission-mode row. */
+    permissionModeBtn: string;
+    permissionModeTitle: string;
+    permissionModeClose: string;
+    /** The red action: what it does, and what it does on the confirming press. */
+    permissionOpenTooltip: string;
+    permissionOpenConfirm: string;
+    /** The way back for the patterns the red action cleared. */
+    permissionRestoreLabel: string;
+    /** "Permissions: {mode}" and the four short names the rail button can show. */
+    permissionModeBtnTemplate: string;
+    permissionModeMan: string;
+    permissionModeSmart: string;
+    permissionModeNone: string;
+    permissionModeAll: string;
+    permissionModeBtnTooltip: string;
     noClosedSessions: string;
     defaultAgent: string;
     statusStartingAcp: string;
@@ -191,11 +207,19 @@ export interface LocaleStrings {
     roleTool: string;
     roleMessage: string;
     permissionTitle: string;
+    /** Card label for a gate note ("flagged ... and auto-approved by smart approval"). */
+    approvalNoteLabel: string;
     permissionCancelled: string;
     permissionTimedOut: string;
     permissionAllowOnce: string;
     permissionAllowAlways: string;
     permissionAllowSession: string;
+    /** Balloon on the greyed session button: how to unlock the scope. */
+    permissionSessionNeedsManual: string;
+    /** What the card says when the session answer was pressed on it. */
+    permissionSessionArmed: string;
+    /** Balloon on the session answer once Manual has made it live. */
+    permissionSessionArmedHint: string;
     permissionRejectOnce: string;
     permissionRejectAlways: string;
     permissionDeny: string;
@@ -253,8 +277,14 @@ export interface LocaleStrings {
     tabContextCloseLeft: string;
     tabContextCloseRight: string;
     tabContextCloseAll: string;
-    tabContextPin: string;
-    tabContextUnpin: string;
+    createProject: string;
+    tabContextMoveProject: string;
+    tabContextRenameProject: string;
+    tabContextDeleteProject: string;
+    tabContextMoveWorkspace: string;
+    tabContextNoProject: string;
+    tabContextSticky: string;
+    tabContextUnstick: string;
     copySid: string;
     sessionExportSessionId: string;
     sessionExportModel: string;
@@ -310,6 +340,7 @@ export interface LocaleStrings {
     approvalModeManual: string;
     approvalModeSmart: string;
     approvalModeOff: string;
+
     approvalModeTooltip: string;
     approvalModeFailed: string;
 

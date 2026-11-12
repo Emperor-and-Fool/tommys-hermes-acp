@@ -13,6 +13,8 @@ import type { PaneToHost, ApprovalMode } from '../../shared/webview';
 import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
+import type { ProjectCommands } from '../workspace/projectGrouped';
+
 export interface RouterHost {
     log(line: string): void;
     openExternal(url: string): void;
@@ -34,7 +36,9 @@ export interface RouterHost {
     handleReorderSessions(ids: unknown): void;
     handleCloseSessions(sessionId: string, mode: unknown): Promise<void>;
     handleRenameSession(sessionId: unknown, title: unknown): Promise<void>;
-    handleTogglePinSession(sessionId: string): void;
+    handleToggleStickySession(sessionId: string): void;
+    /** The project group's commands: one member, not one per message. */
+    projects: ProjectCommands;
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void;
     handleSwitchAgent(name: string): void;
     handleSwitchSession(sessionId: string, interrupt: boolean): void;
@@ -55,6 +59,12 @@ export interface RouterHost {
     handlePermissionResponse(id: string, optionId: string | null): void;
     /** Write Hermes' approvals.mode for the active profile. */
     setApprovalMode(mode: ApprovalMode): Promise<void>;
+    /** Re-read approvals.mode and post it, even when it did not change. */
+    requestApprovalMode(): void;
+    /** Save the deny list, clear it, and turn approvals off. */
+    setOpenAccess(): Promise<void>;
+    /** Write the last saved deny list back. */
+    restoreDeny(): Promise<void>;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
     /** The session-memory dropdown: the viewer tab, and the chip's X. */
@@ -106,8 +116,23 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
         case 'renameSession':
             void host.handleRenameSession(message.sessionId, message.title);
             break;
-        case 'togglePinSession':
-            host.handleTogglePinSession(message.sessionId);
+        case 'toggleStickySession':
+            host.handleToggleStickySession(message.sessionId);
+            break;
+        case 'moveToWorkspace':
+            host.projects.moveTabToWorkspace(message.sessionId, message.workspace);
+            break;
+        case 'createProject':
+            host.projects.createProject(message.name);
+            break;
+        case 'renameProject':
+            host.projects.renameProject(message.projectId, message.name);
+            break;
+        case 'deleteProject':
+            host.projects.deleteProject(message.projectId);
+            break;
+        case 'setTabProject':
+            host.projects.moveTabToProject(message.sessionId, message.projectId);
             break;
         case 'sessionExport':
             host.handleSessionExport(message.sessionId, message.action, message.indices);
@@ -182,6 +207,15 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'setApprovalMode':
             void host.setApprovalMode(message.mode);
+            break;
+        case 'requestApprovalMode':
+            host.requestApprovalMode();
+            break;
+        case 'setOpenAccess':
+            void host.setOpenAccess();
+            break;
+        case 'restoreDeny':
+            void host.restoreDeny();
             break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');

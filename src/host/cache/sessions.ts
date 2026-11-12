@@ -5,11 +5,13 @@ import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
 import {
-    normalizePinnedOrder,
-    pinSession,
+    normalizeStickyOrder,
+    stickSession,
     registerSession,
     reorderSessions,
-} from '../tabs/tabs';
+} from '../workspace/sessionTab';
+import { tabsInWorkspace } from '../workspace/projectRules';
+import { mintId } from '../workspace/workSpace';
 import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';
 import { t } from '../i18n';
@@ -20,6 +22,12 @@ export interface SessionsHost {
     log(line: string): void;
     updatePanelTitle(): void;
     modelLabel(): string | undefined;
+    /** The id of the workspace this window is, written onto a tab when its record is created. */
+    currentWorkspaceId(): string;
+    /** The id of the registered workspace whose folder holds this cwd, if one does. */
+    workspaceIdForCwd(cwd: string | undefined): string;
+    /** Every workspace id the registry holds. */
+    knownWorkspaceIds(): string[];
 }
 
 /**
@@ -29,6 +37,12 @@ export interface SessionsHost {
  */
 export class Sessions {
     activeId: string = '';
+    /** The project of the tab that was in use: a new session is born in it. */
+    private _projectInUse: string = '';
+    /** The pending-user entry of the turn that is in flight, settled when the agent takes it. */
+    private _pendingId: string = '';
+    /** Which tab wrote it: the active tab can change while a turn is in flight. */
+    private _pendingSessionId: string = '';
     messages: ChatMessage[] = [];
     tabs: SessionInfo[] = [];
     /**
@@ -55,16 +69,62 @@ export class Sessions {
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
+        this.adoptWorkspace();
         this.activeId = this.restoreActive();
         this.ensureRegistered();
     }
 
+    /** This window's slice of the index. Ownership is a filter, not a second store. */
+    /** The tabs this window shows: the slice the pane gets, and the one a reader is given. */
+    tabsInWindow(): SessionInfo[] {
+        return tabsInWorkspace(this.tabs, this.host.currentWorkspaceId());
+    }
+
+    /**
+     * Records written before the tag existed take this window's workspace, when their `cwd` proves
+     * they ran here.
+     *
+     * Without it they belong to no window and would never be drawn again. A window with no folder
+     * and no workspace file adopts nothing: it has no identity to give.
+     */
+    private adoptWorkspace(): void {
+        const workspaceId = this.host.currentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+        const known = new Set(this.host.knownWorkspaceIds());
+        let changed = false;
+        for (const tab of this.tabs) {
+            // A tag the registry does not hold is a reference to nothing — the id it named was
+            // replaced. Re-resolve it from the tab's own cwd instead of hiding the tab forever.
+            if (tab.workspaceId !== undefined && known.has(tab.workspaceId)) {
+                continue;
+            }
+            const resolved = this.host.workspaceIdForCwd(tab.cwd);
+            if (resolved) {
+                if (tab.workspaceId !== resolved) {
+                    tab.workspaceId = resolved;
+                    changed = true;
+                }
+                continue;
+            }
+            if (tab.workspaceId !== undefined) {
+                delete tab.workspaceId;
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.saveCatalog();
+        }
+    }
+
     private restoreActive(): string {
+        const visible = this.tabsInWindow();
         const id = this.store.readActiveId();
-        if (id && this.tabs.some(s => s.id === id)) {
+        if (id && visible.some(s => s.id === id)) {
             return id;
         }
-        return Date.now().toString(36);
+        return visible.length ? visible[0].id : mintId();
     }
 
     private saveActive(): void {
@@ -89,11 +149,13 @@ export class Sessions {
                 existing.title = firstUser;
             }
         } else {
+            const workspaceId = this.host.currentWorkspaceId();
             this.tabs.unshift({
                 id: this.activeId,
                 title: firstUser || t('newChat'),
                 createdAt: parseInt(this.activeId, 36) || Date.now(),
                 updatedAt: Date.now(),
+                ...(workspaceId ? { workspaceId } : {}),
             });
         }
         if (this.saveCatalog()) {
@@ -106,7 +168,10 @@ export class Sessions {
         const next = registerSession(this.tabs, {
             id: this.activeId,
             title: this._tabTitle() || t('newChat'),
+            workspaceId: this.host.currentWorkspaceId(),
+            project: this._projectInUse,
         });
+        this._projectInUse = '';
         if (next === this.tabs) {
             return;
         }
@@ -118,7 +183,7 @@ export class Sessions {
         this.host.updatePanelTitle();
         this.host.post({
             type: 'sessionList',
-            sessions: this.tabs,
+            sessions: this.tabsInWindow(),
             activeSessionId: this.activeId,
         });
     }
@@ -145,11 +210,11 @@ export class Sessions {
 
     private loadCatalog(): void {
         this.tabs = this.store.readCatalog();
-        this.normalizePinned();
+        this.normalizeSticky();
     }
 
-    private normalizePinned(): void {
-        this.tabs = normalizePinnedOrder(this.tabs);
+    private normalizeSticky(): void {
+        this.tabs = normalizeStickyOrder(this.tabs);
     }
 
     /**
@@ -221,6 +286,8 @@ export class Sessions {
         if (!options?.skipSaveCurrent) {
             this.saveCurrent();
         }
+        // Read the tab being left: whatever is opened next starts in the same project.
+        this._projectInUse = this.tabs.find(tab => tab.id === this.activeId)?.project || '';
         this.activeId = sessionId;
         this.messages = [];
         this.host.post({ type: 'newChat' });
@@ -376,7 +443,22 @@ export class Sessions {
      */
     saveOutgoingUser(text: string, imageRefs?: StoredImageRef[]): void {
         this.saveMessage('user', text, undefined, imageRefs);
-        this.pendingUsers.append(this.activeId, text);
+        this._pendingId = this.pendingUsers.append(this.activeId, text);
+        this._pendingSessionId = this.activeId;
+    }
+
+    /**
+     * The agent has the prompt: the record that guarded it is no longer needed.
+     *
+     * This is the receipt the sidecar was always waiting for. Clearing here means a pending file
+     * survives only when the message genuinely died between the pane and the agent.
+     */
+    settlePendingTurn(): void {
+        if (!this._pendingId) {
+            return;
+        }
+        this.pendingUsers.settle(this._pendingSessionId || this.activeId, this._pendingId);
+        this._pendingId = '';
     }
 
     private permissionBodyText(title?: string, detail?: string): string {
@@ -458,16 +540,43 @@ export class Sessions {
         this.postList();
     }
 
-    handleTogglePinSession(sessionId: string): void {
-        const next = pinSession(this.tabs, sessionId);
+    handleToggleStickySession(sessionId: string): void {
+        const next = stickSession(this.tabs, sessionId);
         if (next === this.tabs) {
             return;
         }
         this.tabs = next;
-        const pinnedNow = !!next.find(record => record.id === sessionId)?.pinned;
-        this.host.log(`${pinnedNow ? 'Pin' : 'Unpin'} session ${sessionId}`);
+        const stickyNow = !!next.find(record => record.id === sessionId)?.sticky;
+        this.host.log(`${stickyNow ? 'Sticky' : 'Drop'} session ${sessionId}`);
         this.saveCatalog();
         this.postList();
+    }
+
+    /**
+     * Replace the tab index: the one write another part of the extension may ask for.
+     *
+     * The project group edits membership and hands the result back here, so the index keeps a
+     * single writer and the catalog is saved the moment it changes.
+     */
+    setTabs(next: SessionInfo[], options?: { keepActive?: boolean }): void {
+        this.tabs = next;
+        // A move the window is about to follow leaves the active id alone: the reload is what
+        // decides what this window shows next.
+        if (!(options && options.keepActive)) {
+            this.keepActiveVisible();
+        }
+        this.saveCatalog();
+        this.postList();
+    }
+
+    /** The pane can only be pointed at a tab this window owns; moving the active one away switches. */
+    private keepActiveVisible(): void {
+        const visible = this.tabsInWindow();
+        if (visible.some(tab => tab.id === this.activeId)) {
+            return;
+        }
+        this.activeId = visible.length ? visible[0].id : mintId();
+        this.saveActive();
     }
 
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void {

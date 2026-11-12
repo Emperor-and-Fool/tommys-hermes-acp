@@ -43,7 +43,7 @@ export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
 export type { ModelListState } from '../models/modelConfig';
 export type ModelsChangedHandler = (models: ModelListState | null) => void;
 
-export type MessageHandler = (role: 'user' | 'assistant' | 'tool' | 'thought', text: string, toolCallId?: string) => void;
+export type MessageHandler = (role: 'user' | 'assistant' | 'tool' | 'thought' | 'approval', text: string, toolCallId?: string) => void;
 export type StatusHandler = (status: AcpStatus, message?: string) => void;
 export interface PermissionRequest {
     title: string;
@@ -176,7 +176,7 @@ export interface HermesSessionSummary {
  * delta — so entries are appended as they arrive rather than accumulated.
  */
 export interface ReplayMessage {
-    role: 'user' | 'assistant' | 'thought' | 'tool';
+    role: 'user' | 'assistant' | 'thought' | 'tool' | 'approval';
     text: string;
     toolCallId?: string;
 
@@ -250,6 +250,8 @@ export class AcpClient {
     /** When false, drop streaming chunks from a cancelled or superseded turn. */
     private _acceptStreamOutput = false;
     private _toolCallTracker = new ToolCallTracker();
+    /** Last approval note already sent per tool call: a repeated update must not redraw it. */
+    private _approvalNoteSent = new Map<string, string>();
     /** Cached after first ``method not found`` — avoids repeated Hermes log noise. */
     private _modelOptionsKnownUnsupported = false;
     private _hermesSetModelKnownUnsupported = false;
@@ -302,6 +304,11 @@ export class AcpClient {
     }
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
+
+    /** Fires once per prompt, the moment the agent shows it is working on that prompt. */
+    private _onPromptAccepted: () => void = () => {};
+    set onPromptAccepted(handler: () => void) { this._onPromptAccepted = handler; }
+    private _promptAccepted = true;
 
     /** Told about the chunk Hermes answers a steer with; it is not part of the reply. */
     set onSteerNotice(handler: SteerNoticeHandler) { this._onSteerNotice = handler; }
@@ -554,6 +561,7 @@ export class AcpClient {
         this._responseBuffer = '';
         this._thoughtBuffer = '';
         this._toolCallTracker.clear();
+        this._promptAccepted = false;
         this._transitionTo('prompting', 'Hermes is thinking...');
         this._acceptStreamOutput = true;
 
@@ -1123,6 +1131,13 @@ export class AcpClient {
         const update = notification.update;
         const kind = update.sessionUpdate;
 
+        // An update that is not replay is the agent answering the prompt we sent: that is the
+        // receipt. One call per prompt, so the guard file for the turn can be released at once.
+        if (!this._replaySink && !this._promptAccepted) {
+            this._promptAccepted = true;
+            this._onPromptAccepted();
+        }
+
         // Replay updates are whole messages, so they bypass the prompt-only
         // `_acceptStreamOutput` gate and never touch the streaming buffers.
         if (this._replaySink && this._collectReplayUpdate(update, kind)) {
@@ -1318,6 +1333,13 @@ export class AcpClient {
         }
         const merged = this._toolCallTracker.apply(parsed);
         const text = formatToolCallDisplay(merged);
+        // The gate's note travels as its own block, so it gets its own message and card; a
+        // repeated update for the same call must not draw it twice.
+        const note = merged.approvalNote;
+        const fresh = !!note && this._approvalNoteSent.get(merged.toolCallId) !== note;
+        if (fresh) {
+            this._approvalNoteSent.set(merged.toolCallId, note!);
+        }
         if (this._replaySink) {
             this._replaySink.push({
                 role: 'tool',
@@ -1325,10 +1347,16 @@ export class AcpClient {
                 toolCallId: merged.toolCallId,
                 ...extractToolMeta(update, merged),
             });
+            if (fresh) {
+                this._replaySink.push({ role: 'approval', text: note!, toolCallId: merged.toolCallId });
+            }
             this._noteReplayChunk();
             return;
         }
         this._onMessage('tool', text, merged.toolCallId);
+        if (fresh) {
+            this._onMessage('approval', note!, merged.toolCallId);
+        }
     }
 
     private _emitCancelledToolCalls(): void {

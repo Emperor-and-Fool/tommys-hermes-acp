@@ -1,4 +1,4 @@
-import { extractTextFromContentBlock } from './contentText';
+import { extractApprovalNoteFromContent, extractTextFromContentBlock } from './contentText';
 
 export type ToolCallStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
 
@@ -8,6 +8,8 @@ export type ToolCallUpdateView = {
     title?: string;
     body?: string;
     kind?: string;
+    /** The gate's own note ("flagged … and auto-approved by smart approval"), drawn as a card. */
+    approvalNote?: string;
 };
 
 const TERMINAL_STATUSES: ReadonlySet<ToolCallStatus> = new Set([
@@ -115,6 +117,7 @@ export function parseToolCallSessionUpdate(
         title,
         body: body || undefined,
         kind: typeof kindValue === 'string' ? kindValue : undefined,
+        approvalNote: extractApprovalNoteFromContent(update.content) || undefined,
     };
 }
 
@@ -148,6 +151,7 @@ export class ToolCallTracker {
             title: incoming.title || prev?.title,
             kind: incoming.kind ?? prev?.kind,
             body: mergeToolCallBodies(prev?.body, incoming.body),
+            approvalNote: incoming.approvalNote || prev?.approvalNote,
         };
 
         if (TERMINAL_STATUSES.has(merged.status)) {

@@ -25,8 +25,8 @@ export function isAtBottom(scrollTop: number, scrollHeight: number, clientHeight
  * Reading higher up means the reader chose to leave the bottom: offer "jump to now". Still following
  * means they are at the bottom already, so the only useful direction is back to the start.
  */
-export function jumpControlMode(pinned: boolean, scrollTop: number): 'now' | 'top' | null {
-    if (pinned) return 'now';
+export function jumpControlMode(heldByUser: boolean, scrollTop: number): 'now' | 'top' | null {
+    if (heldByUser) return 'now';
     return scrollTop > JUMP_TOP_AFTER_PX ? 'top' : null;
 }
 

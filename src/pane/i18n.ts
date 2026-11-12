@@ -3,6 +3,7 @@ import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnv
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
 import { pendingPermissions, refreshApprovalModeLabels, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/messages/permissionCard';
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
+import { applyPermissionModeLabels } from './components/permissions/permissionModeBar';
 import { buildFaqAccordion } from './components/modals/info';
 import { updateMultiSelectToolbar } from './components/multiSelect';
 import { applyHistoryPickerLocale } from './components/composer/historyAttach';
@@ -14,6 +15,7 @@ import { state } from './state';
 
 
 export function applyLocale() {
+    applyPermissionModeLabels();
     const toolbarStatus = required('toolbarStatus');
     const retryBtnEl = required('retryBtn');
     const profileBtnEl = required('profileBtn');
@@ -40,6 +42,8 @@ export function applyLocale() {
     applyHistoryPickerLocale();
     const openTabLabelFull = required('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
+    const createFolderBtn = required('createFolderBtn');
+    if (createFolderBtn) createFolderBtn.textContent = locale.createProject;
     if (openTabBtn) openTabBtn.title = locale.openTab;
     if (closedPickerBtn) closedPickerBtn.title = locale.chooseChat;
     const closedPickerLabelEl = required('closedPickerLabel');
@@ -178,7 +182,7 @@ export function applyLocale() {
         const labelEl = group.querySelector('.permission-label');
         if (labelEl) labelEl.textContent = locale.permissionTitle || 'Permission required';
         refreshPermissionOptionLabels(group);
-        refreshApprovalModeLabels(group);
+        refreshApprovalModeLabels();
         if (group._permissionState) {
             group._permissionState.moreBtn.textContent = locale.permissionShowMore || 'Show more';
             group._permissionState.lessBtn.textContent = locale.permissionCollapse || 'Collapse';

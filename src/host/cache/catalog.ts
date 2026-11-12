@@ -38,11 +38,14 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
             title: row.title || prior?.title || row.sessionId.slice(0, 8),
             createdAt: prior?.createdAt ?? (row.updatedAt || now),
             updatedAt: row.updatedAt || prior?.updatedAt || now,
-            pinned: prior?.pinned,
+            sticky: prior?.sticky,
             modelId: prior?.modelId,
             modelLabel: prior?.modelLabel,
             hermesSessionId: row.sessionId,
             cwd: row.cwd ?? prior?.cwd,
+            // No catalog row carries the workspace or the folder: ours ride forward, or not at all.
+            ...(prior?.workspaceId ? { workspaceId: prior.workspaceId } : {}),
+            ...(prior?.project ? { project: prior.project } : {}),
         });
     }
 
@@ -56,8 +59,8 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
     }
 
     sessions.sort((a, b) => {
-        if (!!a.pinned !== !!b.pinned) {
-            return a.pinned ? -1 : 1;
+        if (!!a.sticky !== !!b.sticky) {
+            return a.sticky ? -1 : 1;
         }
         return b.updatedAt - a.updatedAt;
     });

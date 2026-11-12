@@ -29,6 +29,16 @@ export function activeSessionPathFor(historyDir: string, scopeKey: string): stri
     return path.join(profileDir(historyDir, scopeKey), 'active-session.txt');
 }
 
+/**
+ * The workspace registry, above the profiles.
+ *
+ * The one path helper that takes no scope key: a workspace is the same fact for every profile
+ * that runs in that window, and the primary and the secondant do not share one.
+ */
+export function workspacesPathFor(historyDir: string): string {
+    return path.join(historyDir, 'workspaces.json');
+}
+
 export function profileStatePathFor(historyDir: string, scopeKey: string): string {
     return path.join(profileDir(historyDir, scopeKey), 'profile-state.json');
 }

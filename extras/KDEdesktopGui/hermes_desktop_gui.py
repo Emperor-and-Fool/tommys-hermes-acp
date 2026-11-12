@@ -168,6 +168,7 @@ class Tray(QSystemTrayIcon):
         if state == self._state:
             return
         self._state = state
+        self._window.set_dashboard_state(state)
         label = {"up": "up", "down": "down"}.get(state, "checking…")
         host = QUrl(self._dash_url).authority()
         self.setIcon(status_icon(self._base_icon, state))
@@ -199,6 +200,10 @@ class DashboardWindow(QMainWindow):
         self.base_icon = base_icon
         self.allow_close = False
         self._settings = QSettings("EandF", APP_ID)
+        self._dash_url = dash_url
+        # None until the first load reports; the Prober's verdict arrives separately.
+        self._loaded_ok: bool | None = None
+        self._dashboard_state = "unknown"
 
         self.setWindowTitle("Hermes Dashboard")
         self.setWindowIcon(base_icon)
@@ -208,10 +213,25 @@ class DashboardWindow(QMainWindow):
             self.restoreGeometry(geometry)
 
         self.view = QWebEngineView(self)
+        self.view.loadFinished.connect(self._on_load_finished)
         self.view.load(QUrl(dash_url))
         self.setCentralWidget(self.view)
 
+    def _on_load_finished(self, ok: bool) -> None:
+        self._loaded_ok = ok
+
+    def set_dashboard_state(self, state: str) -> None:
+        """The Prober's verdict, so a retry only happens when there is something to load."""
+        self._dashboard_state = state
+
     def show_and_raise(self) -> None:
+        # The one load at construction happens at autostart, often before the dashboard unit is
+        # listening; QtWebEngine then keeps its error page, because nothing listens for loadFinished.
+        # Retry once here, and only when that first load failed *and* the dashboard answers now: a
+        # page that loaded fine is never reloaded, and a dashboard that is still down is not hammered.
+        if self._loaded_ok is False and self._dashboard_state == "up":
+            self._loaded_ok = None
+            self.view.load(QUrl(self._dash_url))
         self.show()
         self.raise_()
         self.activateWindow()

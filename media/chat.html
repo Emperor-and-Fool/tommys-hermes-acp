@@ -48,6 +48,10 @@
         </div>
     </div>
     <div class="toolbar-actions">
+        <!-- Rail only: the closed-session picker is replaced by the permission-mode control. -->
+        <button class="picker-btn menu__trigger" id="permissionModeBtn" aria-expanded="false">
+            <span id="permissionModeBtnLabel"></span>
+        </button>
         <div class="picker is-empty menu" id="closedPicker" data-open="false">
             <button class="picker-btn menu__trigger" id="closedPickerBtn" aria-haspopup="true">
                 <span class="picker-label" id="closedPickerLabel"></span><span class="picker-caret" aria-hidden="true">▾</span>
@@ -60,12 +64,24 @@
         <button class="button button--primary" id="openTabBtn"><span class="new-label-full" id="openTabLabelFull"></span><span class="new-label-short">+</span></button>
     </div>
 </div>
+<div id="permissionModeBar" class="permission-mode-bar" hidden>
+    <div class="permission-mode-inner">
+        <div class="permission-mode-options" id="permissionModeOptions"></div>
+        <button type="button" class="permission-mode-close" id="permissionModeClose" aria-label="✕">✕</button>
+    </div>
+</div>
     <!-- Second agent marker: no text, no handler. Shown by CSS when body was told
          data-role="secondant", so the primary pane keeps the markup without the row. -->
     <div class="secondant-badge-row" aria-hidden="true">
         <img class="secondant-badge-icon" src="{{SECONDANT_ICON_URI}}" alt="" aria-hidden="true">
     </div>
 <div id="tab-bar"></div>
+<!-- The rail's own action: the space the chat list leaves empty is where a folder can be made. -->
+<div id="rail-footer">
+    <button type="button" id="createFolderBtn" class="button"></button>
+    <!-- What the create actually did. Empty and hidden unless the host refuses it. -->
+    <div id="projectNotice" class="project-notice" role="status" hidden></div>
+</div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">
     <div id="paneFabs" class="pane-fabs">

@@ -13,6 +13,8 @@ import path from 'path';
 export const PENDING_USER_LIMIT = 5;
 
 export interface PendingUser {
+    /** Its own name, so the receipt can remove this entry and not "the same looking" one. */
+    id: string;
     text: string;
     savedAt: number;
 }
@@ -33,25 +35,51 @@ export class PendingUserStore {
             }
             return parsed
                 .filter((entry): entry is PendingUser => !!entry && typeof (entry as PendingUser).text === 'string')
+                .map(entry => ({ ...entry, id: entry.id || `${entry.savedAt}` }))
                 .slice(-PENDING_USER_LIMIT);
         } catch {
             return [];
         }
     }
 
-    /** One write per user turn; the cap is applied on the way in, not on read. */
-    append(sessionId: string, text: string, savedAt: number = Date.now()): void {
+    /**
+     * One write per user turn, and the id it wrote.
+     *
+     * The caller keeps that id: the moment the agent takes the prompt, this exact entry is deleted,
+     * so a record only ever outlives a send that really did die on the way.
+     */
+    append(sessionId: string, text: string, savedAt: number = Date.now()): string {
         const trimmed = (text || '').trim();
         if (!trimmed) {
-            return;
+            return '';
         }
-        const users = [...this.read(sessionId), { text: trimmed, savedAt }].slice(-PENDING_USER_LIMIT);
+        const id = `${savedAt.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const users = [...this.read(sessionId), { id, text: trimmed, savedAt }].slice(-PENDING_USER_LIMIT);
         this._write(sessionId, users);
+        return id;
     }
 
-    /** Keep only what is still unreceived — usually nothing, which removes the file. */
-    retain(sessionId: string, texts: string[]): void {
-        const keep = this.read(sessionId).filter(user => texts.includes(user.text));
+    /** The agent took this turn: its record is settled and goes. */
+    settle(sessionId: string, id: string): void {
+        if (!id) {
+            return;
+        }
+        const keep = this.read(sessionId).filter(user => user.id !== id);
+        if (keep.length === 0) {
+            this.clear(sessionId);
+            return;
+        }
+        this._write(sessionId, keep);
+    }
+
+    /**
+     * Drop what was written before `instant`.
+     *
+     * A replay carrying a user turn newer than an entry is proof that the agent was alive after
+     * that entry was written, so the entry cannot still be in flight. No text is compared.
+     */
+    dropBefore(sessionId: string, instant: number): void {
+        const keep = this.read(sessionId).filter(user => user.savedAt > instant);
         if (keep.length === 0) {
             this.clear(sessionId);
             return;

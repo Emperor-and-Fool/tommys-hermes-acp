@@ -21,7 +21,7 @@ describe('applyCatalogRows', () => {
         const previous = [local({
             id: 'tab-a',
             hermesSessionId: 'h-1',
-            pinned: true,
+            sticky: true,
             modelId: 'm-1',
             modelLabel: 'Model One',
             cwd: '/work/a',
@@ -37,7 +37,7 @@ describe('applyCatalogRows', () => {
         const merged = result.sessions[0];
         assert.strictEqual(merged.id, 'tab-a', 'the local tab id survives');
         assert.strictEqual(merged.title, 'agent name', 'Hermes owns the title');
-        assert.strictEqual(merged.pinned, true);
+        assert.strictEqual(merged.sticky, true);
         assert.strictEqual(merged.modelId, 'm-1');
         assert.strictEqual(merged.modelLabel, 'Model One');
         assert.strictEqual(merged.cwd, '/work/a');
@@ -86,9 +86,9 @@ describe('applyCatalogRows', () => {
         assert.strictEqual(dropped.activeId, 'h-old');
     });
 
-    it('puts pinned tabs first, then the most recently updated', () => {
+    it('puts sticky tabs first, then the most recently updated', () => {
         const result = applyCatalogRows({
-            previous: [local({ id: 'tab-pin', hermesSessionId: 'h-pin', pinned: true })],
+            previous: [local({ id: 'tab-pin', hermesSessionId: 'h-pin', sticky: true })],
             rows: [
                 row({ sessionId: 'h-old', updatedAt: 300 }),
                 row({ sessionId: 'h-new', updatedAt: 900 }),
@@ -160,5 +160,57 @@ describe('renameSession', () => {
         assert.strictEqual(outcome.reason, 'refused');
         assert.ok((outcome.message || '').includes('already in use'));
         assert.deepStrictEqual(calls, ['set:s-1:Taken']);
+    });
+});
+
+describe('applyCatalogRows: the workspace reference', () => {
+    it('carries through a merge the workspace id the tab was opened in', () => {
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', workspaceId: 'w-team' })];
+        const result = applyCatalogRows({
+            previous,
+            rows: [row({ sessionId: 'h-1', title: 'agent name' })],
+            activeId: 'tab-a',
+            activeLinked: true,
+            now: 1000,
+        });
+        assert.strictEqual(result.sessions[0].workspaceId, 'w-team');
+    });
+
+    it('adds no field to a tab that was opened with no workspace', () => {
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1' })];
+        const result = applyCatalogRows({
+            previous,
+            rows: [row({ sessionId: 'h-1', title: 'agent name' })],
+            activeId: 'tab-a',
+            activeLinked: true,
+            now: 1000,
+        });
+        assert.ok(!('workspace' in result.sessions[0]), 'absent stays absent on the record');
+    });
+});
+
+describe('applyCatalogRows: the project', () => {
+    it('survives a merge, so a filing is not undone by the next catalog read', () => {
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', project: 'f1' })];
+        const result = applyCatalogRows({
+            previous,
+            rows: [row({ sessionId: 'h-1', title: 'agent name' })],
+            activeId: 'tab-a',
+            activeLinked: true,
+            now: 1000,
+        });
+        assert.strictEqual(result.sessions[0].project, 'f1');
+    });
+
+    it('adds no field for a tab that was never filed', () => {
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1' })];
+        const result = applyCatalogRows({
+            previous,
+            rows: [row({ sessionId: 'h-1', title: 'agent name' })],
+            activeId: 'tab-a',
+            activeLinked: true,
+            now: 1000,
+        });
+        assert.ok(!('project' in result.sessions[0]));
     });
 });

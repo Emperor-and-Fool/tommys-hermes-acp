@@ -18,7 +18,7 @@
  */
 import { createHash } from 'node:crypto';
 import { buildSync } from 'esbuild';
-import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, writeFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -211,6 +211,31 @@ function planFor(role) {
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 
 /**
+ * Write a manifest without destroying the editor's install record.
+ *
+ * The editor stamps an installed copy's `package.json` with `__metadata` — `id`, `publisherId`,
+ * `installedTimestamp`, `source`, `pinned`, `preRelease`, `updated`. Replacing the file wholesale
+ * deletes that record, and then the editor can no longer identify the directory: it never consumes
+ * a `.obsolete` mark that names it, never cleans up a stale version folder, and treats a perfectly
+ * installed copy as something hand-dropped. Keep whatever the target already carries and rewrite
+ * only the fields this repo owns.
+ */
+function copyManifest(from, to) {
+    const manifest = JSON.parse(readFileSync(from, 'utf8'));
+    let metadata;
+    try {
+        metadata = JSON.parse(readFileSync(to, 'utf8')).__metadata;
+    } catch {
+        metadata = undefined;
+    }
+    if (metadata) {
+        manifest.__metadata = metadata;
+    }
+    writeFileSync(to, JSON.stringify(manifest, null, 2) + '\n');
+    return !!metadata;
+}
+
+/**
  * The copy is additive, so a moved or deleted source leaves its old compiled twin behind — a
  * stale module in out/ is the same silent failure this script exists to prevent. Anything the
  * repo no longer compiles comes out of the installed copy, and empty directories with it.
@@ -311,10 +336,18 @@ for (const { role, dir, roots } of targets) {
 
     let copied = 0;
     const mismatched = [];
+    let manifestsKept = 0;
     for (const [rel, from] of plan) {
         const to = path.join(dir, rel);
         if (!existsSync(from)) continue;
         mkdirSync(path.dirname(to), { recursive: true });
+        // The manifest is merged, never replaced: the target's `__metadata` is the editor's install
+        // record. Losing it leaves the extension running but untracked — see copyManifest.
+        if (rel === 'package.json') {
+            if (copyManifest(from, to)) manifestsKept += 1;
+            copied += 1;
+            continue;
+        }
         copyFileSync(from, to);
         copied += 1;
         if (sha(from) !== sha(to)) mismatched.push(rel);
@@ -327,6 +360,11 @@ for (const { role, dir, roots } of targets) {
             (pruned.length
                 ? ': ' + pruned.slice(0, 5).join(', ') + (pruned.length > 5 ? `, … ${pruned.length - 5} more` : '')
                 : '')
+    );
+    console.log(
+        manifestsKept
+            ? `deploy: [${role}] manifest written, kept the editor's __metadata (${manifestsKept})`
+            : `deploy: [${role}] manifest written, no __metadata in the target — install this copy from its VSIX`
     );
     if (mismatched.length) {
         console.error(`deploy: [${role}] these did not land byte-identical:\n  ` + mismatched.join('\n  '));

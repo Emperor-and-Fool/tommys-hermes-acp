@@ -21,6 +21,9 @@ describe('sessions: the user sidecar', () => {
             log: () => {},
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
+            currentWorkspaceId: () => '',
+            workspaceIdForCwd: () => '',
+            knownWorkspaceIds: () => [],
         });
         session.activeId = 'tab-a';
     });

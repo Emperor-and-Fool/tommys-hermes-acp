@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
+import { Projects } from './workspace/projectGrouped';
+import { TreeCache } from './workspace/treeCache';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { migrateLegacySessionStorage } from './cache/profileStorage';
+import { migrateLegacySessionStorage, profileDir } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
@@ -35,7 +37,8 @@ import { HistoryStages, blockMessageLines, historySliceBody } from './chat/histo
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
-import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './environment/approvalMode';
+import { isSettableApprovalMode } from './permissions/approvalModeRules';
+import { ApprovalModeControl } from './permissions/approvalModeControl';
 import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
@@ -98,6 +101,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Bytes Hermes never stores: content-addressed images and the index that finds them. */
     private _attachments: AttachmentStore;
+    /** The project group: workspaces, the projects named against them, and tab membership. */
+    private _projects: Projects;
+    private _trees?: TreeCache;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -225,7 +231,9 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _historyStages: HistoryStages = new HistoryStages();
 
     /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
-    private readonly _approvalModes: Map<string, ApprovalMode> = new Map();
+    private readonly _approvalModeControl = new ApprovalModeControl();
+    /** Bumped by every mode write: an open-access sequence checks it before turning approvals off. */
+    private _openAccessToken = 0;
 
     private readonly _extensionId: string;
 
@@ -269,12 +277,35 @@ export class App implements vscode.WebviewViewProvider {
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
         const initialTarget = this._profiles.seed();
+        this._projects = new Projects(this._historyDir, initialTarget.scopeKey, {
+            post: (msg) => this._postMessage(msg),
+            log: (line) => this._log(line),
+            tabs: () => this._session.tabs,
+            saveTabs: (next, options) => this._session.setTabs(next, options),
+            activeTabId: () => this._session.activeId,
+            openWorkspace: (path) => {
+                void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
+            },
+        });
         this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
             modelLabel: () => this._models.currentLabel,
+            currentWorkspaceId: () => this._projects.currentId(),
+            workspaceIdForCwd: (cwd) => this._projects.workspaceIdForCwd(cwd),
+            knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
         });
+        // The tree cache reads all three owners through one closure, so the hook that refreshes it
+        // stays a call and the mapping lives with the files it writes.
+        this._trees = new TreeCache(this._historyDir, line => this._log(line), () => ({
+            profile: this._projects.scopeKey,
+            workspacePath: this._projects.current(),
+            workspaceId: this._projects.currentId(),
+            activeSessionId: this._session.activeId,
+            projects: this._projects.projectsInWindow(),
+            tabs: this._session.tabsInWindow(),
+        }));
         this._session.init();
         this._startPaneMail();
         this._lifecycle = new TabLifecycle({
@@ -305,6 +336,7 @@ export class App implements vscode.WebviewViewProvider {
         this._connection = new Connection({
             profiles: this._profiles,
             session: this._session,
+            projects: this._projects,
             turn: this._turn,
             models: this._models,
             detection: this._detection,
@@ -326,6 +358,7 @@ export class App implements vscode.WebviewViewProvider {
         });
 
         context.subscriptions.push(
+            this._projects.start(),
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
@@ -493,13 +526,21 @@ export class App implements vscode.WebviewViewProvider {
             return;
         }
         const historyBlock = staged ? this._historyStages.block(tabId) : '';
-        if (imageCount > 0 || historyBlock) {
+        // First turn in this session and workspace: say where the tree file is. Sent as its own
+        // block, so the transcript still shows only what was typed.
+        const treeBlock = this._trees
+            ? this._trees.noticeBlock(this._projects.scopeKey, this._projects.currentId(), tabId)
+            : '';
+        if (imageCount > 0 || historyBlock || treeBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,
             // then one image block per staged image. Hermes' ACP adapter advertises
             // promptCapabilities.image=true and decodes these directly.
             const blocks: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string }> = [];
             if (historyBlock) {
                 blocks.push({ type: 'text', text: historyBlock });
+            }
+            if (treeBlock) {
+                blocks.push({ type: 'text', text: treeBlock });
             }
             if (text.length > 0) {
                 blocks.push({ type: 'text', text });
@@ -609,7 +650,7 @@ export class App implements vscode.WebviewViewProvider {
         const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
         if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
-            this._approvalModes.clear();
+            this._approvalModeControl.clear();
         }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
             if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
@@ -807,6 +848,9 @@ export class App implements vscode.WebviewViewProvider {
         this._syncWebviewLocale();
         this._postPluginInfo();
         this._session.postList();
+        // The tree is its own message and nothing else re-sends it: a fresh pane that never
+        // hears it draws every tab on the plane.
+        this._projects.postList();
         this._profiles.postList();
         this._session.postHidden();
         this._postConfig();
@@ -868,10 +912,11 @@ export class App implements vscode.WebviewViewProvider {
             handleReorderSessions: (ids) => this._session.handleReorderSessions(ids),
             handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
             handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
-            handleTogglePinSession: (sessionId) => this._session.handleTogglePinSession(sessionId),
+            handleToggleStickySession: (sessionId) => this._session.handleToggleStickySession(sessionId),
+            projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
-                this._approvalModes.clear();
+                this._approvalModeControl.clear();
                 this._connection.switchProfile(name);
             },
             handleSwitchSession: (sessionId, interrupt) => {
@@ -891,6 +936,9 @@ export class App implements vscode.WebviewViewProvider {
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             setApprovalMode: (mode) => this.setApprovalMode(mode),
+            requestApprovalMode: () => this.requestApprovalMode(),
+            setOpenAccess: () => this.setOpenAccess(),
+            restoreDeny: () => this.restoreDeny(),
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
             openHistoryViewer: (sessionId, title) => this.openHistoryViewer(sessionId, title),
@@ -917,6 +965,10 @@ export class App implements vscode.WebviewViewProvider {
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
+        // The tree file is this same state in one object: refresh it where the state is announced.
+        if (msg.type === 'sessionList' || msg.type === 'projectList') {
+            this._trees?.refresh();
+        }
         // The viewer is a webview too, and it draws a forward button whose tooltip names the
         // sibling pane: presence has to reach it or the button lies about what it can do.
         if (msg.type === 'setOtherPaneLive') {
@@ -928,43 +980,238 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
-    private _postApprovalMode(): void {
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const cached = this._approvalModes.get(profile);
-        this._postMessage({ type: 'approvalMode', mode: cached ?? 'unknown' });
-        void this._refreshApprovalMode(profile, cached);
+    /** Asked from the pane: re-read and answer even when the answer is unchanged. */
+    public requestApprovalMode(): void {
+        this._postApprovalMode(true);
     }
 
-    private async _refreshApprovalMode(profile: string, previous: ApprovalMode | undefined): Promise<void> {
+    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
+    private _postApprovalMode(force = false): void {
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const cached = this._approvalModeControl.last(profile);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: cached,
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            openAccess: this._isOpenAccess(),
+        });
+        void this._refreshApprovalMode(profile, cached, force);
+    }
+
+    private async _refreshApprovalMode(profile: string, previous: ApprovalMode, force = false): Promise<void> {
         const executable = await this._resolveHermesExecutable();
         if (!executable) {
             return;
         }
-        const mode = await readApprovalMode(executable, profile);
-        this._approvalModes.set(profile, mode);
-        if (mode !== previous) {
-            this._postMessage({ type: 'approvalMode', mode });
+        const mode = await this._approvalModeControl.read(executable, profile);
+        const denyCount = await this._approvalModeControl.readDenyCount(executable, profile);
+        if (force || mode !== previous) {
+            this._postMessage({ type: 'approvalMode', mode, denyCount, openAccess: this._isOpenAccess() });
         }
+    }
+
+    /**
+     * Whether the red action is engaged. Recorded, not inferred: `mode off` with an empty deny
+     * list is None (rules still default-block), and only the red press makes it ALL.
+     */
+    private _openAccess: boolean | null = null;
+
+    /** Where the last cleared deny list was saved, per profile. */
+    private readonly _denyBackups = new Map<string, string>();
+
+    private _permissionsStatePath(): string {
+        return path.join(profileDir(this._historyDir, this._session.scopeKey), 'permissions-state.json');
+    }
+
+    /** Read once, then kept in memory: the file only changes through this class. */
+    private _isOpenAccess(): boolean {
+        if (this._openAccess === null) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(this._permissionsStatePath(), 'utf8'));
+                this._openAccess = raw.openAccess === true;
+            } catch {
+                this._openAccess = false;
+            }
+        }
+        return this._openAccess;
+    }
+
+    private _setOpenAccessFlag(next: boolean): void {
+        this._openAccess = next;
+        try {
+            fs.mkdirSync(path.dirname(this._permissionsStatePath()), { recursive: true });
+            fs.writeFileSync(
+                this._permissionsStatePath(),
+                JSON.stringify({ openAccess: next, updatedAt: new Date().toISOString() }, null, 2) + '\n',
+                'utf8',
+            );
+        } catch (e) {
+            this._log(`Permissions state could not be written: ${String(e)}`);
+        }
+    }
+
+    /**
+     * Save the deny list before it is cleared, and say whether that worked.
+     *
+     * The file sits with the profile's own data, not in a temp directory: a backup that is pruned
+     * overnight is not a backup. The caller aborts the clear when this returns false.
+     */
+    private _saveDenyBackup(profile: string, patterns: string[]): boolean {
+        try {
+            const dir = profileDir(this._historyDir, this._session.scopeKey);
+            fs.mkdirSync(dir, { recursive: true });
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const file = path.join(dir, `deny-backup-${stamp}.json`);
+            fs.writeFileSync(
+                file,
+                JSON.stringify({ profile, savedAt: new Date().toISOString(), patterns }, null, 2) + '\n',
+                'utf8',
+            );
+            this._denyBackups.set(profile, file);
+            this._log(`Deny list saved before clearing: ${file}`);
+            return true;
+        } catch (e) {
+            this._log(`Deny list backup failed: ${String(e)}`);
+            return false;
+        }
+    }
+
+    /** Newest saved deny list for a profile, when this process no longer remembers it. */
+    private _newestDenyBackup(): string | undefined {
+        try {
+            const dir = profileDir(this._historyDir, this._session.scopeKey);
+            const files = fs.readdirSync(dir)
+                .filter(name => name.startsWith('deny-backup-') && name.endsWith('.json'))
+                .sort();
+            const last = files[files.length - 1];
+            return last ? path.join(dir, last) : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /** Put the saved deny list back — the other half of the red action. */
+    public async restoreDeny(): Promise<void> {
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const file = this._denyBackups.get(profile) ?? this._newestDenyBackup();
+        const executable = await this._resolveHermesExecutable();
+        if (!executable || !file) {
+            this._log(`Deny restore skipped (executable=${!!executable}, backup=${file ?? 'none'})`);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                error: t('approvalModeFailed'),
+            });
+            return;
+        }
+        let patterns: string[] = [];
+        try {
+            const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+            patterns = Array.isArray(parsed.patterns) ? parsed.patterns.filter((p: unknown) => typeof p === 'string') : [];
+        } catch (e) {
+            this._log(`Deny restore could not read ${file}: ${String(e)}`);
+            patterns = [];
+        }
+        const restored = await this._approvalModeControl.writeDenyList(executable, profile, patterns);
+        this._setOpenAccessFlag(false);
+        this._log(`Deny restore: ${patterns.length} pattern(s) from ${file} — ${restored ? 'written' : 'failed'}`);
+        this._denyBackups.set(profile, file);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: this._approvalModeControl.last(profile),
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            denyBackup: file,
+            openAccess: false,
+            ...(restored ? {} : { error: t('approvalModeFailed') }),
+        });
+    }
+
+    /**
+     * The red action: save the deny list, clear it, then turn approvals off for the profile.
+     *
+     * Order matters — the deny list is the only copy of those patterns, so a failed save stops
+     * everything, and the mode write is skipped when a second press arrived meanwhile.
+     */
+    public async setOpenAccess(): Promise<void> {
+        const token = ++this._openAccessToken;
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            this._log('Open access not set: no Hermes executable found');
+            this._postMessage({ type: 'approvalMode', mode: this._approvalModeControl.last(profile), error: t('approvalModeFailed') });
+            return;
+        }
+        const patterns = await this._approvalModeControl.readDenyList(executable, profile);
+        let backup = this._denyBackups.get(profile);
+        if (patterns.length > 0) {
+            if (!this._saveDenyBackup(profile, patterns)) {
+                this._postMessage({
+                    type: 'approvalMode',
+                    mode: this._approvalModeControl.last(profile),
+                    denyCount: patterns.length,
+                    error: t('approvalModeFailed'),
+                });
+                return;
+            }
+            backup = this._denyBackups.get(profile);
+        }
+        if (!await this._approvalModeControl.clearDeny(executable, profile)) {
+            this._log(`Open access: clearing approvals.deny failed (profile=${profile})`);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                denyBackup: backup,
+                error: t('approvalModeFailed'),
+            });
+            return;
+        }
+        if (token !== this._openAccessToken) {
+            // Stopped while clearing the deny list: do not turn approvals off behind the user.
+            this._log(`Open access cancelled before the mode write (profile=${profile})`);
+            this._setOpenAccessFlag(false);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                denyBackup: backup,
+                openAccess: false,
+            });
+            return;
+        }
+        const wrote = await this._approvalModeControl.write(executable, profile, 'off');
+        this._setOpenAccessFlag(wrote);
+        this._log(`Open access: deny cleared, mode ${wrote ? 'set to off' : 'write failed'} (profile=${profile})`);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: this._approvalModeControl.last(profile),
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            denyBackup: backup,
+            openAccess: wrote,
+            ...(wrote ? {} : { error: t('approvalModeFailed') }),
+        });
     }
 
     /** The switch was used: write it to the profile, and say so (or put the old value back). */
     public async setApprovalMode(mode: ApprovalMode): Promise<void> {
+        this._openAccessToken += 1;
         if (!isSettableApprovalMode(mode)) {
             this._log(`Approval mode ignored: ${String(mode)}`);
             return;
         }
         const profile = this._profiles.resolveTarget().cliProfile;
-        const previous = this._approvalModes.get(profile) ?? 'unknown';
+        const previous = this._approvalModeControl.last(profile);
         const executable = await this._resolveHermesExecutable();
         if (!executable) {
             this._log('Approval mode not set: no Hermes executable found');
             this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
             return;
         }
-        if (await writeApprovalMode(executable, profile, mode)) {
-            this._approvalModes.set(profile, mode);
-            this._postMessage({ type: 'approvalMode', mode });
+        if (await this._approvalModeControl.write(executable, profile, mode)) {
+            // Any deliberate choice ends the ALL state, choosing None included.
+            this._setOpenAccessFlag(false);
+            this._postMessage({ type: 'approvalMode', mode, openAccess: false });
             this._log(`Approval mode set to ${mode} (profile=${profile})`);
             return;
         }
@@ -1128,7 +1375,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /**
      * A peer card is a question with two answers, and an unanswered one used to keep its buttons
-     * forever. Like a permission card it now expires: after this long the buttons go and the card
+     * forever. It expires like a permission card once did: after this long the buttons go and the card
      * reads as expired. The state lives in this tab's memory — a reload rebuilds the transcript
      * from Hermes, where a local peer card does not exist, so there is nothing to persist.
      */

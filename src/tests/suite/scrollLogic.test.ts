@@ -26,7 +26,7 @@ describe('scroll logic', () => {
 
     it('offers "jump to now" when the reader left the bottom', () => {
         assert.strictEqual(jumpControlMode(true, 5000), 'now');
-        assert.strictEqual(jumpControlMode(true, 0), 'now', 'pinned wins over the distance from the top');
+        assert.strictEqual(jumpControlMode(true, 0), 'now', 'held by the reader wins over the distance from the top');
     });
 
     it('offers "back to the start" only once there is somewhere to go back to', () => {

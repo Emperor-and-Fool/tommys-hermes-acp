@@ -17,9 +17,10 @@ import { renameSession } from '../cache/catalog';
 import { countsTowardMessageCount, replayCountDiffers } from '../acp/replayProgress';
 import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
-import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
+
 import { t } from '../i18n';
-import { hermesSessionIdFor } from './tabs';
+import { hermesSessionIdFor } from '../workspace/sessionTab';
+import { mintId } from '../workspace/workSpace';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
 
@@ -212,20 +213,21 @@ export class TabLifecycle {
         if (messages.length === 0) {
             return;
         }
-        // A send that died between the pane and the agent leaves a user message in the local
-        // mirror that Hermes never received. Read it before the replay overwrites the file.
-        const pending = this._host.session.pendingUsers.read(localId);
-        const undelivered = findUndelivered(lastUserMessageText(pending.map(user => ({ role: 'user', text: user.text, timestamp: user.savedAt }))), messages);
-        // Whatever the replay contains has arrived: keep only what it does not.
-        this._host.session.pendingUsers.retain(
-            localId,
-            pending.map(user => user.text).filter(text => findUndelivered(text, messages) !== null)
+        // A send that died between the pane and the agent leaves a record nothing ever settled.
+        // A replay containing a user turn newer than that record is proof the agent was alive
+        // afterwards, so the record cannot still be in flight — drop it by time, never by text.
+        const newestUserAt = messages.reduce(
+            (latest, message) => (message.role === 'user' ? Math.max(latest, message.timestamp || 0) : latest),
+            0
         );
+        this._host.session.pendingUsers.dropBefore(localId, newestUserAt);
+        const surviving = this._host.session.pendingUsers.read(localId);
+        const undelivered = surviving.length ? surviving[surviving.length - 1].text : '';
         // More rows than Hermes counts means the two disagree. The pending user turns explain a
         // little of it; beyond that it is a signal worth a line rather than something to hide.
         const countedRows = replay.filter(row => countsTowardMessageCount(row.role)).length;
         const sourceCount = this._host.session.catalogRow(hermesSessionId)?.messageCount ?? 0;
-        if (replayCountDiffers(countedRows, sourceCount, pending.length)) {
+        if (replayCountDiffers(countedRows, sourceCount, surviving.length)) {
             this._host.log(
                 `Replay for ${localId} carried ${countedRows} row(s) against the catalog's ${sourceCount} — ` +
                     `Hermes' count and its replay disagree`
@@ -316,7 +318,7 @@ export class TabLifecycle {
     async createBlankTab(): Promise<void> {
         this._host.saveCurrent();
         this._host.session.messages = [];
-        this._host.session.activeId = Date.now().toString(36);
+        this._host.session.activeId = mintId();
         this._host.ensureRegistered();
         this._host.snapshotModelFromProfile();
         this._host.post({ type: 'newChat' });

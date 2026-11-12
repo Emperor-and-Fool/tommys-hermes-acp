@@ -37,12 +37,15 @@ export interface BuiltMessage {
 import { clearChatSearch, scheduleChatSearch } from '../search';
 import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
-import { cancelSessionMarkdownRender, chatSearchState, renderMarkdown, scheduleSessionMarkdownRender } from './markdown';
+import { cancelSessionMarkdownRender, chatSearchState, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
 import { pendingPermissions, restorePermissionMessage } from './permissionCard';
 import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
+import { buildTaggedMessage } from './taggedMessage';
+import { buildReplyQuoteBlock } from './replyQuoteCard';
+import { parseReplyQuote } from '../../../shared/replyQuoteText';
 import { playHistoryPickerIntro } from '../composer/historyAttach';
 
 
@@ -62,7 +65,7 @@ export function maybeScrollToBottom(force?: boolean) {
     if (!messagesEl) {
         return;
     }
-    if (force || !state.scrollPinnedByUser) {
+    if (force || !state.scrollHeldByUser) {
         // This scroll is ours; the event it fires is not the user leaving the bottom.
         state.suppressScrollPinUntil = Date.now() + 200;
         messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -81,7 +84,7 @@ function onMessagesScroll() {
     // pane's own (a restore, a send), and the reader still needs to see where the view now is.
     const suppressed = Date.now() < state.suppressScrollPinUntil;
     if (!suppressed) {
-        state.scrollPinnedByUser = !isMessagesAtBottom();
+        state.scrollHeldByUser = !isMessagesAtBottom();
     }
     updateJumpControl();
 }
@@ -92,7 +95,7 @@ function updateJumpControl() {
     if (!button || !messagesEl) {
         return;
     }
-    const mode = jumpControlMode(state.scrollPinnedByUser, messagesEl.scrollTop);
+    const mode = jumpControlMode(state.scrollHeldByUser, messagesEl.scrollTop);
     button.hidden = mode === null;
     if (mode === null) {
         return;
@@ -137,7 +140,7 @@ function jumpControlAction(): void {
     if (!messagesEl) {
         return;
     }
-    if (state.scrollPinnedByUser) {
+    if (state.scrollHeldByUser) {
         resetAutoScrollFollow();
         maybeScrollToBottom(true);
     } else {
@@ -172,7 +175,7 @@ export function initMessagesElScroll(): void {
 }
 
 export function resetAutoScrollFollow() {
-    state.scrollPinnedByUser = false;
+    state.scrollHeldByUser = false;
     updateJumpControl();
 }
 
@@ -282,8 +285,20 @@ function buildMessage(role: string, text: string, options?: MessageOptions) {
     card.className = 'message ' + role;
     const label = document.createElement('div');
     label.className = 'label';
-    label.textContent = role === 'user' ? locale.roleYou : assistantRoleLabel();
+    label.textContent = role === 'user' ? locale.roleYou
+        : role === 'approval' ? (locale.approvalNoteLabel || 'Approval')
+        : assistantRoleLabel();
     card.appendChild(label);
+    // A reply carries its quote inside the text, because that is what the agent receives. Draw it
+    // as the panel the composer showed while composing, not as the markers.
+    if (role === 'user') {
+        const quote = parseReplyQuote(text);
+        if (quote.segments.length) {
+            const title = String(locale.replyTitle || '{count}').replace('{count}', String(quote.segments.length));
+            card.appendChild(buildReplyQuoteBlock(quote.segments, title));
+            text = quote.rest;
+        }
+    }
     const content = document.createElement('div');
     content.className = 'content';
     content.textContent = text;
@@ -377,17 +392,9 @@ function buildPeerCard(text: string, options?: MessageOptions) {
         : [{ text, sentBy: peer?.sentBy }];
     if (state === 'pending') {
         for (const message of messages) {
-            const bubble = document.createElement('div');
-            bubble.className = 'peer-msg';
-            const tag = document.createElement('span');
-            tag.className = 'peer-msg-tag';
-            tag.textContent = `${message.sentBy === 'user' ? 'you' : (message.sentBy || 'agent')}@${peer?.forwarderHost || ''}`;
-            bubble.appendChild(tag);
-            const content = document.createElement('div');
-            content.className = 'content';
-            content.innerHTML = renderMarkdown(message.text);
-            bubble.appendChild(content);
-            card.appendChild(bubble);
+            // The tag speaks about the person; the forwarder only says which pane relayed it.
+            const tag = `${message.sentBy === 'user' ? 'you' : (message.sentBy || 'agent')}@${peer?.forwarderHost || ''}`;
+            card.appendChild(buildTaggedMessage(message.text, tag));
         }
     } else {
         const content = document.createElement('div');
@@ -425,7 +432,8 @@ function buildPeerCard(text: string, options?: MessageOptions) {
     actions.appendChild(deliverBtn);
     actions.appendChild(dismissBtn);
     // An expired card keeps its body and its sender, and loses its buttons: the deadline is
-    // the same 120 s the permission cards use, so nothing sits there waiting to be answered.
+    // the host's own peer-card timer (PEER_CARD_TIMEOUT_MS), so nothing sits there waiting to
+    // be answered.
     if (state === 'pending') {
         card.appendChild(actions);
     }
@@ -681,7 +689,7 @@ export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolea
     cancelSessionMarkdownRender();
     // A freshly restored transcript opens at its end; a pin left over from the previous
     // page would otherwise keep the pane wherever it happened to be.
-    state.scrollPinnedByUser = false;
+    state.scrollHeldByUser = false;
     state.streamingMessageId = null;
     state.thoughtMsgId = null;
     state.toolCallMap = {};

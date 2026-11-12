@@ -2,6 +2,7 @@ import { inputEl, messagesEl, required } from '../../dom';
 import { state } from '../../state';
 import type { SelectionCapture } from '../../state';
 import { groupsInOrder, quoteSegmentForGroup } from '../messages/messageList';
+import { formatReplyQuote } from '../../../shared/replyQuoteText';
 import { sendMessage, showComposerHint, syncInputHeightFromContent, updateQuickActionBtns } from './composer';
 
 
@@ -189,19 +190,14 @@ function renderReplyQuote() {
 export function offerUndeliveredMessage(text: string) {
     const value = (text || '').trim();
     if (!value || !undeliveredNotice) return;
+    // Offer, never fill: a composer holding text is indistinguishable from a draft, and this
+    // notice appears on a load rather than because the user was typing.
     state.undeliveredText = text;
-    state.undeliveredFilledComposer = inputEl.value.trim() === '';
-    if (state.undeliveredFilledComposer) {
-        inputEl.value = text;
-        syncInputHeightFromContent();
-        updateQuickActionBtns();
-    }
+    state.undeliveredFilledComposer = false;
     undeliveredNoticeText.textContent = locale.undeliveredNotice;
-    const canSendIt = state.undeliveredFilledComposer && state.canSend;
-    undeliveredPrimaryBtn.textContent = canSendIt ? locale.send : locale.undeliveredRestore;
+    undeliveredPrimaryBtn.textContent = locale.undeliveredRestore;
     undeliveredDiscardBtn.textContent = locale.undeliveredDiscard;
     undeliveredNotice.hidden = false;
-    undeliveredPrimaryBtn.focus();
 }
 
 function closeUndeliveredNotice(clearComposer: boolean) {
@@ -264,12 +260,6 @@ export function initReplyQuoteClearClick(): void {
 
 export function withReplyQuote(text: string) {
     if (!state.replyQuote || !state.replyQuote.segments.length) return text;
-    const lines = ['[replying-to]'];
-    state.replyQuote.segments.forEach(function(seg) {
-        lines.push('--- ' + seg.role + ' ---');
-        lines.push(seg.text);
-    });
-    lines.push('[/replying-to]');
-    const quoted = lines.join('\n');
-    return text ? quoted + '\n\n' + text : quoted;
+    // The one writer of the block; parseReplyQuote reads it back for the sent message.
+    return formatReplyQuote(state.replyQuote.segments, text);
 }

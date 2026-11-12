@@ -210,34 +210,34 @@ body.vscode-high-contrast-light {
    The collapsible header/body that thinking and tool cards share.
    Written once; :is(.thought, .tool) keeps the specificity the
    old per-role pairs had. */
-.message:is(.thought, .tool) .aux-header {
+.message:is(.thought, .tool, .history) .aux-header {
     margin-bottom: 4px;
 }
-.message:is(.thought, .tool) .aux-body-scroll {
+.message:is(.thought, .tool, .history) .aux-body-scroll {
     font-size: 12px;
     line-height: 1.35;
     color: var(--fg);
     word-break: break-word;
 }
-.message:is(.thought, .tool) .aux-body-scroll.is-collapsed {
+.message:is(.thought, .tool, .history) .aux-body-scroll.is-collapsed {
     overflow: auto;
     scrollbar-width: thin;
 }
-.message:is(.thought, .tool) .aux-body-content > :first-child {
+.message:is(.thought, .tool, .history) .aux-body-content > :first-child {
     margin-top: 0;
 }
-.message:is(.thought, .tool) .aux-body-content > :last-child {
+.message:is(.thought, .tool, .history) .aux-body-content > :last-child {
     margin-bottom: 0;
 }
-.message:is(.thought, .tool) .aux-body-content p {
+.message:is(.thought, .tool, .history) .aux-body-content p {
     margin: 0 0 4px;
 }
-.message:is(.thought, .tool) .aux-body-controls {
+.message:is(.thought, .tool, .history) .aux-body-controls {
     display: flex;
     gap: 8px;
     margin-top: 4px;
 }
-.message:is(.thought, .tool) .aux-body-toggle {
+.message:is(.thought, .tool, .history) .aux-body-toggle {
     background: transparent;
     border: none;
     color: var(--primary);
@@ -245,10 +245,10 @@ body.vscode-high-contrast-light {
     font-size: 11px;
     padding: 0;
 }
-.message:is(.thought, .tool) .aux-body-toggle:hover {
+.message:is(.thought, .tool, .history) .aux-body-toggle:hover {
     text-decoration: underline;
 }
-.message:is(.thought, .tool) .aux-body-toggle[hidden] {
+.message:is(.thought, .tool, .history) .aux-body-toggle[hidden] {
     display: none;
 }
 
@@ -374,21 +374,31 @@ body.vscode-high-contrast-light {
     margin-top: 4px;
 }
 /* Permission card: approval mode. A setting, not an answer: it sits above the buttons. */
-.message.permission .permission-approval-block {
+.permission-approval-block {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
     align-self: flex-start;
     margin: 2px 0 8px;
 }
-.message.permission .permission-approval {
+
+/* The switch's own line keeps its width; the red button is a sibling, not a fourth segment. */
+.permission-approval-block > .permission-approval {
+    flex: 0 0 auto;
+}
+
+.permission-approval-block > .permission-approval-error {
+    flex: 1 0 100%;
+}
+.permission-approval {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
 }
-.message.permission .permission-approval-btn {
+.permission-approval-btn {
     background: var(--input-bg);
     border: 0;
     border-right: 1px solid var(--border);
@@ -398,30 +408,37 @@ body.vscode-high-contrast-light {
     line-height: 1.3;
     padding: 3px 10px;
 }
-.message.permission .permission-approval-btn:last-of-type {
+.permission-approval-btn:last-of-type {
     border-right: 0;
 }
-.message.permission .permission-approval-btn:hover:not(:disabled) {
+.permission-approval-btn:hover:not(:disabled) {
     background: var(--text-block);
 }
-.message.permission .permission-approval-btn:disabled {
+.permission-approval-btn:disabled {
     opacity: 0.5;
     cursor: default;
 }
-.message.permission .permission-approval-btn[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--primary) 20%, var(--input-bg));
-    color: var(--primary);
+.permission-approval-btn[aria-pressed="true"] {
     font-weight: 700;
 }
-.message.permission .permission-approval[data-mode="off"] .permission-approval-btn[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--error) 18%, var(--input-bg));
-    color: var(--error);
+/* One accent per mode, shared by the switch and the rail button. */
+.permission-approval-btn[data-approval-mode="manual"][aria-pressed="true"] {
+    background: color-mix(in srgb, #1f6feb 18%, var(--input-bg));
+    color: #1f6feb;
 }
-.message.permission .permission-approval-error {
+.permission-approval-btn[data-approval-mode="smart"][aria-pressed="true"] {
+    background: color-mix(in srgb, #2ea043 18%, var(--input-bg));
+    color: #2ea043;
+}
+.permission-approval-btn[data-approval-mode="off"][aria-pressed="true"] {
+    background: color-mix(in srgb, #d97706 20%, var(--input-bg));
+    color: #d97706;
+}
+.permission-approval-error {
     font-size: 10px;
     color: var(--error);
 }
-.message.permission .permission-approval-error[hidden] {
+.permission-approval-error[hidden] {
     display: none;
 }
 .message.user .label {
@@ -1321,7 +1338,7 @@ body.surface-rail #tab-bar {
     align-items: stretch;
     gap: 2px;
     padding: 4px;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -1334,15 +1351,143 @@ body.surface-rail #tab-bar::-webkit-scrollbar {
 body.surface-rail .session-tab {
     width: 100%;
     max-width: none;
+    flex-shrink: 0;
     border-right: none;
     border-radius: 4px;
 }
 body.surface-rail .session-tab .tab-close {
     margin-left: auto;
 }
+/* The rail's own action, centred in the space the chat list leaves empty. Hidden in the side-bar
+   surface, where that space below the strip is the transcript. */
+#rail-footer {
+    display: none;
+}
+body.surface-rail #rail-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+}
+/* A create that could not finish says so here, in the space the button already owns. */
+.project-notice {
+    max-width: 100%;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(190, 60, 60, 0.5));
+    background: var(--vscode-inputValidation-errorBackground, rgba(190, 60, 60, 0.09));
+    color: var(--vscode-errorForeground, #cc5555);
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: center;
+}
+body.surface-rail #rail-footer .button {
+    max-width: 100%;
+}
+body.surface-rail #rail-footer input {
+    width: 100%;
+}
 /* Editor panel: the conversation only, the rail carries the tabs. */
 body.surface-notabs #tab-bar {
     display: none !important;
+}
+/* Project folders: parents in the rail, a labelled run of tabs in the side-bar strip. The tab
+   markup is unchanged, so click, drag and close keep working wherever a tab is drawn. */
+.tab-group,
+.tab-group-tabs {
+    display: contents;
+}
+.tab-group-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* The caret says whether the folder is open; a closed folder keeps only its header. */
+.tab-group-caret {
+    font-size: 9px;
+    line-height: 1;
+    opacity: 0.75;
+}
+.tab-group.is-collapsed .tab-group-tabs {
+    display: none;
+}
+body.surface-rail .tab-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+body.surface-rail .tab-group-header {
+    padding: 2px 4px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-width: none;
+}
+body.surface-rail .tab-group-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    /* No width: the margin and padding below would push a 100% box past the rail's edge and
+       clip the close button. A stretched flex item already fills what is left. */
+    margin-left: 6px;
+    padding-left: 6px;
+    border-left: 1px solid var(--border);
+}
+/* The plane follows the folders: one gap says the run below is not in the group above it. */
+body.surface-rail .tab-group + .tab-group--plane {
+    margin-top: 8px;
+}
+/* A project carries one colour from a ladder that runs red at the top to deep purple at the
+   bottom, in draw order: the colour says where a project sits, not what it is. The accent comes
+   from the markup, so a project with no accent yet falls back to the primary. */
+.tab-group[data-project] {
+    --project-accent: var(--primary);
+}
+.tab-group[data-project] > .tab-group-header {
+    color: var(--project-accent);
+    background: color-mix(in srgb, var(--project-accent) 14%, transparent);
+    border: none;
+    border-radius: 6px;
+    padding: 3px 8px;
+}
+body.surface-rail .tab-group[data-project] {
+    border-radius: 8px;
+    padding: 2px;
+    background: color-mix(in srgb, var(--project-accent) 7%, transparent);
+}
+body.surface-rail .tab-group[data-project] > .tab-group-tabs {
+    border-left-color: color-mix(in srgb, var(--project-accent) 45%, transparent);
+}
+/* A tab dropped here moves into that project (or onto the plane, with no project id). */
+.tab-group.drag-over > .tab-group-header {
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px var(--primary);
+    border-radius: 3px;
+}
+.tab-group--plane.drag-over {
+    box-shadow: inset 0 0 0 1px var(--border);
+    border-radius: 4px;
+}
+/* The plane: no project, so no indent and no rail — the placement is the whole message. */
+body.surface-rail .tab-group--plane .tab-group-tabs {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
 }
 .session-tab {
     display: inline-flex;
@@ -1354,8 +1499,12 @@ body.surface-notabs #tab-bar {
     border-right: 1px solid var(--border);
     cursor: pointer;
     white-space: nowrap;
-    max-width: 160px;
-    flex-shrink: 0;
+    /* Share the strip before it scrolls, the way the editor's own tabs do: the 300px is a
+       ceiling for a long title, not a fixed width, and 72px keeps the tab readable when many
+       are open. The rail below opts out - a vertical list has no row to share. */
+    max-width: 300px;
+    min-width: 72px;
+    flex-shrink: 1;
     background: transparent;
     border-top: 2px solid transparent;
     user-select: none;
@@ -1411,7 +1560,7 @@ body.surface-notabs #tab-bar {
     opacity: 1;
     color: var(--error);
 }
-.session-tab .tab-pin-icon {
+.session-tab .tab-sticky-icon {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -1420,13 +1569,13 @@ body.surface-notabs #tab-bar {
     opacity: 0.85;
     line-height: 1;
 }
-.session-tab .tab-pin-icon svg {
+.session-tab .tab-sticky-icon svg {
     width: 11px;
     height: 11px;
     fill: currentColor;
     display: block;
 }
-#tab-bar .tab-pin-separator {
+#tab-bar .tab-sticky-separator {
     align-self: stretch;
     width: 1px;
     background: color-mix(in srgb, var(--primary) 35%, var(--border));
@@ -1796,6 +1945,7 @@ body.surface-notabs #tab-bar {
     --peer-accent: #e67e22;
 }
 .message.peer {
+    --card-accent: var(--peer-accent, var(--primary));
     border-left: 3px solid var(--peer-accent, var(--primary));
     /* The card is a container, not a chat bubble: it spans the panel and holds its messages. */
     width: 100%;
@@ -1807,17 +1957,28 @@ body.surface-notabs #tab-bar {
     letter-spacing: 0.02em;
     opacity: 0.8;
 }
-/* One bubble per message, tagged with the sender: "you@host". */
-.message.peer .peer-msg {
+/* One message inside a card, tagged with its sender: a forwarded draft and an attached history
+   slice stack the same way. The card supplies --card-accent; the pill names the sender and the
+   rail ties the bubble to the card it belongs to. */
+.tagged-msg {
     margin-top: 6px;
     padding-left: 8px;
-    border-left: 2px solid color-mix(in srgb, var(--peer-accent, var(--primary)) 35%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--card-accent, var(--primary)) 35%, transparent);
 }
-.message.peer .peer-msg-tag {
-    display: block;
+.tagged-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
     font-size: 10px;
-    opacity: 0.7;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--card-accent, var(--primary)) 18%, transparent);
+    color: color-mix(in srgb, var(--card-accent, var(--primary)) 72%, var(--fg));
     margin-bottom: 2px;
+}
+.tagged-msg .content {
+    margin-top: 4px;
 }
 /* The sender, as a pill: tinted, small, and in that sender's accent. The rail carries the colour
    for a single card; the pill carries it for every card in a mixed stack. */
@@ -2463,6 +2624,12 @@ body[data-other-pane-live="true"] .message-actions .forward-btn.action-btn {
 }
 .reply-quote.is-collapsed .reply-quote-body { display: none; }
 .reply-quote-segment { margin: 0 0 4px; }
+/* A sent reply keeps the panel it was composed with: the quote sits inside the user card,
+   above the user's own words. */
+.message .reply-quote {
+    margin: 2px 0 6px;
+    max-width: 100%;
+}
 .reply-quote-role { color: var(--dim); font-weight: 600; }
 .composer-hint {
     display: flex;
@@ -3544,8 +3711,14 @@ mark.search-mark-active {
 
 /* History card — an attached slice of another conversation. */
 .message.history {
+    /* A card around a slice of another conversation: it sat flat on the pane background, so the
+       next card's surface ran straight into its text. */
+    --card-accent: var(--primary);
+    background: color-mix(in srgb, var(--fg) 6%, var(--text-block));
+    border: 1px solid color-mix(in srgb, var(--fg) 22%, var(--border));
     border-left: 2px solid var(--border);
-    padding-left: 6px;
+    border-radius: 6px;
+    padding: 6px 10px;
 }
 .message.history .aux-label {
     font-style: italic;
@@ -3730,4 +3903,203 @@ body.is-viewer .multi-select-toolbar {
     font-size: 9px;
     line-height: 14px;
     vertical-align: 1px;
+}
+
+/* The approval card: what a gate decided (flagged, approved, auto-approved), kept as its own
+   card so a long session still shows where a command got past the gate. Fixed colours, not theme
+   variables: it has to read the same in the light and the dark theme. */
+.message.approval .label {
+    color: #c2551f;
+}
+
+.message.approval .label::before {
+    content: '⚠ ';
+}
+
+.message.approval .content {
+    background: #16120f;
+    border: 1px solid #5a2f16;
+    border-left: 3px solid #ff7a45;
+    color: #ff9a62;
+    border-radius: 6px;
+    padding: 7px 10px;
+    white-space: pre-wrap;
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+/* The session answer when the gate did not offer it: readable, obviously not pressable. The
+   balloon (title) says how to unlock it; a disabled attribute would swallow the tooltip. */
+.message.permission .permission-btn.is-unavailable {
+    opacity: 0.5;
+    cursor: default;
+    border-style: dashed;
+}
+
+.message.permission .permission-btn.is-unavailable:hover {
+    background: inherit;
+}
+
+
+/* Rail-only permission control. The markup is shared with the editor panel and `surface-rail`
+   on the body decides which surface shows the button, so nothing is forked per surface. */
+#permissionModeBtn {
+    display: none;
+    max-width: 190px;
+    font-size: 12px;
+    align-items: center;
+    gap: 4px;
+}
+
+.surface-rail #permissionModeBtn {
+    display: inline-flex;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* The rail already lists its chats, so its closed-session picker gives way to the button. */
+.surface-rail .toolbar-actions #closedPicker {
+    display: none;
+}
+
+/* The row the button opens: empty for now, under the toolbar, closed by the X on its right. */
+.permission-mode-bar {
+    flex: 0 0 auto;
+    padding: 2px 6px 0;
+}
+
+.permission-mode-bar[hidden] {
+    display: none !important;
+}
+
+.permission-mode-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+}
+
+.permission-mode-title {
+    color: var(--dim);
+    font-size: 11.5px;
+    white-space: nowrap;
+}
+
+.permission-mode-options {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    /* Left-aligned on purpose: the row is the switch, and the X owns the right edge. */
+    justify-content: flex-start;
+}
+
+.permission-mode-close {
+    margin-left: auto;
+    background: transparent;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+}
+
+.permission-mode-close:hover {
+    color: var(--fg);
+}
+
+
+/* The red action, beside the switch: approvals off and approvals.deny cleared. Round, and glowing
+   while that state is on, so the rail button above can carry the same signal. */
+.permission-open-btn {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0;
+    border: 1px solid #c9302c;
+    border-radius: 50%;
+    background: #c9302c;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.permission-open-btn.is-armed,
+.permission-open-btn.is-pending {
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+/* Engaged: the fill inverts, and the glow keeps radiating. */
+.permission-open-btn.is-on {
+    background: transparent;
+    color: #c9302c;
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+.permission-open-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+@keyframes permission-open-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(201, 48, 44, 0.25);
+    }
+    50% {
+        box-shadow: 0 0 0 5px rgba(201, 48, 44, 0.45);
+    }
+}
+
+/* The rail's Permission Mode button carries the same state: red and always glowing. */
+#permissionModeBtn.is-open {
+    color: #c9302c;
+    border-color: #c9302c;
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+/* The way back for a cleared deny list: quiet, text-only, and only there while it applies. */
+.permission-restore-btn {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font-size: 11.5px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.permission-restore-btn:hover:not(:disabled) {
+    color: var(--fg);
+}
+
+.permission-restore-btn[hidden] {
+    display: none;
+}
+
+/* The rail button shows the accent of the mode it is in, and ALL keeps the red glow. */
+#permissionModeBtn.accent-manual {
+    color: #1f6feb;
+    border-color: #1f6feb;
+}
+#permissionModeBtn.accent-smart {
+    color: #2ea043;
+    border-color: #2ea043;
+}
+#permissionModeBtn.accent-none {
+    color: #d97706;
+    border-color: #d97706;
+}
+#permissionModeBtn.accent-all {
+    color: #c9302c;
+    border-color: #c9302c;
 }

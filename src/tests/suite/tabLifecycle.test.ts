@@ -21,6 +21,9 @@ describe('tab switch: a session that will not replay', () => {
             log: () => {},
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
+            currentWorkspaceId: () => '',
+            workspaceIdForCwd: () => '',
+            knownWorkspaceIds: () => [],
         });
         session.activeId = 'tab-a';
         session.tabs = [

@@ -32,7 +32,23 @@ export class SessionStore {
     readCatalog(): SessionInfo[] {
         try {
             const parsed = JSON.parse(fs.readFileSync(this.catalogPath, 'utf-8'));
-            return Array.isArray(parsed) ? parsed : [];
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+            // `workspace` held a path before workspaces had ids; the record's field is
+            // `workspaceId` now, and the stale key is dropped here rather than carried forever.
+            // Only a record that still carries it is rebuilt: the file is read on every catalog
+            // refresh, and an array that needs nothing costs nothing.
+            if (!parsed.some(record => record && record.workspace !== undefined)) {
+                return parsed;
+            }
+            return parsed.map(record => {
+                if (record && record.workspace !== undefined) {
+                    const { workspace, ...rest } = record;
+                    return rest;
+                }
+                return record;
+            });
         } catch {
             return [];
         }

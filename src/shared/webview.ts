@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, HistoryRef, PeerRef, PeerState, SessionInfo } from './chat';
+import type { ChatMessage, HistoryRef, PeerRef, PeerState, Project, SessionInfo, Workspace } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -38,6 +38,8 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /** The create path's answer: why nothing was made, or an empty message to clear it. */
+    | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
     /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
     | { type: 'loadProgress'; received: number; sessionId?: string }
     | { type: 'newChat' }
@@ -51,6 +53,8 @@ export type HostToPane =
 
     // Tabs and models.
     | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string }
+    /** The project tree: the workspaces this editor opened, and the projects named against them. */
+    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[] }
     | { type: 'hiddenSessions'; sessions: CatalogSession[] }
     | { type: 'sessionExport'; action: SessionExportAction; sessionId: string; title: string; markdown: string; filename: string }
     | { type: 'modelList'; configId: string; currentValueId: string; currentLabel: string; models: ModelListItem[]; groups?: ModelProviderGroup[]; fromAgent: boolean }
@@ -63,7 +67,7 @@ export type HostToPane =
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
     /** The approval mode the pending cards offer, and why a change did not take. */
-    | { type: 'approvalMode'; mode: ApprovalMode; error?: string }
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
@@ -128,7 +132,15 @@ export type PaneToHost =
     | { type: 'reorderSessions'; sessionIds: string[] }
     | { type: 'closeSessions'; sessionId: string; mode: SessionCloseMode }
     | { type: 'renameSession'; sessionId: string; title: string }
-    | { type: 'togglePinSession'; sessionId: string }
+    | { type: 'toggleStickySession'; sessionId: string }
+    /** Move this tab to another workspace: our tag, nothing Hermes reports can undo it. */
+    | { type: 'moveToWorkspace'; sessionId: string; workspace: string }
+    /** Name a project folder and connect it to this window's workspace. */
+    | { type: 'createProject'; name: string }
+    | { type: 'renameProject'; projectId: string; name: string }
+    | { type: 'deleteProject'; projectId: string }
+    /** Put a tab in a folder; an empty id puts it back on the plane below them. */
+    | { type: 'setTabProject'; sessionId: string; projectId: string }
     | { type: 'sessionExport'; sessionId: string; action: SessionExportAction; indices?: number[] }
     /** `interrupt` is set when the user confirms switching away from a running turn. */
     | { type: 'switchSession'; sessionId: string; interrupt?: boolean }
@@ -164,6 +176,12 @@ export type PaneToHost =
 
     /** The approval switch on a pending card: one value, written to Hermes' profile config. */
     | { type: 'setApprovalMode'; mode: ApprovalMode }
+    /** Ask for the mode again: the rail's row opens with a read, not with a stale cache. */
+    | { type: 'requestApprovalMode' }
+    /** The red action: save the deny list, clear it, approvals off. */
+    | { type: 'setOpenAccess' }
+    /** Put the last saved deny list back. */
+    | { type: 'restoreDeny' }
 
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.

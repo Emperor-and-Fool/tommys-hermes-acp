@@ -9,7 +9,7 @@ import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './compon
 import { applyOtherPaneProfile, insertIntoInput } from './components/messages/messageActions';
 import { applyPeerState } from './components/messages/messageList';
 import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
-import { applyApprovalMode, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
+import { applyApprovalMode, disarmSessionAnswer, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
 import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
 import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliaryContent } from './components/messages/toolCards';
 import { renderAboutContent } from './components/modals/info';
@@ -21,7 +21,8 @@ import { renderModelList } from './components/pickers/modelPicker';
 import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
 import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
-import { renderSessionTabs } from './components/tabs/tabStrip';
+import { applyProjectFocus, showProjectNotice } from './components/workspace/projectGrouped';
+import { renderSessionTabs } from './components/workspace/sessionTab';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
 import { aboutModal, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
@@ -190,6 +191,7 @@ export function init(): void {
                 break;
 
             case 'restoreHistory':
+                disarmSessionAnswer();
                 restoreHistory(msg.messages, msg.localHistoryOnly);
                 afterHistoryRestored(msg.messages, msg.sessionId);
                 break;
@@ -274,11 +276,28 @@ export function init(): void {
 
             case 'sessionList':
                 if ((msg.sessions || []).length) state.paneHintText = '';
+                state.activeSessionId = msg.activeSessionId || state.activeSessionId;
+                state.lastSessions = msg.sessions || [];
+                state.lastActiveSessionId = state.activeSessionId;
+                applyProjectFocus();
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
                 renderHistorySessionList();
                 if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
                     clearSwitchQueued();
                 }
+                break;
+
+            case 'projectList':
+                // The tree is its own message: the strip redraws from what it already holds.
+                state.lastWorkspaces = msg.workspaces || [];
+                state.lastProjects = msg.projects || [];
+                renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
+                // A list that arrived is itself the answer: whatever was refused is settled.
+                showProjectNotice('');
+                break;
+
+            case 'projectNotice':
+                showProjectNotice(msg.message);
                 break;
 
             case 'sessionExport':
@@ -395,7 +414,7 @@ export function init(): void {
                 break;
 
             case 'approvalMode':
-                applyApprovalMode(msg.mode, msg.error);
+                applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup, msg.openAccess);
                 break;
 
             case 'historyStaged':

@@ -6,6 +6,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+## [2.3.1] - 2026-11-12
+
+The rail shows and sets the permission mode, and an approval granted on your behalf is drawn as a
+card of its own instead of a line inside a tool result. Tabs belong to projects. A message that
+never reached the agent is offered back rather than appearing as a draft.
+
+### Added
+
+- **The rail shows and sets the permission mode.** The closed-session picker in the rail is now a
+  button reading `Permissions: Man | Smart | None | ALL`, coloured by the mode in force — Manual
+  blue, Smart green, None orange, ALL red. Its balloon says how to reach session permissions.
+  Pressing it opens a row under the toolbar with the same three-position switch the permission
+  card carries, drawn once and mounted twice, so the two can never disagree about the mode.
+- **The red ALL action, and what it costs.** The row's red button turns approvals off and clears
+  `approvals.deny` — the patterns are saved to JSON first, and nothing is cleared if that write
+  fails, because those patterns are the only copy. It glows from the press, inverts when Hermes
+  confirms, stops on a second press even mid-flight, and leaves a *Restore deny rules* link beside
+  itself while a backup exists. Its balloon reads `DANGER! (only critical actions blocked)`.
+- **An approved command says why, in a card of its own.** When a command passed an approval gate,
+  the reason arrived as a line buried in the tool result. It is now a near-black card with the
+  reason in orange, one per tool call, kept in the transcript and across a reload.
+- **Tabs belong to projects.** Tabs are grouped by the work they came from, a new session is born
+  in the project of the tab that was in use, and a workspace carries an id that cannot change, so
+  a project points at the same space however its folders move.
+
+### Changed
+
+- **A sent reply keeps the quote panel it was composed with.** The reply is text —
+  `[replying-to]` … `[/replying-to]` around the quoted messages — so after sending, the message
+  showed the markers verbatim. The transcript now reads the block back and draws the panel the
+  composer showed: the title with the count, one row per quoted message, and the caret that
+  collapses it. The markers still travel to the agent unchanged.
+- **An attached history slice reads as a conversation.** The history card used to sit flat on the
+  pane background — no surface, and one monospace block for every message — so the next card's
+  surface ran straight into its text. It now has a card of its own and one bubble per attached
+  message, each tagged with its sender; the bubble is the same `tagged-msg` template a forwarded
+  draft draws with. Bodies that are not attaches keep the quoted-text form.
+- **Session tabs share the strip before it scrolls.** The 300px is a ceiling for a long title,
+  not a fixed width: a tab may now shrink to 72px, so several conversations stay visible in a
+  narrow sidebar instead of the strip scrolling after the second one. Titles still ellipsise,
+  and the editor-panel rail keeps its full-width rows.
+- **A message that never reached the agent is offered, not filled in.** The undelivered notice
+  used to put the text back into the composer when the composer was empty, which made a recovered
+  message indistinguishable from a draft — and the only way to send it was to send it. The notice
+  now offers the text and leaves the composer alone.
+
+### Fixed
+
+- **Choosing None no longer reports ALL.** Both are `approvals.mode: off`, so the pane used to
+  infer the wider state from an empty `approvals.deny` and any profile without rules read as ALL.
+  None asks nothing but the profile's own rules still default-block; ALL means those rules were
+  cleared. The state is now recorded when the red action engages and cleared by any deliberate
+  mode choice, including None.
+- **The permission mode is read, not remembered.** The rail button showed a dash on every window
+  load, and a mode changed in a terminal could be contradicted by the pane. It is now read when
+  the window loads, when the row opens, and when a card appears — with the pending state shown for
+  the second that read takes, and a guard so a mute host cannot leave it rolling.
+- **A prompt the agent took is no longer offered back as undelivered.** The record that marks a
+  send which may never have arrived was cleared by comparing text against the next replay, so a
+  message that had in fact arrived could be offered again, and a replay that reworded anything
+  left the record in place. The record now carries its own id and is deleted the moment the
+  agent starts answering; what a replay can still prove is dropped by time, never by text.
+- **The tray window retries once when its first load failed.** At autostart the window loads the
+  dashboard before `hermes-dashboard.service` may be listening, and QtWebEngine then kept its
+  error page until *Reload* was pressed. The window now tracks `loadFinished` and reloads once on
+  being shown — only when that load failed and the status probe says the dashboard answers, so a
+  page that loaded fine is never reloaded.
+
 ## [2.2.0] - 2026-11-05
 
 Peer cards say who forwarded them and who wrote each message, and expire when nobody answers. Copy

@@ -36,8 +36,13 @@ export interface PromptHost {
     awaitSessionReady(): Promise<void>;
 }
 
-/** How long a permission card waits for an answer before the request is cancelled. */
-const PERMISSION_TIMEOUT_MS = 120_000;
+/**
+ * How long a permission card waits for an answer before the request is cancelled: Node's
+ * `setTimeout` ceiling, 2^31-1 ms (~24.8 days) — any larger delay overflows and fires at once.
+ * Hermes' own `approvals.timeout` is clamped at 365 days, so the card is still always the side
+ * that gives up first, which is what keeps its expiry message honest.
+ */
+const PERMISSION_TIMEOUT_MS = 2_147_483_647;
 
 interface PendingPermission {
     resolve: (optionId: string | null) => void;

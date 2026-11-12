@@ -18,9 +18,12 @@ import type { TabLifecycle } from '../tabs/lifecycle';
  * What the connection needs from the provider. Module instances where the moved code calls an
  * owned module; closures for what stays behind (the pane, the log, the bound-session flag).
  */
+import type { Projects } from '../workspace/projectGrouped';
+
 export interface ConnectionHost {
     profiles: Profiles;
     session: Sessions;
+    projects: Projects;
     turn: PromptRunner;
     models: ModelState;
     detection: EnvironmentDetection;
@@ -121,6 +124,7 @@ export class Connection {
         const target = this._host.profiles.resolveTarget(selectionId);
         if (target.scopeKey !== this._host.session.scopeKey) {
             this._host.session.bindProfileScope(target.scopeKey);
+            this._host.projects.bindProfileScope(target.scopeKey);
         }
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
@@ -206,6 +210,11 @@ export class Connection {
                 }
                 if (role === 'user') {
                     this._host.session.saveMessage('user', text);
+                }
+                // The gate's note is part of the transcript: without this a reload loses the
+                // only trace of how that command got past the approval gate.
+                if (role === 'approval') {
+                    this._host.session.saveMessage('approval', text);
                 }
                 if (role === 'assistant') {
                     this._host.turn.recordAssistantText(text);
@@ -301,6 +310,7 @@ export class Connection {
                 this._host.lifecycle.handleHistoryReplay(sessionId, messages);
             }
         );
+        this.acp!.onPromptAccepted = () => this._host.session.settlePendingTurn();
         this.acp!.onLog = (line: string) => {
             const level = classifyLogLevel(line);
             if (level) {
@@ -412,6 +422,7 @@ export class Connection {
         this._host.turn.promptSessionId = undefined;
         this._host.setBoundSessionId('');
         this._host.session.bindProfileScope(target.scopeKey);
+        this._host.projects.bindProfileScope(target.scopeKey);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
         this._host.profiles.persistSelection(target.selectionId);

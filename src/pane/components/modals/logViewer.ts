@@ -25,7 +25,7 @@ export function maybeScrollLogToBottom(force?: boolean) {
     if (!logContent) {
         return;
     }
-    if (force || !state.logScrollPinnedByUser) {
+    if (force || !state.logScrollHeldByUser) {
         logContent.scrollTop = logContent.scrollHeight;
     }
 }
@@ -36,7 +36,7 @@ function scheduleLogScrollReenable() {
     }
     state.logScrollIdleTimer = setTimeout(function() {
         state.logScrollIdleTimer = null;
-        state.logScrollPinnedByUser = false;
+        state.logScrollHeldByUser = false;
         maybeScrollLogToBottom(true);
     }, LOG_SCROLL_IDLE_MS);
 }
@@ -46,19 +46,19 @@ function onLogContentScroll() {
         return;
     }
     if (isLogAtBottom()) {
-        state.logScrollPinnedByUser = false;
+        state.logScrollHeldByUser = false;
         if (state.logScrollIdleTimer) {
             clearTimeout(state.logScrollIdleTimer);
             state.logScrollIdleTimer = null;
         }
         return;
     }
-    state.logScrollPinnedByUser = true;
+    state.logScrollHeldByUser = true;
     scheduleLogScrollReenable();
 }
 
 export function resetLogAutoScrollFollow() {
-    state.logScrollPinnedByUser = false;
+    state.logScrollHeldByUser = false;
     if (state.logScrollIdleTimer) {
         clearTimeout(state.logScrollIdleTimer);
         state.logScrollIdleTimer = null;
