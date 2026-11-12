@@ -190,19 +190,14 @@ function renderReplyQuote() {
 export function offerUndeliveredMessage(text: string) {
     const value = (text || '').trim();
     if (!value || !undeliveredNotice) return;
+    // Offer, never fill: a composer holding text is indistinguishable from a draft, and this
+    // notice appears on a load rather than because the user was typing.
     state.undeliveredText = text;
-    state.undeliveredFilledComposer = inputEl.value.trim() === '';
-    if (state.undeliveredFilledComposer) {
-        inputEl.value = text;
-        syncInputHeightFromContent();
-        updateQuickActionBtns();
-    }
+    state.undeliveredFilledComposer = false;
     undeliveredNoticeText.textContent = locale.undeliveredNotice;
-    const canSendIt = state.undeliveredFilledComposer && state.canSend;
-    undeliveredPrimaryBtn.textContent = canSendIt ? locale.send : locale.undeliveredRestore;
+    undeliveredPrimaryBtn.textContent = locale.undeliveredRestore;
     undeliveredDiscardBtn.textContent = locale.undeliveredDiscard;
     undeliveredNotice.hidden = false;
-    undeliveredPrimaryBtn.focus();
 }
 
 function closeUndeliveredNotice(clearComposer: boolean) {
