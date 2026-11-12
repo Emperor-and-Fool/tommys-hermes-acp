@@ -310,6 +310,7 @@ export class Connection {
                 this._host.lifecycle.handleHistoryReplay(sessionId, messages);
             }
         );
+        this.acp!.onPromptAccepted = () => this._host.session.settlePendingTurn();
         this.acp!.onLog = (line: string) => {
             const level = classifyLogLevel(line);
             if (level) {

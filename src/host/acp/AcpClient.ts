@@ -305,6 +305,11 @@ export class AcpClient {
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
 
+    /** Fires once per prompt, the moment the agent shows it is working on that prompt. */
+    private _onPromptAccepted: () => void = () => {};
+    set onPromptAccepted(handler: () => void) { this._onPromptAccepted = handler; }
+    private _promptAccepted = true;
+
     /** Told about the chunk Hermes answers a steer with; it is not part of the reply. */
     set onSteerNotice(handler: SteerNoticeHandler) { this._onSteerNotice = handler; }
 
@@ -556,6 +561,7 @@ export class AcpClient {
         this._responseBuffer = '';
         this._thoughtBuffer = '';
         this._toolCallTracker.clear();
+        this._promptAccepted = false;
         this._transitionTo('prompting', 'Hermes is thinking...');
         this._acceptStreamOutput = true;
 
@@ -1124,6 +1130,13 @@ export class AcpClient {
         }
         const update = notification.update;
         const kind = update.sessionUpdate;
+
+        // An update that is not replay is the agent answering the prompt we sent: that is the
+        // receipt. One call per prompt, so the guard file for the turn can be released at once.
+        if (!this._replaySink && !this._promptAccepted) {
+            this._promptAccepted = true;
+            this._onPromptAccepted();
+        }
 
         // Replay updates are whole messages, so they bypass the prompt-only
         // `_acceptStreamOutput` gate and never touch the streaming buffers.

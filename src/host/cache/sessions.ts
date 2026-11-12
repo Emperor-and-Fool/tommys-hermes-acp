@@ -39,6 +39,10 @@ export class Sessions {
     activeId: string = '';
     /** The project of the tab that was in use: a new session is born in it. */
     private _projectInUse: string = '';
+    /** The pending-user entry of the turn that is in flight, settled when the agent takes it. */
+    private _pendingId: string = '';
+    /** Which tab wrote it: the active tab can change while a turn is in flight. */
+    private _pendingSessionId: string = '';
     messages: ChatMessage[] = [];
     tabs: SessionInfo[] = [];
     /**
@@ -439,7 +443,22 @@ export class Sessions {
      */
     saveOutgoingUser(text: string, imageRefs?: StoredImageRef[]): void {
         this.saveMessage('user', text, undefined, imageRefs);
-        this.pendingUsers.append(this.activeId, text);
+        this._pendingId = this.pendingUsers.append(this.activeId, text);
+        this._pendingSessionId = this.activeId;
+    }
+
+    /**
+     * The agent has the prompt: the record that guarded it is no longer needed.
+     *
+     * This is the receipt the sidecar was always waiting for. Clearing here means a pending file
+     * survives only when the message genuinely died between the pane and the agent.
+     */
+    settlePendingTurn(): void {
+        if (!this._pendingId) {
+            return;
+        }
+        this.pendingUsers.settle(this._pendingSessionId || this.activeId, this._pendingId);
+        this._pendingId = '';
     }
 
     private permissionBodyText(title?: string, detail?: string): string {

@@ -60,16 +60,24 @@ describe('pending user messages: the only local state', () => {
         assert.deepStrictEqual(store.read('tab-1'), []);
     });
 
-    it('retains only what a replay did not contain, and removes the file when nothing is left', () => {
-        store.append('tab-1', 'arrived', 1);
+    it('settles exactly the entry the agent took, and removes the file when nothing is left', () => {
+        const first = store.append('tab-1', 'arrived', 1);
         store.append('tab-1', 'lost', 2);
 
-        store.retain('tab-1', ['lost']);
+        store.settle('tab-1', first);
         assert.deepStrictEqual(store.read('tab-1').map(user => user.text), ['lost']);
 
-        store.retain('tab-1', []);
+        store.settle('tab-1', store.read('tab-1')[0].id);
         assert.deepStrictEqual(store.read('tab-1'), []);
         assert.ok(!fs.existsSync(store.pathFor('tab-1')));
+    });
+
+    it('drops what a newer replayed turn proves was already delivered, without reading its text', () => {
+        store.append('tab-1', 'older', 1);
+        store.append('tab-1', 'newest', 5);
+
+        store.dropBefore('tab-1', 3);
+        assert.deepStrictEqual(store.read('tab-1').map(user => user.text), ['newest']);
     });
 
     it('keeps sessions apart', () => {
