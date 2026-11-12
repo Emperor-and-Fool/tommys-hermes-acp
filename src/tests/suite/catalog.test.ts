@@ -163,9 +163,9 @@ describe('renameSession', () => {
     });
 });
 
-describe('applyCatalogRows: the workspace tag', () => {
-    it('carries through a merge the workspace the tab was opened in', () => {
-        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', workspace: '/proj/team.code-workspace' })];
+describe('applyCatalogRows: the workspace reference', () => {
+    it('carries through a merge the workspace id the tab was opened in', () => {
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', workspaceId: 'w-team' })];
         const result = applyCatalogRows({
             previous,
             rows: [row({ sessionId: 'h-1', title: 'agent name' })],
@@ -173,7 +173,7 @@ describe('applyCatalogRows: the workspace tag', () => {
             activeLinked: true,
             now: 1000,
         });
-        assert.strictEqual(result.sessions[0].workspace, '/proj/team.code-workspace');
+        assert.strictEqual(result.sessions[0].workspaceId, 'w-team');
     });
 
     it('adds no field to a tab that was opened with no workspace', () => {
@@ -189,9 +189,9 @@ describe('applyCatalogRows: the workspace tag', () => {
     });
 });
 
-describe('applyCatalogRows: the project folder', () => {
+describe('applyCatalogRows: the project', () => {
     it('survives a merge, so a filing is not undone by the next catalog read', () => {
-        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', folder: 'f1' })];
+        const previous = [local({ id: 'tab-a', hermesSessionId: 'h-1', project: 'f1' })];
         const result = applyCatalogRows({
             previous,
             rows: [row({ sessionId: 'h-1', title: 'agent name' })],
@@ -199,7 +199,7 @@ describe('applyCatalogRows: the project folder', () => {
             activeLinked: true,
             now: 1000,
         });
-        assert.strictEqual(result.sessions[0].folder, 'f1');
+        assert.strictEqual(result.sessions[0].project, 'f1');
     });
 
     it('adds no field for a tab that was never filed', () => {
@@ -211,6 +211,6 @@ describe('applyCatalogRows: the project folder', () => {
             activeLinked: true,
             now: 1000,
         });
-        assert.ok(!('folder' in result.sessions[0]));
+        assert.ok(!('project' in result.sessions[0]));
     });
 });

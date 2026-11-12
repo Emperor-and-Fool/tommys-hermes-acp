@@ -19,7 +19,8 @@ import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 import { findUndelivered, lastUserMessageText } from '../cache/undelivered';
 import { t } from '../i18n';
-import { hermesSessionIdFor } from './tabs';
+import { hermesSessionIdFor } from '../workspace/sessionTab';
+import { mintId } from '../workspace/workSpace';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
 
@@ -316,7 +317,7 @@ export class TabLifecycle {
     async createBlankTab(): Promise<void> {
         this._host.saveCurrent();
         this._host.session.messages = [];
-        this._host.session.activeId = Date.now().toString(36);
+        this._host.session.activeId = mintId();
         this._host.ensureRegistered();
         this._host.snapshotModelFromProfile();
         this._host.post({ type: 'newChat' });

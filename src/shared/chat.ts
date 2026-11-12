@@ -142,18 +142,31 @@ export interface SessionInfo {
     hermesSessionId?: string;
     /** Working directory the Hermes session was created in (used when resuming). */
     cwd?: string;
-    /**
-     * The workspace this tab was opened in: its `.code-workspace` file, else the window's root
-     * folder. Where `cwd` is what the agent runs in and Hermes hands back on every read, this is
-     * ours: a copy taken at open time, so a session can be moved between workspaces later.
-     */
-    workspace?: string;
-    /** The project folder this tab was moved into. Absent means the plane below the folders. */
-    folder?: string;
+    /** The workspace this tab was opened in, by id: the tab's reference into the workspace list. */
+    workspaceId?: string;
+    /** The project this tab was moved into. Absent means the plane below the projects. */
+    project?: string;
 }
 
-/** One workspace this editor has opened: where it is, and when it last was. */
-export interface WorkspaceEntry {
+/**
+ * THE THREE RECORDS BELOW ARE ROWS OF THREE TABLES.
+ *
+ * `Workspace` is global; `Project` and `SessionInfo` are partitioned by the profile (the scope
+ * key). `Project.workspaceId` and `SessionInfo.workspaceId` / `.project` are foreign keys into
+ * `Workspace.id` and `Project.id` — never paths, never names. The schema they are written for is
+ * spelled out in `host/workspace/workSpace.ts`; keep additions to these types a column of one of
+ * those tables, and nothing here has to change when the storage becomes SQLite.
+ */
+
+/**
+ * One workspace this editor has opened.
+ *
+ * It carries an id and not only a path, because two things point at a workspace — a project and a
+ * tab — and they must point at it the way a foreign key does. The path is the identity VS Code
+ * gives us; the id is the one everything else refers to.
+ */
+export interface Workspace {
+    id: string;
     path: string;
     lastSeen: number;
 }
@@ -164,11 +177,11 @@ export interface WorkspaceEntry {
  * The connection is what makes the folder a parent: its tabs are the ones opened in that
  * workspace, unless a tab was moved into it by hand.
  */
-export interface ProjectFolder {
+export interface Project {
     id: string;
     name: string;
-    /** The registry path of the workspace this folder belongs to. */
-    workspace: string;
+    /** The id of the workspace this project belongs to. */
+    workspaceId: string;
 }
 
 /** What Hermes reports for one session. Only the fields the index actually reads. */

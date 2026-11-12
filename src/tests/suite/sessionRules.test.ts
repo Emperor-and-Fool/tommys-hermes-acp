@@ -1,13 +1,12 @@
 import * as assert from 'assert';
 import {
     hermesSessionIdFor,
-    moveSessionToFolder,
-    moveSessionToWorkspace,
     normalizeStickyOrder,
     stickSession,
     registerSession,
     reorderSessions,
-} from '../../host/tabs/tabs';
+} from '../../host/workspace/sessionTab';
+import { moveTabIntoProject, moveTabToProject, moveTabToWorkspace, projectsInWorkspace, tabsInWorkspace, workspaceOwnsCwd } from '../../host/workspace/projectRules';
 import type { SessionInfo } from '../../shared/chat';
 
 const session = (id: string, over: Partial<SessionInfo> = {}): SessionInfo => ({
@@ -73,52 +72,114 @@ describe('hermesSessionIdFor', () => {
 
 describe('registerSession: the workspace tag', () => {
     it('records the workspace the tab was opened in', () => {
-        const added = registerSession([], { id: 'b', title: 'New chat', now: 50, workspace: '/proj/x' });
-        assert.strictEqual(added[0].workspace, '/proj/x');
+        const added = registerSession([], { id: 'b', title: 'New chat', now: 50, workspaceId: '/proj/x' });
+        assert.strictEqual(added[0].workspaceId, '/proj/x');
     });
 
     it('records nothing when the window has no workspace', () => {
-        const added = registerSession([], { id: 'b', title: 'New chat', now: 50, workspace: '' });
+        const added = registerSession([], { id: 'b', title: 'New chat', now: 50, workspaceId: '' });
         assert.deepStrictEqual(Object.keys(added[0]).sort(), ['createdAt', 'id', 'title', 'updatedAt']);
     });
 });
 
-describe('moveSessionToWorkspace', () => {
+describe('moveTabToWorkspace', () => {
     it('writes the tag and leaves the other records alone', () => {
-        const sessions = [session('a'), session('b', { workspace: '/old' })];
-        const moved = moveSessionToWorkspace(sessions, 'b', '/new');
-        assert.strictEqual(moved[1].workspace, '/new');
-        assert.strictEqual(sessions[1].workspace, '/old', 'the input is not mutated');
+        const sessions = [session('a'), session('b', { workspaceId: '/old' })];
+        const moved = moveTabToWorkspace(sessions, 'b', '/new');
+        assert.strictEqual(moved[1].workspaceId, '/new');
+        assert.strictEqual(sessions[1].workspaceId, '/old', 'the input is not mutated');
         assert.strictEqual(moved[0], sessions[0], 'an untouched record is the same object');
     });
 
     it('is a no-op for an unknown tab, an empty workspace, or the one it already has', () => {
-        const sessions = [session('a', { workspace: '/w' })];
-        assert.strictEqual(moveSessionToWorkspace(sessions, 'nope', '/w'), sessions);
-        assert.strictEqual(moveSessionToWorkspace(sessions, 'a', ''), sessions);
-        assert.strictEqual(moveSessionToWorkspace(sessions, 'a', '/w'), sessions);
+        const sessions = [session('a', { workspaceId: '/w' })];
+        assert.strictEqual(moveTabToWorkspace(sessions, 'nope', '/w'), sessions);
+        assert.strictEqual(moveTabToWorkspace(sessions, 'a', ''), sessions);
+        assert.strictEqual(moveTabToWorkspace(sessions, 'a', '/w'), sessions);
     });
 });
 
-describe('moveSessionToFolder', () => {
-    it('files a tab under a folder id and leaves the rest alone', () => {
+describe('moveTabToProject', () => {
+    it('files a tab under a project id and leaves the rest alone', () => {
         const sessions = [session('a'), session('b')];
-        const filed = moveSessionToFolder(sessions, 'b', 'f1');
-        assert.strictEqual(filed[1].folder, 'f1');
-        assert.strictEqual(sessions[1].folder, undefined, 'the input is not mutated');
+        const filed = moveTabToProject(sessions, 'b', 'f1');
+        assert.strictEqual(filed[1].project, 'f1');
+        assert.strictEqual(sessions[1].project, undefined, 'the input is not mutated');
         assert.strictEqual(filed[0], sessions[0]);
     });
 
     it('puts a tab back on the plane with an empty id, dropping the field', () => {
-        const sessions = [session('a', { folder: 'f1' })];
-        const cleared = moveSessionToFolder(sessions, 'a', '');
-        assert.ok(!('folder' in cleared[0]), 'absent stays absent, so the file stays small');
+        const sessions = [session('a', { project: 'f1' })];
+        const cleared = moveTabToProject(sessions, 'a', '');
+        assert.ok(!('project' in cleared[0]), 'absent stays absent, so the file stays small');
     });
 
     it('is a no-op for an unknown tab, or one already where it was asked to go', () => {
-        const sessions = [session('a', { folder: 'f1' }), session('b')];
-        assert.strictEqual(moveSessionToFolder(sessions, 'nope', 'f1'), sessions);
-        assert.strictEqual(moveSessionToFolder(sessions, 'a', 'f1'), sessions);
-        assert.strictEqual(moveSessionToFolder(sessions, 'b', ''), sessions);
+        const sessions = [session('a', { project: 'f1' }), session('b')];
+        assert.strictEqual(moveTabToProject(sessions, 'nope', 'f1'), sessions);
+        assert.strictEqual(moveTabToProject(sessions, 'a', 'f1'), sessions);
+        assert.strictEqual(moveTabToProject(sessions, 'b', ''), sessions);
+    });
+});
+
+describe('tabsInWorkspace', () => {
+    it("keeps only the tabs this window owns", () => {
+        const tabs = [session('a', { workspaceId: '/w1' }), session('b', { workspaceId: '/w2' }), session('c', { workspaceId: '/w1' })];
+        assert.deepStrictEqual(tabsInWorkspace(tabs, '/w1').map(t => t.id), ['a', 'c']);
+    });
+
+    it('treats an untagged tab and a window with no workspace as the same place', () => {
+        const tabs = [session('a', { workspaceId: '/w1' }), session('c')];
+        assert.deepStrictEqual(tabsInWorkspace(tabs, '').map(t => t.id), ['c'], 'the window with no folder owns the untagged tab');
+        assert.deepStrictEqual(tabsInWorkspace(tabs, '/w1').map(t => t.id), ['a']);
+    });
+});
+
+describe('moveTabIntoProject', () => {
+    it("moves the tab into the project's workspace as well, and does not touch the input", () => {
+        const tabs = [session('a', { workspaceId: '/w1' })];
+        const moved = moveTabIntoProject(tabs, 'a', { id: 'p1', name: 'One', workspaceId: '/w2' });
+        assert.strictEqual(moved[0].project, 'p1');
+        assert.strictEqual(moved[0].workspaceId, '/w2');
+        assert.strictEqual(tabs[0].workspaceId, '/w1', 'the input array is untouched');
+        assert.strictEqual(tabs[0].project, undefined);
+    });
+});
+
+describe('workspaceOwnsCwd', () => {
+    it('claims a cwd inside a workspace root', () => {
+        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/a'), true);
+        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/a/sub/'), true);
+    });
+
+    it('does not claim a sibling or a parent', () => {
+        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/ab'), false);
+        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos'), false);
+        assert.strictEqual(workspaceOwnsCwd('/repos/a', undefined), false);
+    });
+
+    it('reads a .code-workspace file as the folder that holds it', () => {
+        assert.strictEqual(workspaceOwnsCwd('/repos/a/a.code-workspace', '/repos/a'), true);
+        assert.strictEqual(workspaceOwnsCwd('/repos/a/a.code-workspace', '/repos/b'), false);
+    });
+});
+
+describe('projectsInWorkspace', () => {
+    it('hands a window only the projects named against its workspace', () => {
+        const projects = [
+            { id: 'p1', name: 'Here', workspaceId: '/w1' },
+            { id: 'p2', name: 'Elsewhere', workspaceId: '/w2' },
+            { id: 'p3', name: 'Nowhere', workspaceId: '' },
+        ];
+        assert.deepStrictEqual(projectsInWorkspace(projects, '/w1').map(p => p.id), ['p1']);
+        assert.deepStrictEqual(projectsInWorkspace(projects, '/w2').map(p => p.id), ['p2']);
+    });
+
+    it('gives the projects with no workspace to the window that has none', () => {
+        const projects = [
+            { id: 'p1', name: 'Here', workspaceId: '/w1' },
+            { id: 'p3', name: 'Nowhere', workspaceId: '' },
+        ];
+        assert.deepStrictEqual(projectsInWorkspace(projects, '').map(p => p.id), ['p3']);
     });
 });

@@ -18,7 +18,7 @@ import * as closedSessions from './components/pickers/closedSessions';
 import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
-import * as tabStrip from './components/tabs/tabStrip';
+import * as projectGrouped from './components/workspace/projectGrouped';
 import * as statusBar from './components/status/statusBar';
 import * as viewer from './components/viewer/historyViewer';
 import * as i18n from './i18n';
@@ -36,7 +36,7 @@ export function boot(): void {
     messageList.initMessagesElScroll();
     messageList.initJumpControl();
     search.initChatSearchFab();
-    tabStrip.initCreateFolderButton();
+    projectGrouped.initCreateProjectButton();
     // The selection toolbar carries the same search, as a second bar over one query.
     const msInput = byId<HTMLInputElement>('msSearchInput');
     if (msInput) {

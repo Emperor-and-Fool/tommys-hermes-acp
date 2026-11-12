@@ -41,7 +41,7 @@ export function applyLocale() {
     const openTabLabelFull = required('openTabLabelFull');
     if (openTabLabelFull) openTabLabelFull.textContent = locale.openTab;
     const createFolderBtn = required('createFolderBtn');
-    if (createFolderBtn) createFolderBtn.textContent = locale.createProjectFolder;
+    if (createFolderBtn) createFolderBtn.textContent = locale.createProject;
     if (openTabBtn) openTabBtn.title = locale.openTab;
     if (closedPickerBtn) closedPickerBtn.title = locale.chooseChat;
     const closedPickerLabelEl = required('closedPickerLabel');

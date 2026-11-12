@@ -1,17 +1,17 @@
-import type { ChatMessage, HistoryRef, PeerState, ProjectFolder, SessionInfo, StoredImageRef, WorkspaceEntry } from '../../shared/chat';
+import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
 import { SessionStore } from './sessionStore';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
 import {
-    moveSessionToFolder,
-    moveSessionToWorkspace,
     normalizeStickyOrder,
     stickSession,
     registerSession,
     reorderSessions,
-} from '../tabs/tabs';
+} from '../workspace/sessionTab';
+import { tabsInWorkspace } from '../workspace/projectRules';
+import { mintId } from '../workspace/workSpace';
 import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';
 import { t } from '../i18n';
@@ -22,12 +22,12 @@ export interface SessionsHost {
     log(line: string): void;
     updatePanelTitle(): void;
     modelLabel(): string | undefined;
-    /** The workspace this window is, read when a tab record is created. */
-    currentWorkspace(): string;
-    /** Every workspace this editor has opened: what a "move to" menu offers. */
-    workspaces(): WorkspaceEntry[];
-    /** The project folders he named, in the order the strip draws them. */
-    folders(): ProjectFolder[];
+    /** The id of the workspace this window is, written onto a tab when its record is created. */
+    currentWorkspaceId(): string;
+    /** The id of the registered workspace whose folder holds this cwd, if one does. */
+    workspaceIdForCwd(cwd: string | undefined): string;
+    /** Every workspace id the registry holds. */
+    knownWorkspaceIds(): string[];
 }
 
 /**
@@ -63,16 +63,62 @@ export class Sessions {
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
+        this.adoptWorkspace();
         this.activeId = this.restoreActive();
         this.ensureRegistered();
     }
 
+    /** This window's slice of the index. Ownership is a filter, not a second store. */
+    /** The tabs this window shows: the slice the pane gets, and the one a reader is given. */
+    tabsInWindow(): SessionInfo[] {
+        return tabsInWorkspace(this.tabs, this.host.currentWorkspaceId());
+    }
+
+    /**
+     * Records written before the tag existed take this window's workspace, when their `cwd` proves
+     * they ran here.
+     *
+     * Without it they belong to no window and would never be drawn again. A window with no folder
+     * and no workspace file adopts nothing: it has no identity to give.
+     */
+    private adoptWorkspace(): void {
+        const workspaceId = this.host.currentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+        const known = new Set(this.host.knownWorkspaceIds());
+        let changed = false;
+        for (const tab of this.tabs) {
+            // A tag the registry does not hold is a reference to nothing — the id it named was
+            // replaced. Re-resolve it from the tab's own cwd instead of hiding the tab forever.
+            if (tab.workspaceId !== undefined && known.has(tab.workspaceId)) {
+                continue;
+            }
+            const resolved = this.host.workspaceIdForCwd(tab.cwd);
+            if (resolved) {
+                if (tab.workspaceId !== resolved) {
+                    tab.workspaceId = resolved;
+                    changed = true;
+                }
+                continue;
+            }
+            if (tab.workspaceId !== undefined) {
+                delete tab.workspaceId;
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.saveCatalog();
+        }
+    }
+
     private restoreActive(): string {
+        const visible = this.tabsInWindow();
         const id = this.store.readActiveId();
-        if (id && this.tabs.some(s => s.id === id)) {
+        if (id && visible.some(s => s.id === id)) {
             return id;
         }
-        return Date.now().toString(36);
+        return visible.length ? visible[0].id : mintId();
     }
 
     private saveActive(): void {
@@ -97,13 +143,13 @@ export class Sessions {
                 existing.title = firstUser;
             }
         } else {
-            const workspace = this.host.currentWorkspace();
+            const workspaceId = this.host.currentWorkspaceId();
             this.tabs.unshift({
                 id: this.activeId,
                 title: firstUser || t('newChat'),
                 createdAt: parseInt(this.activeId, 36) || Date.now(),
                 updatedAt: Date.now(),
-                ...(workspace ? { workspace } : {}),
+                ...(workspaceId ? { workspaceId } : {}),
             });
         }
         if (this.saveCatalog()) {
@@ -116,7 +162,7 @@ export class Sessions {
         const next = registerSession(this.tabs, {
             id: this.activeId,
             title: this._tabTitle() || t('newChat'),
-            workspace: this.host.currentWorkspace(),
+            workspaceId: this.host.currentWorkspaceId(),
         });
         if (next === this.tabs) {
             return;
@@ -129,10 +175,8 @@ export class Sessions {
         this.host.updatePanelTitle();
         this.host.post({
             type: 'sessionList',
-            sessions: this.tabs,
+            sessions: this.tabsInWindow(),
             activeSessionId: this.activeId,
-            workspaces: this.host.workspaces(),
-            folders: this.host.folders(),
         });
     }
 
@@ -483,49 +527,31 @@ export class Sessions {
         this.postList();
     }
 
-    /** Move one tab to another workspace: our tag, so no catalog read can put it back. */
-    setWorkspace(sessionId: string, workspace: string): void {
-        const next = moveSessionToWorkspace(this.tabs, sessionId, workspace);
-        if (next === this.tabs) {
-            return;
-        }
+    /**
+     * Replace the tab index: the one write another part of the extension may ask for.
+     *
+     * The project group edits membership and hands the result back here, so the index keeps a
+     * single writer and the catalog is saved the moment it changes.
+     */
+    setTabs(next: SessionInfo[], options?: { keepActive?: boolean }): void {
         this.tabs = next;
-        this.host.log(`Session ${sessionId} moved to workspace ${workspace}`);
+        // A move the window is about to follow leaves the active id alone: the reload is what
+        // decides what this window shows next.
+        if (!(options && options.keepActive)) {
+            this.keepActiveVisible();
+        }
         this.saveCatalog();
         this.postList();
     }
 
-    /** A folder is gone: every tab that was in it goes back to the plane. */
-    clearFolder(folderId: string): void {
-        if (!folderId) {
+    /** The pane can only be pointed at a tab this window owns; moving the active one away switches. */
+    private keepActiveVisible(): void {
+        const visible = this.tabsInWindow();
+        if (visible.some(tab => tab.id === this.activeId)) {
             return;
         }
-        let changed = false;
-        const next = this.tabs.map(session => {
-            if (session.folder !== folderId) {
-                return session;
-            }
-            changed = true;
-            return { ...session, folder: undefined };
-        });
-        if (!changed) {
-            return;
-        }
-        this.tabs = next;
-        this.host.log(`Folder ${folderId} removed: its tabs are back on the plane`);
-        this.saveCatalog();
-    }
-
-    /** Put one tab in a folder, or back on the plane. */
-    setFolder(sessionId: string, folderId: string): void {
-        const next = moveSessionToFolder(this.tabs, sessionId, folderId);
-        if (next === this.tabs) {
-            return;
-        }
-        this.tabs = next;
-        this.host.log(`Session ${sessionId} -> folder ${folderId || '(none)'}`);
-        this.saveCatalog();
-        this.postList();
+        this.activeId = visible.length ? visible[0].id : mintId();
+        this.saveActive();
     }
 
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void {

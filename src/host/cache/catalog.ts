@@ -44,8 +44,8 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
             hermesSessionId: row.sessionId,
             cwd: row.cwd ?? prior?.cwd,
             // No catalog row carries the workspace or the folder: ours ride forward, or not at all.
-            ...(prior?.workspace ? { workspace: prior.workspace } : {}),
-            ...(prior?.folder ? { folder: prior.folder } : {}),
+            ...(prior?.workspaceId ? { workspaceId: prior.workspaceId } : {}),
+            ...(prior?.project ? { project: prior.project } : {}),
         });
     }
 

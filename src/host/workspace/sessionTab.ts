@@ -1,16 +1,16 @@
 import type { SessionInfo } from '../../shared/chat';
 
 /**
- * The bookkeeping rules of the tab index: registering a tab, and the two order rules the strip
- * has — sticky first, and pins stay inside their own group.
+ * The tab, as a record with rules: registering one, the Hermes id behind it, the one order rule
+ * (sticky first, then most recent), and the reorder the strip reports.
  *
- * Pure array-in/array-out, so each rule can be read and tested on its own. The panel keeps
- * the writes and the posts.
+ * Pure array-in/array-out, so each rule can be read and tested on its own. The writes and the
+ * posts stay with whoever holds the index.
  */
 
 export function registerSession(
     sessions: SessionInfo[],
-    entry: { id: string; title: string; now?: number; workspace?: string }
+    entry: { id: string; title: string; now?: number; workspaceId?: string }
 ): SessionInfo[] {
     if (sessions.some(session => session.id === entry.id)) {
         return sessions;
@@ -23,8 +23,8 @@ export function registerSession(
         updatedAt: now,
     };
     // Absent stays absent: a tab opened with no workspace gains no empty field.
-    if (entry.workspace) {
-        record.workspace = entry.workspace;
+    if (entry.workspaceId) {
+        record.workspaceId = entry.workspaceId;
     }
     return [record, ...sessions];
 }
@@ -39,43 +39,6 @@ export function registerSession(
 export function hermesSessionIdFor(sessions: SessionInfo[], tabId: string): string {
     const record = sessions.find(session => session.id === tabId);
     return record?.hermesSessionId || tabId;
-}
-
-/**
- * Move a tab to another workspace.
- *
- * The only write path for the tag: `cwd` is Hermes' to report and gets overwritten on every
- * catalog read, where this field is ours and rides forward untouched.
- */
-export function moveSessionToWorkspace(sessions: SessionInfo[], sessionId: string, workspace: string): SessionInfo[] {
-    const index = sessions.findIndex(session => session.id === sessionId);
-    if (index < 0 || !workspace || sessions[index].workspace === workspace) {
-        return sessions;
-    }
-    const next = sessions.slice();
-    next[index] = { ...sessions[index], workspace };
-    return next;
-}
-
-/**
- * Put a tab in a project folder, or back on the plane when `folderId` is empty.
- *
- * `folder` is a folder id, not a name: a rename must not move the tabs that belong to it.
- */
-export function moveSessionToFolder(sessions: SessionInfo[], sessionId: string, folderId: string): SessionInfo[] {
-    const index = sessions.findIndex(session => session.id === sessionId);
-    if (index < 0 || (sessions[index].folder || '') === folderId) {
-        return sessions;
-    }
-    const next = sessions.slice();
-    const record: SessionInfo = { ...sessions[index] };
-    if (folderId) {
-        record.folder = folderId;
-    } else {
-        delete record.folder;
-    }
-    next[index] = record;
-    return next;
 }
 
 /** Sticky first, then the most recently updated. The one order rule the strip has. */

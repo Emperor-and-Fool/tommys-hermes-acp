@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
-import { WorkspaceStore } from './cache/workspaceStore';
-import { WorkspaceIdentity } from './workspace/identity';
+import { Projects } from './workspace/projectGrouped';
+import { TreeCache } from './workspace/treeCache';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
@@ -100,10 +100,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Bytes Hermes never stores: content-addressed images and the index that finds them. */
     private _attachments: AttachmentStore;
-    /** Where every workspace this editor has opened is recorded, above the profiles. */
-    private _workspaces: WorkspaceStore;
-    /** The window's workspace, and the one subscription that follows it. */
-    private _identity: WorkspaceIdentity;
+    /** The project group: workspaces, the projects named against them, and tab membership. */
+    private _projects: Projects;
+    private _trees?: TreeCache;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -272,23 +271,38 @@ export class App implements vscode.WebviewViewProvider {
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
         this._attachments = new AttachmentStore(this._historyDir);
-        this._workspaces = new WorkspaceStore(this._historyDir);
-        this._identity = new WorkspaceIdentity({
-            log: (line) => this._log(line),
-            onWorkspace: (value) => { this._workspaces.register(value); },
-        });
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
         const initialTarget = this._profiles.seed();
+        this._projects = new Projects(this._historyDir, initialTarget.scopeKey, {
+            post: (msg) => this._postMessage(msg),
+            log: (line) => this._log(line),
+            tabs: () => this._session.tabs,
+            saveTabs: (next, options) => this._session.setTabs(next, options),
+            activeTabId: () => this._session.activeId,
+            openWorkspace: (path) => {
+                void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
+            },
+        });
         this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
             modelLabel: () => this._models.currentLabel,
-            currentWorkspace: () => this._identity.current(),
-            workspaces: () => this._workspaces.read(),
-            folders: () => this._workspaces.folders(),
+            currentWorkspaceId: () => this._projects.currentId(),
+            workspaceIdForCwd: (cwd) => this._projects.workspaceIdForCwd(cwd),
+            knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
         });
+        // The tree cache reads all three owners through one closure, so the hook that refreshes it
+        // stays a call and the mapping lives with the files it writes.
+        this._trees = new TreeCache(this._historyDir, line => this._log(line), () => ({
+            profile: this._projects.scopeKey,
+            workspacePath: this._projects.current(),
+            workspaceId: this._projects.currentId(),
+            activeSessionId: this._session.activeId,
+            projects: this._projects.projectsInWindow(),
+            tabs: this._session.tabsInWindow(),
+        }));
         this._session.init();
         this._startPaneMail();
         this._lifecycle = new TabLifecycle({
@@ -319,6 +333,7 @@ export class App implements vscode.WebviewViewProvider {
         this._connection = new Connection({
             profiles: this._profiles,
             session: this._session,
+            projects: this._projects,
             turn: this._turn,
             models: this._models,
             detection: this._detection,
@@ -340,7 +355,7 @@ export class App implements vscode.WebviewViewProvider {
         });
 
         context.subscriptions.push(
-            this._identity.start(),
+            this._projects.start(),
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
@@ -508,13 +523,21 @@ export class App implements vscode.WebviewViewProvider {
             return;
         }
         const historyBlock = staged ? this._historyStages.block(tabId) : '';
-        if (imageCount > 0 || historyBlock) {
+        // First turn in this session and workspace: say where the tree file is. Sent as its own
+        // block, so the transcript still shows only what was typed.
+        const treeBlock = this._trees
+            ? this._trees.noticeBlock(this._projects.scopeKey, this._projects.currentId(), tabId)
+            : '';
+        if (imageCount > 0 || historyBlock || treeBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,
             // then one image block per staged image. Hermes' ACP adapter advertises
             // promptCapabilities.image=true and decodes these directly.
             const blocks: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string }> = [];
             if (historyBlock) {
                 blocks.push({ type: 'text', text: historyBlock });
+            }
+            if (treeBlock) {
+                blocks.push({ type: 'text', text: treeBlock });
             }
             if (text.length > 0) {
                 blocks.push({ type: 'text', text });
@@ -822,6 +845,9 @@ export class App implements vscode.WebviewViewProvider {
         this._syncWebviewLocale();
         this._postPluginInfo();
         this._session.postList();
+        // The tree is its own message and nothing else re-sends it: a fresh pane that never
+        // hears it draws every tab on the plane.
+        this._projects.postList();
         this._profiles.postList();
         this._session.postHidden();
         this._postConfig();
@@ -884,31 +910,7 @@ export class App implements vscode.WebviewViewProvider {
             handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
             handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
             handleToggleStickySession: (sessionId) => this._session.handleToggleStickySession(sessionId),
-            handleMoveToWorkspace: (sessionId, workspace) => this._session.setWorkspace(sessionId, workspace),
-            handleCreateProjectFolder: (name) => {
-                const folder = this._workspaces.createFolder(name, this._identity.current());
-                this._log(folder
-                    ? `Project folder "${folder.name}" connected to ${folder.workspace}`
-                    : 'Project folder: a blank name creates nothing');
-                this._session.postList();
-            },
-            handleRenameProjectFolder: (folderId, name) => {
-                const folder = this._workspaces.renameFolder(folderId, name);
-                this._log(folder
-                    ? `Project folder ${folder.id} is now "${folder.name}"`
-                    : 'Project folder rename: blank name or no change');
-                this._session.postList();
-            },
-            handleDeleteProjectFolder: (folderId) => {
-                const removed = this._workspaces.deleteFolder(folderId);
-                this._log(removed
-                    ? `Project folder ${folderId} removed; its tabs are back on the plane`
-                    : `Project folder ${folderId}: nothing to delete`);
-                // The folder goes, its tabs stay: a group is a view, not an owner.
-                this._session.clearFolder(folderId);
-                this._session.postList();
-            },
-            handleSetSessionFolder: (sessionId, folderId) => this._session.setFolder(sessionId, folderId),
+            projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
                 this._approvalModes.clear();
@@ -957,6 +959,10 @@ export class App implements vscode.WebviewViewProvider {
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
+        // The tree file is this same state in one object: refresh it where the state is announced.
+        if (msg.type === 'sessionList' || msg.type === 'projectList') {
+            this._trees?.refresh();
+        }
         // The viewer is a webview too, and it draws a forward button whose tooltip names the
         // sibling pane: presence has to reach it or the button lies about what it can do.
         if (msg.type === 'setOtherPaneLive') {
@@ -1168,7 +1174,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /**
      * A peer card is a question with two answers, and an unanswered one used to keep its buttons
-     * forever. Like a permission card it now expires: after this long the buttons go and the card
+     * forever. It expires like a permission card once did: after this long the buttons go and the card
      * reads as expired. The state lives in this tab's memory — a reload rebuilds the transcript
      * from Hermes, where a local peer card does not exist, so there is nothing to persist.
      */

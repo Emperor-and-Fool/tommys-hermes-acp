@@ -13,6 +13,8 @@ import type { PaneToHost, ApprovalMode } from '../../shared/webview';
 import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
+import type { ProjectCommands } from '../workspace/projectGrouped';
+
 export interface RouterHost {
     log(line: string): void;
     openExternal(url: string): void;
@@ -35,11 +37,8 @@ export interface RouterHost {
     handleCloseSessions(sessionId: string, mode: unknown): Promise<void>;
     handleRenameSession(sessionId: unknown, title: unknown): Promise<void>;
     handleToggleStickySession(sessionId: string): void;
-    handleMoveToWorkspace(sessionId: string, workspace: string): void;
-    handleCreateProjectFolder(name: string): void;
-    handleRenameProjectFolder(folderId: string, name: string): void;
-    handleDeleteProjectFolder(folderId: string): void;
-    handleSetSessionFolder(sessionId: string, folderId: string): void;
+    /** The project group's commands: one member, not one per message. */
+    projects: ProjectCommands;
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void;
     handleSwitchAgent(name: string): void;
     handleSwitchSession(sessionId: string, interrupt: boolean): void;
@@ -115,19 +114,19 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.handleToggleStickySession(message.sessionId);
             break;
         case 'moveToWorkspace':
-            host.handleMoveToWorkspace(message.sessionId, message.workspace);
+            host.projects.moveTabToWorkspace(message.sessionId, message.workspace);
             break;
-        case 'createProjectFolder':
-            host.handleCreateProjectFolder(message.name);
+        case 'createProject':
+            host.projects.createProject(message.name);
             break;
-        case 'renameProjectFolder':
-            host.handleRenameProjectFolder(message.folderId, message.name);
+        case 'renameProject':
+            host.projects.renameProject(message.projectId, message.name);
             break;
-        case 'deleteProjectFolder':
-            host.handleDeleteProjectFolder(message.folderId);
+        case 'deleteProject':
+            host.projects.deleteProject(message.projectId);
             break;
-        case 'setSessionFolder':
-            host.handleSetSessionFolder(message.sessionId, message.folderId);
+        case 'setTabProject':
+            host.projects.moveTabToProject(message.sessionId, message.projectId);
             break;
         case 'sessionExport':
             host.handleSessionExport(message.sessionId, message.action, message.indices);

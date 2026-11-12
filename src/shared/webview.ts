@@ -9,7 +9,7 @@
  * `PaneToHost` is what the pane sends; `HostToPane` is what the extension posts back. Both live
  * here on purpose: read together, they are the API this pane and this host share.
  */
-import type { ChatMessage, HistoryRef, PeerRef, PeerState, ProjectFolder, SessionInfo, WorkspaceEntry } from './chat';
+import type { ChatMessage, HistoryRef, PeerRef, PeerState, Project, SessionInfo, Workspace } from './chat';
 import type { CatalogSession, PermissionOption } from './acp';
 import type { ModelListItem, ModelProviderGroup } from './models';
 import type { LocaleStrings } from './i18n';
@@ -38,6 +38,8 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /** The create path's answer: why nothing was made, or an empty message to clear it. */
+    | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
     /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
     | { type: 'loadProgress'; received: number; sessionId?: string }
     | { type: 'newChat' }
@@ -50,7 +52,9 @@ export type HostToPane =
     | { type: 'tokenUsage'; used: number; size: number }
 
     // Tabs and models.
-    | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string; workspaces: WorkspaceEntry[]; folders: ProjectFolder[] }
+    | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string }
+    /** The project tree: the workspaces this editor opened, and the projects named against them. */
+    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[] }
     | { type: 'hiddenSessions'; sessions: CatalogSession[] }
     | { type: 'sessionExport'; action: SessionExportAction; sessionId: string; title: string; markdown: string; filename: string }
     | { type: 'modelList'; configId: string; currentValueId: string; currentLabel: string; models: ModelListItem[]; groups?: ModelProviderGroup[]; fromAgent: boolean }
@@ -132,11 +136,11 @@ export type PaneToHost =
     /** Move this tab to another workspace: our tag, nothing Hermes reports can undo it. */
     | { type: 'moveToWorkspace'; sessionId: string; workspace: string }
     /** Name a project folder and connect it to this window's workspace. */
-    | { type: 'createProjectFolder'; name: string }
-    | { type: 'renameProjectFolder'; folderId: string; name: string }
-    | { type: 'deleteProjectFolder'; folderId: string }
+    | { type: 'createProject'; name: string }
+    | { type: 'renameProject'; projectId: string; name: string }
+    | { type: 'deleteProject'; projectId: string }
     /** Put a tab in a folder; an empty id puts it back on the plane below them. */
-    | { type: 'setSessionFolder'; sessionId: string; folderId: string }
+    | { type: 'setTabProject'; sessionId: string; projectId: string }
     | { type: 'sessionExport'; sessionId: string; action: SessionExportAction; indices?: number[] }
     /** `interrupt` is set when the user confirms switching away from a running turn. */
     | { type: 'switchSession'; sessionId: string; interrupt?: boolean }
