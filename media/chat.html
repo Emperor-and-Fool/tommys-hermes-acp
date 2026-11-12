@@ -48,6 +48,10 @@
         </div>
     </div>
     <div class="toolbar-actions">
+        <!-- Rail only: the closed-session picker is replaced by the permission-mode control. -->
+        <button class="picker-btn menu__trigger" id="permissionModeBtn" aria-expanded="false">
+            <span id="permissionModeBtnLabel"></span>
+        </button>
         <div class="picker is-empty menu" id="closedPicker" data-open="false">
             <button class="picker-btn menu__trigger" id="closedPickerBtn" aria-haspopup="true">
                 <span class="picker-label" id="closedPickerLabel"></span><span class="picker-caret" aria-hidden="true">▾</span>
@@ -58,6 +62,12 @@
             </div>
         </div>
         <button class="button button--primary" id="openTabBtn"><span class="new-label-full" id="openTabLabelFull"></span><span class="new-label-short">+</span></button>
+    </div>
+</div>
+<div id="permissionModeBar" class="permission-mode-bar" hidden>
+    <div class="permission-mode-inner">
+        <div class="permission-mode-options" id="permissionModeOptions"></div>
+        <button type="button" class="permission-mode-close" id="permissionModeClose" aria-label="✕">✕</button>
     </div>
 </div>
     <!-- Second agent marker: no text, no handler. Shown by CSS when body was told

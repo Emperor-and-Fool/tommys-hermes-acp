@@ -374,21 +374,31 @@ body.vscode-high-contrast-light {
     margin-top: 4px;
 }
 /* Permission card: approval mode. A setting, not an answer: it sits above the buttons. */
-.message.permission .permission-approval-block {
+.permission-approval-block {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
     align-self: flex-start;
     margin: 2px 0 8px;
 }
-.message.permission .permission-approval {
+
+/* The switch's own line keeps its width; the red button is a sibling, not a fourth segment. */
+.permission-approval-block > .permission-approval {
+    flex: 0 0 auto;
+}
+
+.permission-approval-block > .permission-approval-error {
+    flex: 1 0 100%;
+}
+.permission-approval {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
 }
-.message.permission .permission-approval-btn {
+.permission-approval-btn {
     background: var(--input-bg);
     border: 0;
     border-right: 1px solid var(--border);
@@ -398,30 +408,37 @@ body.vscode-high-contrast-light {
     line-height: 1.3;
     padding: 3px 10px;
 }
-.message.permission .permission-approval-btn:last-of-type {
+.permission-approval-btn:last-of-type {
     border-right: 0;
 }
-.message.permission .permission-approval-btn:hover:not(:disabled) {
+.permission-approval-btn:hover:not(:disabled) {
     background: var(--text-block);
 }
-.message.permission .permission-approval-btn:disabled {
+.permission-approval-btn:disabled {
     opacity: 0.5;
     cursor: default;
 }
-.message.permission .permission-approval-btn[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--primary) 20%, var(--input-bg));
-    color: var(--primary);
+.permission-approval-btn[aria-pressed="true"] {
     font-weight: 700;
 }
-.message.permission .permission-approval[data-mode="off"] .permission-approval-btn[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--error) 18%, var(--input-bg));
-    color: var(--error);
+/* One accent per mode, shared by the switch and the rail button. */
+.permission-approval-btn[data-approval-mode="manual"][aria-pressed="true"] {
+    background: color-mix(in srgb, #1f6feb 18%, var(--input-bg));
+    color: #1f6feb;
 }
-.message.permission .permission-approval-error {
+.permission-approval-btn[data-approval-mode="smart"][aria-pressed="true"] {
+    background: color-mix(in srgb, #2ea043 18%, var(--input-bg));
+    color: #2ea043;
+}
+.permission-approval-btn[data-approval-mode="off"][aria-pressed="true"] {
+    background: color-mix(in srgb, #d97706 20%, var(--input-bg));
+    color: #d97706;
+}
+.permission-approval-error {
     font-size: 10px;
     color: var(--error);
 }
-.message.permission .permission-approval-error[hidden] {
+.permission-approval-error[hidden] {
     display: none;
 }
 .message.user .label {
@@ -3923,9 +3940,166 @@ body.is-viewer .multi-select-toolbar {
     background: inherit;
 }
 
-/* Read-only state line: the profile is off, and this row cannot switch it back. */
-.message.permission .permission-approval-off {
-    margin-top: 4px;
+
+/* Rail-only permission control. The markup is shared with the editor panel and `surface-rail`
+   on the body decides which surface shows the button, so nothing is forked per surface. */
+#permissionModeBtn {
+    display: none;
+    max-width: 190px;
+    font-size: 12px;
+    align-items: center;
+    gap: 4px;
+}
+
+.surface-rail #permissionModeBtn {
+    display: inline-flex;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* The rail already lists its chats, so its closed-session picker gives way to the button. */
+.surface-rail .toolbar-actions #closedPicker {
+    display: none;
+}
+
+/* The row the button opens: empty for now, under the toolbar, closed by the X on its right. */
+.permission-mode-bar {
+    flex: 0 0 auto;
+    padding: 2px 6px 0;
+}
+
+.permission-mode-bar[hidden] {
+    display: none !important;
+}
+
+.permission-mode-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+}
+
+.permission-mode-title {
+    color: var(--dim);
     font-size: 11.5px;
-    color: #b4541f;
+    white-space: nowrap;
+}
+
+.permission-mode-options {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    /* Left-aligned on purpose: the row is the switch, and the X owns the right edge. */
+    justify-content: flex-start;
+}
+
+.permission-mode-close {
+    margin-left: auto;
+    background: transparent;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+}
+
+.permission-mode-close:hover {
+    color: var(--fg);
+}
+
+
+/* The red action, beside the switch: approvals off and approvals.deny cleared. Round, and glowing
+   while that state is on, so the rail button above can carry the same signal. */
+.permission-open-btn {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0;
+    border: 1px solid #c9302c;
+    border-radius: 50%;
+    background: #c9302c;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.permission-open-btn.is-armed,
+.permission-open-btn.is-pending {
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+/* Engaged: the fill inverts, and the glow keeps radiating. */
+.permission-open-btn.is-on {
+    background: transparent;
+    color: #c9302c;
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+.permission-open-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+@keyframes permission-open-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(201, 48, 44, 0.25);
+    }
+    50% {
+        box-shadow: 0 0 0 5px rgba(201, 48, 44, 0.45);
+    }
+}
+
+/* The rail's Permission Mode button carries the same state: red and always glowing. */
+#permissionModeBtn.is-open {
+    color: #c9302c;
+    border-color: #c9302c;
+    animation: permission-open-glow 1.6s ease-in-out infinite;
+}
+
+/* The way back for a cleared deny list: quiet, text-only, and only there while it applies. */
+.permission-restore-btn {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font-size: 11.5px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.permission-restore-btn:hover:not(:disabled) {
+    color: var(--fg);
+}
+
+.permission-restore-btn[hidden] {
+    display: none;
+}
+
+/* The rail button shows the accent of the mode it is in, and ALL keeps the red glow. */
+#permissionModeBtn.accent-manual {
+    color: #1f6feb;
+    border-color: #1f6feb;
+}
+#permissionModeBtn.accent-smart {
+    color: #2ea043;
+    border-color: #2ea043;
+}
+#permissionModeBtn.accent-none {
+    color: #d97706;
+    border-color: #d97706;
+}
+#permissionModeBtn.accent-all {
+    color: #c9302c;
+    border-color: #c9302c;
 }
