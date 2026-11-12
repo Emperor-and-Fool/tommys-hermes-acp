@@ -1,6 +1,7 @@
 /* Pane state shared by more than one module. Reads and writes go through `state.x`. */
 import type { Project, SessionInfo, Workspace } from '../shared/chat';
 import type { CatalogSession } from '../shared/acp';
+import type { ApprovalMode } from '../shared/webview';
 import type { ModelListItem, ModelProviderGroup } from '../shared/models';
 
 /** A browser timer handle: number in the webview, opaque elsewhere. */
@@ -82,6 +83,19 @@ export interface PaneState {
     awaitingFirstChunk: boolean;
     canSend: boolean;
     closedSessions: CatalogSession[];
+    /** Hermes' approvals.mode as last reported by the host: one truth for card and rail row. */
+    approvalMode: ApprovalMode;
+    /** A mode write is in flight: the switch shows it is working instead of looking inert. */
+    approvalModePending: boolean;
+    approvalModeError: string;
+    /** Entries in the profile's `approvals.deny`; 0 means nothing of the user's own is blocking. */
+    approvalDenyCount: number;
+    /** The mode to resume when the red action is stopped; null when nothing is engaged. */
+    approvalModeBeforeOpen: ApprovalMode | null;
+    /** Path of the deny list saved before a clear; empty when nothing was ever cleared. */
+    approvalDenyBackup: string;
+    /** The red action is engaged (ALL): recorded by the host, never inferred from the values. */
+    approvalOpenAccess: boolean;
     composerHintTimer: Timer | null;
     configureEnvDetectDetailsOpen: boolean;
     configureEnvDetectFinished: boolean;
@@ -189,6 +203,13 @@ export const state: PaneState = {
     awaitingFirstChunk: false,
     canSend: false,
     closedSessions: [],
+    approvalMode: 'unknown',
+    approvalModePending: false,
+    approvalModeError: '',
+    approvalDenyCount: 0,
+    approvalModeBeforeOpen: null,
+    approvalDenyBackup: '',
+    approvalOpenAccess: false,
     composerHintTimer: null,
     configureEnvDetectDetailsOpen: false,
     configureEnvDetectFinished: false,

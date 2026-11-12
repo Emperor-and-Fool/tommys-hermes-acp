@@ -30,6 +30,22 @@ export interface LocaleStrings {
     openTab: string;
     chooseChat: string;
     closedSessionsHeader: string;
+    /** Rail button that opens the permission-mode row. */
+    permissionModeBtn: string;
+    permissionModeTitle: string;
+    permissionModeClose: string;
+    /** The red action: what it does, and what it does on the confirming press. */
+    permissionOpenTooltip: string;
+    permissionOpenConfirm: string;
+    /** The way back for the patterns the red action cleared. */
+    permissionRestoreLabel: string;
+    /** "Permissions: {mode}" and the four short names the rail button can show. */
+    permissionModeBtnTemplate: string;
+    permissionModeMan: string;
+    permissionModeSmart: string;
+    permissionModeNone: string;
+    permissionModeAll: string;
+    permissionModeBtnTooltip: string;
     noClosedSessions: string;
     defaultAgent: string;
     statusStartingAcp: string;
@@ -324,9 +340,7 @@ export interface LocaleStrings {
     approvalModeManual: string;
     approvalModeSmart: string;
     approvalModeOff: string;
-    /** Read-only line when the profile is off: it is set in Hermes, not here. */
-    approvalModeOffHere: string;
-    approvalModeOffHint: string;
+
     approvalModeTooltip: string;
     approvalModeFailed: string;
 

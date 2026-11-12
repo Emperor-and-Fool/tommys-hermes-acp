@@ -414,7 +414,7 @@ export function init(): void {
                 break;
 
             case 'approvalMode':
-                applyApprovalMode(msg.mode, msg.error);
+                applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup, msg.openAccess);
                 break;
 
             case 'historyStaged':

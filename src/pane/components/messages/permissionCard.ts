@@ -18,6 +18,13 @@ interface PermissionCardOptions {
 import { post } from '../../post';
 import { state } from '../../state';
 import { createGroup, maybeScrollToBottom } from './messageList';
+import {
+    createApprovalModeBlock,
+    endApprovalModePending,
+    refreshApprovalModeLabels as refreshApprovalModeSwitchLabels,
+    syncAllApprovalModeBlocks,
+    syncApprovalModeBlock,
+} from '../permissions/approvalModeSwitch';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming';
 
 /* Permission cards awaiting a decision. Mutated, never reassigned: not state. */
@@ -273,145 +280,58 @@ function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
     status.textContent = statusText;
 }
 
-/** The modes the switch offers, in the order it shows them. */
-/**
- * The modes this front-end may set. `off` is deliberately absent: it silences every prompt in
- * the profile, and a switch inside a card you are already reading is no place for a one-click
- * way into that. Turning approvals off is a deliberate act, done in Hermes itself.
- */
-const APPROVAL_MODE_CHOICES: Array<'manual' | 'smart'> = ['manual', 'smart'];
-
-/** The last `approvalMode` message, and why a write did not take. */
-let approvalMode: ApprovalMode = 'unknown';
-
-let approvalModeError = '';
-
-function approvalModeLabel(mode: ApprovalMode): string {
-    if (mode === 'manual') return locale.approvalModeManual || 'Manual';
-    if (mode === 'smart') return locale.approvalModeSmart || 'Smart';
-    return locale.approvalModeOff || 'Off';
-}
-
-/**
- * The switch: Manual · Smart · Off, for Hermes' approvals.mode.
- *
- * It is a setting, not an answer: it changes the whole profile and leaves the card in front of
- * you untouched, which is why it sits above the buttons rather than among them.
- */
-function buildApprovalBlock() {
-    const block = document.createElement('div');
-    block.className = 'permission-approval-block';
-    const tip = locale.approvalModeTooltip || '';
-    const row = document.createElement('div');
-    row.className = 'permission-approval';
-    row.setAttribute('role', 'group');
-    row.title = tip;
-    if (tip) {
-        row.setAttribute('aria-label', tip);
-    }
-    APPROVAL_MODE_CHOICES.forEach(function(mode) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'permission-approval-btn';
-        btn.dataset.approvalMode = mode;
-        btn.textContent = approvalModeLabel(mode);
-        btn.setAttribute('aria-pressed', 'false');
-        btn.title = tip;
-        btn.disabled = true;
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (btn.disabled) {
-                return;
-            }
-            post({ type: 'setApprovalMode', mode: mode });
-        });
-        row.appendChild(btn);
-    });
-    block.appendChild(row);
-    // A profile that is off can be read here but not switched back here: the row offers manual
-    // and smart only, so this line states the fact and names the command that changes it.
-    const off = document.createElement('div');
-    off.className = 'permission-approval-off';
-    off.hidden = true;
-    off.textContent = locale.approvalModeOffHere || 'Approvals are off (set in Hermes)';
-    off.title = locale.approvalModeOffHint
-        || 'Hermes is running without approval prompts for this profile. Turn it back on with: hermes config set approvals.mode smart';
-    block.appendChild(off);
-    const error = document.createElement('div');
-    error.className = 'permission-approval-error';
-    error.hidden = true;
-    block.appendChild(error);
-    return block;
-}
-
-/**
- * One card's switch follows the module state. `withError` is false for a card that is being
- * mounted: a failure that happened before it existed is not its error to show.
- */
-function syncApprovalRow(group: HTMLElement, withError = true) {
-    const block = group.querySelector('.permission-approval-block');
-    if (!block) {
-        return;
-    }
-    const row = block.querySelector('.permission-approval');
-    // Anything the host could not read arrives as `unknown`: nothing is pressed then.
-    const known = approvalMode !== 'unknown';
-    if (row) {
-        row.dataset.mode = approvalMode;
-        row.querySelectorAll('.permission-approval-btn').forEach(function(btn) {
-            const selected = known && btn.dataset.approvalMode === approvalMode;
-            btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
-            btn.classList.toggle('is-selected', selected);
-            btn.disabled = !known;
-        });
-    }
-    // The session answer on a card that could not offer it: live exactly while the profile is on
-    // manual, because that is the mode in which the next request carries the session answer.
-    block.querySelectorAll('.permission-btn.is-session-hint').forEach(function(btn) {
-        const live = approvalMode === 'manual';
+/** The session answer on a card the gate did not offer it on: live only while the mode is manual. */
+function syncSessionHint(group: HTMLElement): void {
+    group.querySelectorAll('.permission-btn.is-session-hint').forEach(function(btn) {
+        const live = state.approvalMode === 'manual';
         btn.classList.toggle('is-unavailable', !live);
         btn.setAttribute('aria-disabled', live ? 'false' : 'true');
         btn.title = live
             ? (locale.permissionSessionArmedHint || 'Allow once now, and answer the next request for the session')
             : (locale.permissionSessionNeedsManual || 'For session, set to manual');
     });
-    const offLine = block.querySelector('.permission-approval-off');
-    if (offLine) {
-        offLine.hidden = approvalMode !== 'off';
+}
+
+/**
+ * One card's switch follows the shared state. `withError` is false for a card that is being
+ * mounted: a failure that happened before it existed is not its error to show.
+ */
+function syncApprovalRow(group: HTMLElement, withError = true): void {
+    const block = group.querySelector('.permission-approval-block');
+    if (block) {
+        syncApprovalModeBlock(block as HTMLElement, withError);
     }
-    const error = block.querySelector('.permission-approval-error');
-    if (error) {
-        error.hidden = !(withError && approvalModeError);
-        error.textContent = approvalModeError;
-    }
+    syncSessionHint(group);
 }
 
 /** A locale change: the switch's words are ours, so they move with the rest. */
-export function refreshApprovalModeLabels(group: HTMLElement) {
-    const block = group.querySelector('.permission-approval-block');
-    if (!block) {
-        return;
-    }
-    const tip = locale.approvalModeTooltip || '';
-    const row = block.querySelector('.permission-approval');
-    if (row) {
-        row.title = tip;
-        if (tip) {
-            row.setAttribute('aria-label', tip);
-        }
-    }
-    block.querySelectorAll('.permission-approval-btn').forEach(function(btn) {
-        btn.textContent = approvalModeLabel(btn.dataset.approvalMode);
-        btn.title = tip;
-    });
+export function refreshApprovalModeLabels(): void {
+    refreshApprovalModeSwitchLabels();
 }
 
-/** An `approvalMode` message: every pending card follows it. */
-export function applyApprovalMode(mode: ApprovalMode, error?: string) {
-    approvalMode = mode || 'unknown';
-    approvalModeError = error || '';
+/** An `approvalMode` message: the rail's switch and every pending card follow it. */
+export function applyApprovalMode(
+    mode: ApprovalMode,
+    error?: string,
+    denyCount?: number,
+    denyBackup?: string,
+    openAccess?: boolean,
+): void {
+    state.approvalMode = mode || 'unknown';
+    state.approvalModeError = error || '';
+    if (typeof denyCount === 'number') {
+        state.approvalDenyCount = denyCount;
+    }
+    if (typeof denyBackup === 'string') {
+        state.approvalDenyBackup = denyBackup;
+    }
+    if (typeof openAccess === 'boolean') {
+        state.approvalOpenAccess = openAccess;
+    }
+    endApprovalModePending();
+    syncAllApprovalModeBlocks();
     pendingPermissions.forEach(function(group) {
-        syncApprovalRow(group);
+        syncSessionHint(group);
     });
 }
 
@@ -463,7 +383,7 @@ function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?:
     div.appendChild(wrap);
 
     if (!readOnly && !msg.resolved) {
-        div.appendChild(buildApprovalBlock());
+        div.appendChild(createApprovalModeBlock());
     }
 
     const options = msg.options || [];

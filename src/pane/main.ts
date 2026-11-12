@@ -15,6 +15,7 @@ import * as modal from './components/modals/modal';
 import * as switchSession from './components/modals/switchSession';
 import * as multiSelect from './components/multiSelect';
 import * as closedSessions from './components/pickers/closedSessions';
+import * as permissionModeBar from './components/permissions/permissionModeBar';
 import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
@@ -95,6 +96,7 @@ export function boot(): void {
     closedSessions.initOpenTabBtnClick();
     closedSessions.initClosedPickerBtnClick();
     closedSessions.initClosedDropdownClick();
+    permissionModeBar.initPermissionModeBtnClick();
     info.initBtnClick();
     info.initAboutModalClick();
     info.initHelpModalClick();
