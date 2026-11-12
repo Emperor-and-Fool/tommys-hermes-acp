@@ -183,3 +183,14 @@ describe('projectsInWorkspace', () => {
         assert.deepStrictEqual(projectsInWorkspace(projects, '').map(p => p.id), ['p3']);
     });
 });
+
+describe('a new tab is born where the work is', () => {
+    it('lands in the project that was in use, and has no project field otherwise', () => {
+        const inside = registerSession([], { id: 'a', title: 'One', project: 'p1' });
+        assert.strictEqual(inside.length, 1);
+        assert.strictEqual(inside[0].project, 'p1');
+
+        const onThePlane = registerSession([], { id: 'b', title: 'Two' });
+        assert.ok(!('project' in onThePlane[0]), 'absent stays absent');
+    });
+});

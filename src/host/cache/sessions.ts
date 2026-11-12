@@ -37,6 +37,8 @@ export interface SessionsHost {
  */
 export class Sessions {
     activeId: string = '';
+    /** The project of the tab that was in use: a new session is born in it. */
+    private _projectInUse: string = '';
     messages: ChatMessage[] = [];
     tabs: SessionInfo[] = [];
     /**
@@ -163,7 +165,9 @@ export class Sessions {
             id: this.activeId,
             title: this._tabTitle() || t('newChat'),
             workspaceId: this.host.currentWorkspaceId(),
+            project: this._projectInUse,
         });
+        this._projectInUse = '';
         if (next === this.tabs) {
             return;
         }
@@ -278,6 +282,8 @@ export class Sessions {
         if (!options?.skipSaveCurrent) {
             this.saveCurrent();
         }
+        // Read the tab being left: whatever is opened next starts in the same project.
+        this._projectInUse = this.tabs.find(tab => tab.id === this.activeId)?.project || '';
         this.activeId = sessionId;
         this.messages = [];
         this.host.post({ type: 'newChat' });

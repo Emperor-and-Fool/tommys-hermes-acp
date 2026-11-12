@@ -114,6 +114,10 @@ export interface PaneState {
     lastProjects: Project[];
     /** Projects the user closed, by id: their tabs are hidden until it is opened again. */
     collapsedProjects: Set<string>;
+    /** Project ids the host has seen opened, most recent first. */
+    recentProjects: string[];
+    /** The session the folding rule was last applied for; '' means it never has been. */
+    focusAppliedFor: string;
     logScrollIdleTimer: Timer | null;
     logScrollHeldByUser: boolean;
     logs: LogLine[];
@@ -213,6 +217,8 @@ export const state: PaneState = {
     lastWorkspaces: [],
     lastProjects: [],
     collapsedProjects: new Set<string>(),
+    recentProjects: [],
+    focusAppliedFor: '',
     logScrollIdleTimer: null,
     logScrollHeldByUser: false,
     logs: [],

@@ -10,7 +10,7 @@ import type { SessionInfo } from '../../shared/chat';
 
 export function registerSession(
     sessions: SessionInfo[],
-    entry: { id: string; title: string; now?: number; workspaceId?: string }
+    entry: { id: string; title: string; now?: number; workspaceId?: string; project?: string }
 ): SessionInfo[] {
     if (sessions.some(session => session.id === entry.id)) {
         return sessions;
@@ -25,6 +25,11 @@ export function registerSession(
     // Absent stays absent: a tab opened with no workspace gains no empty field.
     if (entry.workspaceId) {
         record.workspaceId = entry.workspaceId;
+    }
+    // A session started while one project is in use belongs to that project: the new tab lands
+    // where the work is, not on the plane where it has to be dragged out of.
+    if (entry.project) {
+        record.project = entry.project;
     }
     return [record, ...sessions];
 }

@@ -21,7 +21,7 @@ import { renderModelList } from './components/pickers/modelPicker';
 import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
 import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
-import { showProjectNotice } from './components/workspace/projectGrouped';
+import { applyProjectFocus, showProjectNotice } from './components/workspace/projectGrouped';
 import { renderSessionTabs } from './components/workspace/sessionTab';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
 import { aboutModal, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
@@ -276,6 +276,10 @@ export function init(): void {
 
             case 'sessionList':
                 if ((msg.sessions || []).length) state.paneHintText = '';
+                state.activeSessionId = msg.activeSessionId || state.activeSessionId;
+                state.lastSessions = msg.sessions || [];
+                state.lastActiveSessionId = state.activeSessionId;
+                applyProjectFocus();
                 renderSessionTabs(msg.sessions, msg.activeSessionId);
                 renderHistorySessionList();
                 if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
