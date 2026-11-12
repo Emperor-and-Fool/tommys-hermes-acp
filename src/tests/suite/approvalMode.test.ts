@@ -5,7 +5,7 @@ import {
     SETTABLE_APPROVAL_MODES,
     isSettableApprovalMode,
     parseApprovalMode,
-} from '../../host/environment/approvalMode';
+} from '../../host/permissions/approvalModeRules';
 
 describe('approval mode', () => {
     it('parses the CLI output trimmed and case-insensitively', () => {
@@ -31,11 +31,12 @@ describe('approval mode', () => {
         }
     });
 
-    it('writes manual and smart only: off is a Hermes-side decision', () => {
+    it('writes all three Hermes accepts, and refuses anything else', () => {
         for (const mode of SETTABLE_APPROVAL_MODES) {
             assert.strictEqual(isSettableApprovalMode(mode), true);
         }
-        assert.strictEqual(isSettableApprovalMode('off'), false);
+        // `off` is the UI's "None": settable, and offered as a button.
+        assert.strictEqual(isSettableApprovalMode('off'), true);
         assert.strictEqual(isSettableApprovalMode('unknown'), false);
         assert.strictEqual(isSettableApprovalMode(''), false);
         assert.strictEqual(isSettableApprovalMode(undefined), false);

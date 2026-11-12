@@ -7,7 +7,7 @@ import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { migrateLegacySessionStorage } from './cache/profileStorage';
+import { migrateLegacySessionStorage, profileDir } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
@@ -37,7 +37,8 @@ import { HistoryStages, blockMessageLines, historySliceBody } from './chat/histo
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
-import { isSettableApprovalMode, readApprovalMode, writeApprovalMode } from './environment/approvalMode';
+import { isSettableApprovalMode } from './permissions/approvalModeRules';
+import { ApprovalModeControl } from './permissions/approvalModeControl';
 import type { ApprovalMode } from '../shared/webview';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
@@ -230,7 +231,9 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _historyStages: HistoryStages = new HistoryStages();
 
     /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
-    private readonly _approvalModes: Map<string, ApprovalMode> = new Map();
+    private readonly _approvalModeControl = new ApprovalModeControl();
+    /** Bumped by every mode write: an open-access sequence checks it before turning approvals off. */
+    private _openAccessToken = 0;
 
     private readonly _extensionId: string;
 
@@ -647,7 +650,7 @@ export class App implements vscode.WebviewViewProvider {
         const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
         if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
-            this._approvalModes.clear();
+            this._approvalModeControl.clear();
         }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
             if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
@@ -913,7 +916,7 @@ export class App implements vscode.WebviewViewProvider {
             projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
-                this._approvalModes.clear();
+                this._approvalModeControl.clear();
                 this._connection.switchProfile(name);
             },
             handleSwitchSession: (sessionId, interrupt) => {
@@ -933,6 +936,9 @@ export class App implements vscode.WebviewViewProvider {
             retry: () => this._connection.retry(),
             handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             setApprovalMode: (mode) => this.setApprovalMode(mode),
+            requestApprovalMode: () => this.requestApprovalMode(),
+            setOpenAccess: () => this.setOpenAccess(),
+            restoreDeny: () => this.restoreDeny(),
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
             openHistoryViewer: (sessionId, title) => this.openHistoryViewer(sessionId, title),
@@ -974,43 +980,238 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
-    private _postApprovalMode(): void {
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const cached = this._approvalModes.get(profile);
-        this._postMessage({ type: 'approvalMode', mode: cached ?? 'unknown' });
-        void this._refreshApprovalMode(profile, cached);
+    /** Asked from the pane: re-read and answer even when the answer is unchanged. */
+    public requestApprovalMode(): void {
+        this._postApprovalMode(true);
     }
 
-    private async _refreshApprovalMode(profile: string, previous: ApprovalMode | undefined): Promise<void> {
+    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
+    private _postApprovalMode(force = false): void {
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const cached = this._approvalModeControl.last(profile);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: cached,
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            openAccess: this._isOpenAccess(),
+        });
+        void this._refreshApprovalMode(profile, cached, force);
+    }
+
+    private async _refreshApprovalMode(profile: string, previous: ApprovalMode, force = false): Promise<void> {
         const executable = await this._resolveHermesExecutable();
         if (!executable) {
             return;
         }
-        const mode = await readApprovalMode(executable, profile);
-        this._approvalModes.set(profile, mode);
-        if (mode !== previous) {
-            this._postMessage({ type: 'approvalMode', mode });
+        const mode = await this._approvalModeControl.read(executable, profile);
+        const denyCount = await this._approvalModeControl.readDenyCount(executable, profile);
+        if (force || mode !== previous) {
+            this._postMessage({ type: 'approvalMode', mode, denyCount, openAccess: this._isOpenAccess() });
         }
+    }
+
+    /**
+     * Whether the red action is engaged. Recorded, not inferred: `mode off` with an empty deny
+     * list is None (rules still default-block), and only the red press makes it ALL.
+     */
+    private _openAccess: boolean | null = null;
+
+    /** Where the last cleared deny list was saved, per profile. */
+    private readonly _denyBackups = new Map<string, string>();
+
+    private _permissionsStatePath(): string {
+        return path.join(profileDir(this._historyDir, this._session.scopeKey), 'permissions-state.json');
+    }
+
+    /** Read once, then kept in memory: the file only changes through this class. */
+    private _isOpenAccess(): boolean {
+        if (this._openAccess === null) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(this._permissionsStatePath(), 'utf8'));
+                this._openAccess = raw.openAccess === true;
+            } catch {
+                this._openAccess = false;
+            }
+        }
+        return this._openAccess;
+    }
+
+    private _setOpenAccessFlag(next: boolean): void {
+        this._openAccess = next;
+        try {
+            fs.mkdirSync(path.dirname(this._permissionsStatePath()), { recursive: true });
+            fs.writeFileSync(
+                this._permissionsStatePath(),
+                JSON.stringify({ openAccess: next, updatedAt: new Date().toISOString() }, null, 2) + '\n',
+                'utf8',
+            );
+        } catch (e) {
+            this._log(`Permissions state could not be written: ${String(e)}`);
+        }
+    }
+
+    /**
+     * Save the deny list before it is cleared, and say whether that worked.
+     *
+     * The file sits with the profile's own data, not in a temp directory: a backup that is pruned
+     * overnight is not a backup. The caller aborts the clear when this returns false.
+     */
+    private _saveDenyBackup(profile: string, patterns: string[]): boolean {
+        try {
+            const dir = profileDir(this._historyDir, this._session.scopeKey);
+            fs.mkdirSync(dir, { recursive: true });
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const file = path.join(dir, `deny-backup-${stamp}.json`);
+            fs.writeFileSync(
+                file,
+                JSON.stringify({ profile, savedAt: new Date().toISOString(), patterns }, null, 2) + '\n',
+                'utf8',
+            );
+            this._denyBackups.set(profile, file);
+            this._log(`Deny list saved before clearing: ${file}`);
+            return true;
+        } catch (e) {
+            this._log(`Deny list backup failed: ${String(e)}`);
+            return false;
+        }
+    }
+
+    /** Newest saved deny list for a profile, when this process no longer remembers it. */
+    private _newestDenyBackup(): string | undefined {
+        try {
+            const dir = profileDir(this._historyDir, this._session.scopeKey);
+            const files = fs.readdirSync(dir)
+                .filter(name => name.startsWith('deny-backup-') && name.endsWith('.json'))
+                .sort();
+            const last = files[files.length - 1];
+            return last ? path.join(dir, last) : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /** Put the saved deny list back — the other half of the red action. */
+    public async restoreDeny(): Promise<void> {
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const file = this._denyBackups.get(profile) ?? this._newestDenyBackup();
+        const executable = await this._resolveHermesExecutable();
+        if (!executable || !file) {
+            this._log(`Deny restore skipped (executable=${!!executable}, backup=${file ?? 'none'})`);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                error: t('approvalModeFailed'),
+            });
+            return;
+        }
+        let patterns: string[] = [];
+        try {
+            const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+            patterns = Array.isArray(parsed.patterns) ? parsed.patterns.filter((p: unknown) => typeof p === 'string') : [];
+        } catch (e) {
+            this._log(`Deny restore could not read ${file}: ${String(e)}`);
+            patterns = [];
+        }
+        const restored = await this._approvalModeControl.writeDenyList(executable, profile, patterns);
+        this._setOpenAccessFlag(false);
+        this._log(`Deny restore: ${patterns.length} pattern(s) from ${file} — ${restored ? 'written' : 'failed'}`);
+        this._denyBackups.set(profile, file);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: this._approvalModeControl.last(profile),
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            denyBackup: file,
+            openAccess: false,
+            ...(restored ? {} : { error: t('approvalModeFailed') }),
+        });
+    }
+
+    /**
+     * The red action: save the deny list, clear it, then turn approvals off for the profile.
+     *
+     * Order matters — the deny list is the only copy of those patterns, so a failed save stops
+     * everything, and the mode write is skipped when a second press arrived meanwhile.
+     */
+    public async setOpenAccess(): Promise<void> {
+        const token = ++this._openAccessToken;
+        const profile = this._profiles.resolveTarget().cliProfile;
+        const executable = await this._resolveHermesExecutable();
+        if (!executable) {
+            this._log('Open access not set: no Hermes executable found');
+            this._postMessage({ type: 'approvalMode', mode: this._approvalModeControl.last(profile), error: t('approvalModeFailed') });
+            return;
+        }
+        const patterns = await this._approvalModeControl.readDenyList(executable, profile);
+        let backup = this._denyBackups.get(profile);
+        if (patterns.length > 0) {
+            if (!this._saveDenyBackup(profile, patterns)) {
+                this._postMessage({
+                    type: 'approvalMode',
+                    mode: this._approvalModeControl.last(profile),
+                    denyCount: patterns.length,
+                    error: t('approvalModeFailed'),
+                });
+                return;
+            }
+            backup = this._denyBackups.get(profile);
+        }
+        if (!await this._approvalModeControl.clearDeny(executable, profile)) {
+            this._log(`Open access: clearing approvals.deny failed (profile=${profile})`);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                denyBackup: backup,
+                error: t('approvalModeFailed'),
+            });
+            return;
+        }
+        if (token !== this._openAccessToken) {
+            // Stopped while clearing the deny list: do not turn approvals off behind the user.
+            this._log(`Open access cancelled before the mode write (profile=${profile})`);
+            this._setOpenAccessFlag(false);
+            this._postMessage({
+                type: 'approvalMode',
+                mode: this._approvalModeControl.last(profile),
+                denyCount: this._approvalModeControl.lastDenyCount(profile),
+                denyBackup: backup,
+                openAccess: false,
+            });
+            return;
+        }
+        const wrote = await this._approvalModeControl.write(executable, profile, 'off');
+        this._setOpenAccessFlag(wrote);
+        this._log(`Open access: deny cleared, mode ${wrote ? 'set to off' : 'write failed'} (profile=${profile})`);
+        this._postMessage({
+            type: 'approvalMode',
+            mode: this._approvalModeControl.last(profile),
+            denyCount: this._approvalModeControl.lastDenyCount(profile),
+            denyBackup: backup,
+            openAccess: wrote,
+            ...(wrote ? {} : { error: t('approvalModeFailed') }),
+        });
     }
 
     /** The switch was used: write it to the profile, and say so (or put the old value back). */
     public async setApprovalMode(mode: ApprovalMode): Promise<void> {
+        this._openAccessToken += 1;
         if (!isSettableApprovalMode(mode)) {
             this._log(`Approval mode ignored: ${String(mode)}`);
             return;
         }
         const profile = this._profiles.resolveTarget().cliProfile;
-        const previous = this._approvalModes.get(profile) ?? 'unknown';
+        const previous = this._approvalModeControl.last(profile);
         const executable = await this._resolveHermesExecutable();
         if (!executable) {
             this._log('Approval mode not set: no Hermes executable found');
             this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
             return;
         }
-        if (await writeApprovalMode(executable, profile, mode)) {
-            this._approvalModes.set(profile, mode);
-            this._postMessage({ type: 'approvalMode', mode });
+        if (await this._approvalModeControl.write(executable, profile, mode)) {
+            // Any deliberate choice ends the ALL state, choosing None included.
+            this._setOpenAccessFlag(false);
+            this._postMessage({ type: 'approvalMode', mode, openAccess: false });
             this._log(`Approval mode set to ${mode} (profile=${profile})`);
             return;
         }

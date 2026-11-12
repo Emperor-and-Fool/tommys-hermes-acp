@@ -59,6 +59,12 @@ export interface RouterHost {
     handlePermissionResponse(id: string, optionId: string | null): void;
     /** Write Hermes' approvals.mode for the active profile. */
     setApprovalMode(mode: ApprovalMode): Promise<void>;
+    /** Re-read approvals.mode and post it, even when it did not change. */
+    requestApprovalMode(): void;
+    /** Save the deny list, clear it, and turn approvals off. */
+    setOpenAccess(): Promise<void>;
+    /** Write the last saved deny list back. */
+    restoreDeny(): Promise<void>;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
     /** The session-memory dropdown: the viewer tab, and the chip's X. */
@@ -201,6 +207,15 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'setApprovalMode':
             void host.setApprovalMode(message.mode);
+            break;
+        case 'requestApprovalMode':
+            host.requestApprovalMode();
+            break;
+        case 'setOpenAccess':
+            void host.setOpenAccess();
+            break;
+        case 'restoreDeny':
+            void host.restoreDeny();
             break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');

@@ -67,7 +67,7 @@ export type HostToPane =
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
     /** The approval mode the pending cards offer, and why a change did not take. */
-    | { type: 'approvalMode'; mode: ApprovalMode; error?: string }
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
@@ -176,6 +176,12 @@ export type PaneToHost =
 
     /** The approval switch on a pending card: one value, written to Hermes' profile config. */
     | { type: 'setApprovalMode'; mode: ApprovalMode }
+    /** Ask for the mode again: the rail's row opens with a read, not with a stale cache. */
+    | { type: 'requestApprovalMode' }
+    /** The red action: save the deny list, clear it, approvals off. */
+    | { type: 'setOpenAccess' }
+    /** Put the last saved deny list back. */
+    | { type: 'restoreDeny' }
 
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
