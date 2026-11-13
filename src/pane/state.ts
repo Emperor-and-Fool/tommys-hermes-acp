@@ -168,7 +168,6 @@ export interface PaneState {
     thoughtMsgId: string | null;
     toolAggregateGroupId: string | null;
     toolCallMap: Record<string, string>;
-    undeliveredFilledComposer: boolean;
     undeliveredText: string;
 }
 
@@ -273,6 +272,5 @@ export const state: PaneState = {
     thoughtMsgId: null,
     toolAggregateGroupId: null,
     toolCallMap: {},
-    undeliveredFilledComposer: false,
     undeliveredText: '',
 };

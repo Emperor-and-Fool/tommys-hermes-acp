@@ -3,7 +3,7 @@ import { state } from '../../state';
 import type { SelectionCapture } from '../../state';
 import { groupsInOrder, quoteSegmentForGroup } from '../messages/messageList';
 import { formatReplyQuote } from '../../../shared/replyQuoteText';
-import { sendMessage, showComposerHint, syncInputHeightFromContent, updateQuickActionBtns } from './composer';
+import { showComposerHint, syncInputHeightFromContent, updateQuickActionBtns } from './composer';
 
 
 const replyQuoteEl = required('replyQuote');
@@ -193,36 +193,24 @@ export function offerUndeliveredMessage(text: string) {
     // Offer, never fill: a composer holding text is indistinguishable from a draft, and this
     // notice appears on a load rather than because the user was typing.
     state.undeliveredText = text;
-    state.undeliveredFilledComposer = false;
     undeliveredNoticeText.textContent = locale.undeliveredNotice;
     undeliveredPrimaryBtn.textContent = locale.undeliveredRestore;
     undeliveredDiscardBtn.textContent = locale.undeliveredDiscard;
     undeliveredNotice.hidden = false;
 }
 
-function closeUndeliveredNotice(clearComposer: boolean) {
-    if (clearComposer && state.undeliveredFilledComposer) {
-        inputEl.value = '';
-        syncInputHeightFromContent();
-        updateQuickActionBtns();
-    }
+function closeUndeliveredNotice() {
     if (undeliveredNotice) undeliveredNotice.hidden = true;
     state.undeliveredText = '';
-    state.undeliveredFilledComposer = false;
 }
 
 export function initUndeliveredPrimaryBtnClick(): void {
     if (undeliveredPrimaryBtn) {
         undeliveredPrimaryBtn.addEventListener('click', function() {
             const text = state.undeliveredText;
-            const wasFilled = state.undeliveredFilledComposer;
-            closeUndeliveredNotice(false);
+            closeUndeliveredNotice();
             if (!text) return;
-            if (wasFilled && state.canSend) {
-                sendMessage();
-                return;
-            }
-            // A draft was in the way, so restoring is all the user asked for.
+            // Restore is the only thing this button does: the notice never put text there.
             inputEl.value = text;
             syncInputHeightFromContent();
             updateQuickActionBtns();
@@ -233,7 +221,7 @@ export function initUndeliveredPrimaryBtnClick(): void {
 
 export function initUndeliveredDiscardBtnClick(): void {
     if (undeliveredDiscardBtn) {
-        undeliveredDiscardBtn.addEventListener('click', function() { closeUndeliveredNotice(true); });
+        undeliveredDiscardBtn.addEventListener('click', function() { closeUndeliveredNotice(); });
     }
 }
 
