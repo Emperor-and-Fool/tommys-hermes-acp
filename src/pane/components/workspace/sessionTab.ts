@@ -143,11 +143,42 @@ function wireTabDragDrop(tab: HTMLElement) {
     });
 }
 
+/**
+ * A blank chat has no record, so no list from the host can contain it: it is drawn from the
+ * `newChat` message while it is the active one, in the project it was opened in, and it stops
+ * being drawn the moment it is left or its own first turn gives it a record.
+ */
+function withBlankChat(sessions: SessionInfo[]): SessionInfo[] {
+    const blank = state.blankChat;
+    if (!blank) {
+        return sessions;
+    }
+    if (sessions.some(tab => tab.id === blank.id)) {
+        state.blankChat = null;
+        return sessions;
+    }
+    if (blank.id !== state.activeSessionId) {
+        state.blankChat = null;
+        return sessions;
+    }
+    return [
+        {
+            id: blank.id,
+            title: locale.newChat,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            ...(blank.project ? { project: blank.project } : {}),
+        },
+        ...sessions,
+    ];
+}
+
 export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
     state.activeSessionId = activeId || state.activeSessionId;
-    state.lastSessions = sessions || [];
+    const list = withBlankChat(sessions || []);
+    state.lastSessions = list;
     state.lastActiveSessionId = state.activeSessionId;
-    if (!sessions || sessions.length === 0) {
+    if (list.length === 0) {
         tabBar.innerHTML = '';
         return;
     }
@@ -155,7 +186,7 @@ export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
         state.pendingTabsRender = { sessions: sessions, activeId: activeId };
         return;
     }
-    tabBar.innerHTML = projectTreeHtml(sessions, tabEntriesHtml);
+    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml);
 
     tabBar.querySelectorAll<HTMLElement>('.session-tab').forEach(function(tab) {
         tab.addEventListener('click', function(e) {

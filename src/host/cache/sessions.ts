@@ -37,8 +37,8 @@ export interface SessionsHost {
  */
 export class Sessions {
     activeId: string = '';
-    /** The project of the tab that was in use: a new session is born in it. */
-    private _projectInUse: string = '';
+    /** The project a blank chat was opened in; it becomes the record's own at the first message. */
+    private _blankProject: string = '';
     /** The pending-user entry of the turn that is in flight, settled when the agent takes it. */
     private _pendingId: string = '';
     /** Which tab wrote it: the active tab can change while a turn is in flight. */
@@ -148,15 +148,18 @@ export class Sessions {
             if (firstUser && !existing.hermesSessionId) {
                 existing.title = firstUser;
             }
-        } else {
+        } else if (firstUser) {
+            // Only a chat that has said something becomes a record; a blank one leaves nothing.
             const workspaceId = this.host.currentWorkspaceId();
             this.tabs.unshift({
                 id: this.activeId,
-                title: firstUser || t('newChat'),
+                title: firstUser,
                 createdAt: parseInt(this.activeId, 36) || Date.now(),
                 updatedAt: Date.now(),
                 ...(workspaceId ? { workspaceId } : {}),
+                ...(this._blankProject ? { project: this._blankProject } : {}),
             });
+            this._blankProject = '';
         }
         if (this.saveCatalog()) {
             this.saveActive();
@@ -164,14 +167,30 @@ export class Sessions {
         this.postList();
     }
 
-    ensureRegistered(): void {
+    /** A new chat carries the project it was opened in until it becomes a session. */
+    beginBlank(project: string): void {
+        this._blankProject = project;
+    }
+
+    /**
+     * Make sure the active tab has a record.
+     *
+     * A blank chat is not a session: no message, no record. Two things make one — the first user
+     * turn, or a Hermes session being bound to it — and either way it is born in the project the
+     * blank chat was opened in. `force` is the binding: at that moment the title is still unknown,
+     * so the catalog's own title replaces the placeholder.
+     */
+    ensureRegistered(force: boolean = false): void {
+        if (!force && !this._tabTitle()) {
+            return;
+        }
         const next = registerSession(this.tabs, {
             id: this.activeId,
             title: this._tabTitle() || t('newChat'),
             workspaceId: this.host.currentWorkspaceId(),
-            project: this._projectInUse,
+            project: this._blankProject,
         });
-        this._projectInUse = '';
+        this._blankProject = '';
         if (next === this.tabs) {
             return;
         }
@@ -286,8 +305,8 @@ export class Sessions {
         if (!options?.skipSaveCurrent) {
             this.saveCurrent();
         }
-        // Read the tab being left: whatever is opened next starts in the same project.
-        this._projectInUse = this.tabs.find(tab => tab.id === this.activeId)?.project || '';
+        // Leaving a blank chat discards it: it carried a project and nothing else.
+        this._blankProject = '';
         this.activeId = sessionId;
         this.messages = [];
         this.host.post({ type: 'newChat' });

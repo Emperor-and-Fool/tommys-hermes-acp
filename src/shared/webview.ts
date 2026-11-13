@@ -42,7 +42,7 @@ export type HostToPane =
     | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
     /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
     | { type: 'loadProgress'; received: number; sessionId?: string }
-    | { type: 'newChat' }
+    | { type: 'newChat'; sessionId?: string; project?: string }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
     | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState; messages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }> }

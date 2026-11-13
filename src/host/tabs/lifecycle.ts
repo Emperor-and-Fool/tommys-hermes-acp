@@ -43,7 +43,7 @@ export interface TabLifecycleHost {
     snapshotModelFromProfile(): void;
     saveCatalog(): boolean;
     saveCurrent(): void;
-    ensureRegistered(): void;
+    ensureRegistered(force?: boolean): void;
     postSessionList(): void;
     /** Restate the active tab's staged history pick in the pane (or that it has none). */
     postHistoryState(tabId: string): void;
@@ -273,6 +273,10 @@ export class TabLifecycle {
             return;
         }
         this._persistedHermesSessionId = hermesSessionId;
+        // A Hermes session now exists for the active tab, so the tab must exist too: without a
+        // record the binding below had nowhere to go, and the next turn was sent to an id Hermes
+        // had never seen.
+        this._host.session.ensureRegistered(true);
         const rec = this._host.session.tabs.find(item => item.id === this._host.session.activeId);
         if (rec && rec.hermesSessionId !== hermesSessionId) {
             rec.hermesSessionId = hermesSessionId;
@@ -316,12 +320,15 @@ export class TabLifecycle {
     }
 
     async createBlankTab(): Promise<void> {
+        // The project of the tab being left is the project this chat is opened in.
+        const project = this._host.session.tabs.find(tab => tab.id === this._host.session.activeId)?.project || '';
         this._host.saveCurrent();
         this._host.session.messages = [];
         this._host.session.activeId = mintId();
-        this._host.ensureRegistered();
+        this._host.session.beginBlank(project);
         this._host.snapshotModelFromProfile();
-        this._host.post({ type: 'newChat' });
+        // No record: the chat is drawn from this message until its first turn writes one.
+        this._host.post({ type: 'newChat', sessionId: this._host.session.activeId, project });
         this._host.postSessionList();
         this.postHistoryState();
     }
@@ -409,6 +416,20 @@ export class TabLifecycle {
         }
         const ids = this._host.session.tabs.map(s => s.id);
         const idx = ids.indexOf(sessionId);
+        if (idx === -1 && mode === 'self') {
+            // A blank chat has no record to close: closing it is leaving it.
+            if (sessionId !== this._host.session.activeId) {
+                return;
+            }
+            this._host.session.beginBlank('');
+            const next = this._host.session.tabs[0];
+            if (next) {
+                await this.switchTo(next.id);
+            } else {
+                this._host.postSessionList();
+            }
+            return;
+        }
         let toHide: string[] = [];
         switch (mode) {
             case 'self':

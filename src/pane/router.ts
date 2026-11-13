@@ -150,6 +150,7 @@ export function init(): void {
 
             case 'newChat':
                 state.paneHintText = '';
+                state.blankChat = msg.sessionId ? { id: msg.sessionId, project: msg.project || '' } : null;
                 newChat();
                 break;
 
