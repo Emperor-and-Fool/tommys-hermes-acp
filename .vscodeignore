@@ -1,7 +1,16 @@
 .vscode/**
 node_modules/**
-!node_modules/@agentclientprotocol/**
-!node_modules/zod/**
+# vsce 4 splits .vscodeignore into an ignore list and a negate list, and a negate wins over
+# every ignore line regardless of order. So the dependency folder is re-included with its
+# exclusions spelled inside the negate itself; a separate `node_modules/**/*.map` line below
+# would have no effect.
+!node_modules/@agentclientprotocol/**/!(*.test.*|*.map|*.d.ts)
+!node_modules/zod/*
+!node_modules/zod/v3/**
+!node_modules/zod/v4/**
+!node_modules/zod/v4-mini/**
+!node_modules/zod/mini/**
+!node_modules/zod/locales/**
 src/**
 tsconfig.json
 .gitignore
@@ -13,6 +22,8 @@ out/tests/
 out/**/*.d.ts
 out/**/*.js.map
 docs/**
+tests/**
+.git-blame-ignore-revs
 media/icon.svg
 scripts/**
 .github/**
