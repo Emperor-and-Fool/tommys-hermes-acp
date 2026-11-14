@@ -373,12 +373,17 @@ function profileNames() {
     return names;
 }
 
+/** The CLI that installs into the extensions folder this run found: plain VS Code is `code`. */
+function installCli() {
+    return path.basename(path.dirname(extensionsDir)) === '.vscode' ? 'code' : 'codium';
+}
+
 if (targets.length === 0) {
     console.error(`deploy: no installed copy found under ${extensionsDir}`);
     console.error('deploy: install it once, in the profile you work in:');
     console.error('deploy:   Extensions view → "Install from VSIX…" in a window of that profile, or');
     console.error(
-        `deploy:   codium --profile "<name>" --install-extension dist/${pkg.name}-${pkg.version}.vsix --force  ` +
+        `deploy:   ${installCli()} --profile "<name>" --install-extension dist/${pkg.name}-${pkg.version}.vsix --force  ` +
             `(profiles here: ${profileNames().join(', ')})`
     );
     process.exit(1);
