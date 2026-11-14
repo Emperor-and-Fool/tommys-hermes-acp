@@ -74,19 +74,23 @@ function walk(rel, out = []) {
     return out;
 }
 
+/** The user-data homes this deploy looks in: VSCodium first, plain VS Code second. */
+function userDataHomes() {
+    return process.platform === 'darwin'
+        ? [path.join(homedir(), 'Library', 'Application Support', 'VSCodium'), path.join(homedir(), 'Library', 'Application Support', 'Code')]
+        : process.platform === 'win32'
+            ? ['VSCodium', 'Code'].map(name => path.join(process.env.APPDATA || '', name))
+            : ['VSCodium', 'Code'].map(name => path.join(homedir(), '.config', name));
+}
+
 /**
  * Folder paths each registry claims, with the profile that claims them. Profiles keep their own
  * extensions.json beside their state; the file in the extensions directory belongs to the default
  * profile only, so reading that one alone says "not installed" for everything a named profile uses.
  */
 function registryFiles() {
-    const homes = process.platform === 'darwin'
-        ? [path.join(homedir(), 'Library', 'Application Support', 'VSCodium'), path.join(homedir(), 'Library', 'Application Support', 'Code')]
-        : process.platform === 'win32'
-            ? ['VSCodium', 'Code'].map(name => path.join(process.env.APPDATA || '', name))
-            : ['VSCodium', 'Code'].map(name => path.join(homedir(), '.config', name));
     const files = [];
-    for (const home of homes) {
+    for (const home of userDataHomes()) {
         if (!home) continue;
         const profiles = path.join(home, 'User', 'profiles');
         if (!existsSync(profiles)) continue;
@@ -263,9 +267,10 @@ function pruneTarget(target, wanted, roots) {
  * The editor's `addExtensionsToProfile` re-reads the profile's `extensions.json`, drops entries of
  * this extension that name another version, replaces or appends `{identifier, version, location,
  * relativeLocation, metadata}` for this one, and writes the array back compact — `JSON.stringify`,
- * two-space indent is not what it writes. `metadata.installedTimestamp` is the value written into
- * the folder's manifest, because an install stamps both from one object. Nothing else is touched:
- * every other entry in the file is carried over as it was read.
+ * two-space indent is not what it writes. The entry's `metadata` is the one already in the file with
+ * `installedTimestamp` replaced by the value written into the folder's manifest (an install stamps
+ * both from one object); no other field of it is dropped. Nothing else is touched: every other entry
+ * in the file is carried over as it was read.
  *
  * An install writes the one profile it installs into. Deploy has no profile, so it writes each
  * registry that already lists this extension — the folders are shared, the registries are not.
@@ -295,9 +300,8 @@ function registerInstall(target) {
             location: { $mid: 1, path: target, scheme: 'file' },
             relativeLocation: folder,
             metadata: {
+                ...mine[0].metadata,
                 installedTimestamp: manifest.__metadata.installedTimestamp,
-                ...(mine[0].metadata?.pinned !== undefined ? { pinned: mine[0].metadata.pinned } : {}),
-                source: 'vsix',
             },
         };
         const index = kept.findIndex(item => (item.identifier?.id || '').toLowerCase() === id && item.version === version);
@@ -350,21 +354,23 @@ const targets = [
  *
  * The CLI installs into the default profile unless `--profile` names another one, and the default
  * profile is not where everyone works: the second install lands in a different registry file
- * entirely. Reading the names from `storage.json` keeps the hint true on any machine.
+ * entirely. The names are read from the same user-data homes `registryFiles()` scans, so the hint
+ * stays true whichever editor the machine runs.
  */
 function profileNames() {
-    const home = homedir();
-    const userData = process.platform === 'darwin'
-        ? path.join(home, 'Library', 'Application Support', 'VSCodium')
-        : process.platform === 'win32'
-            ? path.join(process.env.APPDATA || '', 'VSCodium')
-            : path.join(home, '.config', 'VSCodium');
-    try {
-        const storage = JSON.parse(readFileSync(path.join(userData, 'User', 'globalStorage', 'storage.json'), 'utf8'));
-        return ['Default', ...(storage.userDataProfiles || []).map(p => p.name).filter(Boolean)];
-    } catch {
-        return ['Default'];
+    const names = ['Default'];
+    for (const home of userDataHomes()) {
+        if (!home) continue;
+        try {
+            const storage = JSON.parse(readFileSync(path.join(home, 'User', 'globalStorage', 'storage.json'), 'utf8'));
+            for (const profile of storage.userDataProfiles || []) {
+                if (profile.name && !names.includes(profile.name)) names.push(profile.name);
+            }
+        } catch {
+            // No storage.json in that install: nothing to name from it.
+        }
     }
+    return names;
 }
 
 if (targets.length === 0) {
@@ -372,7 +378,7 @@ if (targets.length === 0) {
     console.error('deploy: install it once, in the profile you work in:');
     console.error('deploy:   Extensions view → "Install from VSIX…" in a window of that profile, or');
     console.error(
-        `deploy:   codium --profile "<name>" --install-extension ${pkg.name}-${pkg.version}.vsix --force  ` +
+        `deploy:   codium --profile "<name>" --install-extension dist/${pkg.name}-${pkg.version}.vsix --force  ` +
             `(profiles here: ${profileNames().join(', ')})`
     );
     process.exit(1);
