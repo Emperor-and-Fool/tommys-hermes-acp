@@ -5,11 +5,14 @@ import * as vscode from 'vscode';
 /**
  * Installing and removing the secondant from the primary.
  *
- * The install goes through the editor's own installer (`workbench.extensions.installExtension`
- * with the bundled VSIX), because that is what writes the registry entry, extracts the version
- * directory and asks for the reload — nothing here reimplements it. What this adds is the
- * reversal: after the editor's uninstall, every version directory for the secondant is removed
- * too, so nothing is left behind for the scanner to find later.
+ * Both go through the editor's own extension management — `workbench.extensions.installExtension`
+ * with the bundled VSIX, `workbench.extensions.uninstallExtension` — because that is what writes
+ * the registry entry, extracts the version directory and asks for the reload. Nothing here
+ * reimplements it.
+ *
+ * The folder is not ours to delete. An uninstall removes the entry from the current profile only;
+ * once no profile lists `id@version` the editor marks it in `.obsolete` and deletes the folder at
+ * its next start, and while another profile still lists it the folder has to stay for that profile.
  */
 
 export const SECONDANT_ID = 'EmperorAndFool.tommys-hermes-secondant';
@@ -67,84 +70,13 @@ export async function installSecondant(extensionUri: vscode.Uri): Promise<void> 
     }
 }
 
-/**
- * Every directory the secondant could occupy. VSCodium's uninstall removes the registry entry and
- * normally leaves the version directories for a later sweep; this takes them now.
- */
-function secondantDirectories(extensionsDir: string): string[] {
-    if (!extensionsDir || !fs.existsSync(extensionsDir)) {
-        return [];
-    }
-    // Extension directories are lower-cased on disk, the manifest id is not: compare case-blind
-    // or every candidate is missed and the uninstall leaves the folder behind.
-    const prefix = `${SECONDANT_ID}-`.toLowerCase();
-    return fs
-        .readdirSync(extensionsDir)
-        .filter(name => name.toLowerCase().startsWith(prefix))
-        .map(name => path.join(extensionsDir, name));
-}
-
-/**
- * The editor parks a removed extension in `.obsolete` until its next start. Forget an entry only
- * when its directory is actually gone: a folder locked by another process (Windows) is still on
- * disk, and dropping its entry would hide the leftover from the next sweep.
- */
-function forgetObsolete(extensionsDir: string, stillPresent: string[]): void {
-    const marker = path.join(extensionsDir, '.obsolete');
-    if (!extensionsDir || !fs.existsSync(marker)) {
-        return;
-    }
-    const remaining = stillPresent.map(dir => path.basename(dir).toLowerCase());
-    try {
-        const entries = JSON.parse(fs.readFileSync(marker, 'utf8')) as Record<string, unknown>;
-        const kept = Object.fromEntries(
-            Object.entries(entries).filter(([name]) => {
-                const lower = name.toLowerCase();
-                if (!lower.includes(SECONDANT_ID.toLowerCase())) {
-                    return true;
-                }
-                return remaining.some(dir => lower.includes(dir));
-            })
-        );
-        if (Object.keys(kept).length !== Object.keys(entries).length) {
-            fs.writeFileSync(marker, JSON.stringify(kept));
-        }
-    } catch (err) {
-        console.error('[secondant] could not read .obsolete', err);
-    }
-}
-
 export async function uninstallSecondant(): Promise<void> {
-    const live = vscode.extensions.getExtension(SECONDANT_ID);
-    // The directory the editor is loading is the only reliable pointer to the extensions folder.
-    const extensionsDir = live ? path.dirname(live.extensionPath) : '';
-
     await vscode.commands.executeCommand('workbench.extensions.uninstallExtension', SECONDANT_ID);
-
-    const candidates = secondantDirectories(extensionsDir);
-    if (!extensionsDir || candidates.length === 0) {
-        console.log(
-            `[secondant] no version directory found under ${extensionsDir || '(unknown extensions folder)'}`
-        );
-    }
-
-    let removed = 0;
-    for (const dir of candidates) {
-        try {
-            fs.rmSync(dir, { recursive: true, force: true });
-            removed += 1;
-            console.log('[secondant] removed', dir);
-        } catch (err) {
-            console.error('[secondant] could not remove', dir, err);
-        }
-    }
-    forgetObsolete(extensionsDir, candidates.filter(dir => fs.existsSync(dir)));
     await refreshSecondantContext();
 
-    const suffix = removed ? ` (${removed} folder${removed === 1 ? '' : 's'} removed)` : '';
     const reload = 'Reload window';
     void vscode.window
-        .showInformationMessage(`Tommys Hermes Secondant uninstalled${suffix}.`, reload)
+        .showInformationMessage('Tommys Hermes Secondant uninstalled.', reload)
         .then(choice => {
             if (choice === reload) {
                 void vscode.commands.executeCommand('workbench.action.reloadWindow');

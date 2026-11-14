@@ -100,25 +100,6 @@ function registryFiles() {
     return files;
 }
 
-/** Folder path -> registry that lists it. The registry is a cache; the folder on disk is the truth. */
-function registeredFolders() {
-    const byPath = new Map();
-    for (const { file, label } of registryFiles()) {
-        try {
-            for (const entry of JSON.parse(readFileSync(file, 'utf8'))) {
-                const location = entry?.location;
-                const dir = typeof location === 'string' ? location : location?.path;
-                if (dir) {
-                    byPath.set(path.resolve(dir), `${label} v${entry.version ?? '?'}`);
-                }
-            }
-        } catch {
-            // A half-written registry is not a deploy failure: the folder itself still loads.
-        }
-    }
-    return byPath;
-}
-
 /**
  * Where installed extensions live. VSCodium defaults to ~/.vscode-oss, plain VS Code to
  * ~/.vscode, and a portable or re-homed install says so in VSCODE_EXTENSIONS.
@@ -210,29 +191,44 @@ function planFor(role) {
 
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 
+/** Every byte under a folder — how the editor measures an installed extension's size. */
+function folderSize(dir) {
+    let total = 0;
+    const measure = (current) => {
+        for (const entry of readdirSync(current)) {
+            const abs = path.join(current, entry);
+            if (statSync(abs).isDirectory()) measure(abs);
+            else total += statSync(abs).size;
+        }
+    };
+    measure(dir);
+    return total;
+}
+
 /**
- * Write a manifest without destroying the editor's install record.
+ * Write the manifest with a fresh install record.
  *
- * The editor stamps an installed copy's `package.json` with `__metadata` — `id`, `publisherId`,
- * `installedTimestamp`, `source`, `pinned`, `preRelease`, `updated`. Replacing the file wholesale
- * deletes that record, and then the editor can no longer identify the directory: it never consumes
- * a `.obsolete` mark that names it, never cleans up a stale version folder, and treats a perfectly
- * installed copy as something hand-dropped. Keep whatever the target already carries and rewrite
- * only the fields this repo owns.
+ * The editor writes `__metadata` — `installedTimestamp`, `targetPlatform`, `size` — when it
+ * extracts an extension, and `installedTimestamp` is what its cleanup pass filters on: a folder
+ * without it is never deleted, however it is marked in `.obsolete`. Deploy copies files instead of
+ * extracting, so it writes the same three fields itself: now, as the timestamp; the size of the
+ * finished copy; and `undefined` as the target platform, which is what a build that is not
+ * platform-specific declares. Called after the copy and the prune, so the size is the real one.
  */
-function copyManifest(from, to) {
-    const manifest = JSON.parse(readFileSync(from, 'utf8'));
-    let metadata;
+function writeManifest(target, role) {
+    const source = role === 'primary'
+        ? path.join(repo, 'package.json')
+        : path.join(repo, 'packaging', 'secondant', 'package.json');
+    const manifest = JSON.parse(readFileSync(source, 'utf8'));
+    // The editor merges into whatever the folder already carries: `__metadata = {...old, ...new}`.
+    let previous;
     try {
-        metadata = JSON.parse(readFileSync(to, 'utf8')).__metadata;
+        previous = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8')).__metadata;
     } catch {
-        metadata = undefined;
+        previous = undefined;
     }
-    if (metadata) {
-        manifest.__metadata = metadata;
-    }
-    writeFileSync(to, JSON.stringify(manifest, null, 2) + '\n');
-    return !!metadata;
+    manifest.__metadata = { ...previous, installedTimestamp: Date.now(), targetPlatform: 'undefined', size: folderSize(target) };
+    writeFileSync(path.join(target, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
 }
 
 /**
@@ -261,6 +257,59 @@ function pruneTarget(target, wanted, roots) {
     return pruned;
 }
 
+/**
+ * Register the installed copy the way an install does.
+ *
+ * The editor's `addExtensionsToProfile` re-reads the profile's `extensions.json`, drops entries of
+ * this extension that name another version, replaces or appends `{identifier, version, location,
+ * relativeLocation, metadata}` for this one, and writes the array back compact — `JSON.stringify`,
+ * two-space indent is not what it writes. `metadata.installedTimestamp` is the value written into
+ * the folder's manifest, because an install stamps both from one object. Nothing else is touched:
+ * every other entry in the file is carried over as it was read.
+ *
+ * An install writes the one profile it installs into. Deploy has no profile, so it writes each
+ * registry that already lists this extension — the folders are shared, the registries are not.
+ */
+function registerInstall(target) {
+    const manifest = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
+    const id = `${manifest.publisher}.${manifest.name}`.toLowerCase();
+    const version = manifest.version;
+    const folder = path.basename(target);
+    const written = [];
+
+    for (const { file, label } of registryFiles()) {
+        let entries;
+        try {
+            entries = JSON.parse(readFileSync(file, 'utf8'));
+        } catch {
+            continue;
+        }
+        if (!Array.isArray(entries)) continue;
+        const mine = entries.filter(entry => (entry.identifier?.id || '').toLowerCase() === id);
+        if (mine.length === 0) continue;
+
+        const kept = entries.filter(entry => (entry.identifier?.id || '').toLowerCase() !== id || entry.version === version);
+        const entry = {
+            identifier: { id },
+            version,
+            location: { $mid: 1, path: target, scheme: 'file' },
+            relativeLocation: folder,
+            metadata: {
+                installedTimestamp: manifest.__metadata.installedTimestamp,
+                ...(mine[0].metadata?.pinned !== undefined ? { pinned: mine[0].metadata.pinned } : {}),
+                source: 'vsix',
+            },
+        };
+        const index = kept.findIndex(item => (item.identifier?.id || '').toLowerCase() === id && item.version === version);
+        if (index === -1) kept.push(entry);
+        else kept.splice(index, 1, entry);
+
+        writeFileSync(file, JSON.stringify(kept));
+        written.push(label);
+    }
+    return written;
+}
+
 /** The manifest must name a file that exists, and the view the host registers. */
 function checkTarget(target, role) {
     const manifest = JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'));
@@ -271,7 +320,6 @@ function checkTarget(target, role) {
     const registersChat = readFileSync(path.join(target, 'out', 'host', 'activate.js'), 'utf8')
         .includes('registerWebviewViewProvider(id.chatViewId');
     const manifestMatches = viewIds.includes(identity.chatViewId);
-    const registered = registeredFolders().get(path.resolve(target));
     const entryMatches = entryFile === (role === 'primary' ? 'out/host/extension.js' : 'out/host/extensionSecondant.js');
 
     console.log(
@@ -283,14 +331,12 @@ function checkTarget(target, role) {
         console.error(`deploy: [${role}] manifest and host build disagree — this copy will not run`);
         return false;
     }
-    if (registered) {
-        console.log(`deploy: [${role}] listed by ${registered}`);
-    } else {
-        console.log(
-            `deploy: [${role}] no profile registry lists this folder yet — the editor adds it when it ` +
-                'next scans; the folder on disk is what loads'
-        );
-    }
+    const written = registerInstall(target);
+    console.log(
+        written.length
+            ? `deploy: [${role}] registered in ${written.join(', ')}`
+            : `deploy: [${role}] no registry lists this extension — nothing to update, the editor adds it when it scans`
+    );
     return true;
 }
 
@@ -299,9 +345,36 @@ const targets = [
     ...secondantDirs.map(dir => ({ role: 'secondant', dir, roots: ['out', 'media'] })),
 ];
 
+/**
+ * Profile names in this install, for the hint below.
+ *
+ * The CLI installs into the default profile unless `--profile` names another one, and the default
+ * profile is not where everyone works: the second install lands in a different registry file
+ * entirely. Reading the names from `storage.json` keeps the hint true on any machine.
+ */
+function profileNames() {
+    const home = homedir();
+    const userData = process.platform === 'darwin'
+        ? path.join(home, 'Library', 'Application Support', 'VSCodium')
+        : process.platform === 'win32'
+            ? path.join(process.env.APPDATA || '', 'VSCodium')
+            : path.join(home, '.config', 'VSCodium');
+    try {
+        const storage = JSON.parse(readFileSync(path.join(userData, 'User', 'globalStorage', 'storage.json'), 'utf8'));
+        return ['Default', ...(storage.userDataProfiles || []).map(p => p.name).filter(Boolean)];
+    } catch {
+        return ['Default'];
+    }
+}
+
 if (targets.length === 0) {
     console.error(`deploy: no installed copy found under ${extensionsDir}`);
-    console.error(`Install once first: codium --install-extension ./${pkg.name}-${pkg.version}.vsix --force`);
+    console.error('deploy: install it once, in the profile you work in:');
+    console.error('deploy:   Extensions view → "Install from VSIX…" in a window of that profile, or');
+    console.error(
+        `deploy:   codium --profile "<name>" --install-extension ${pkg.name}-${pkg.version}.vsix --force  ` +
+            `(profiles here: ${profileNames().join(', ')})`
+    );
     process.exit(1);
 }
 if (secondantDirs.length === 0) {
@@ -336,16 +409,14 @@ for (const { role, dir, roots } of targets) {
 
     let copied = 0;
     const mismatched = [];
-    let manifestsKept = 0;
+    let manifestPending = false;
     for (const [rel, from] of plan) {
         const to = path.join(dir, rel);
         if (!existsSync(from)) continue;
         mkdirSync(path.dirname(to), { recursive: true });
-        // The manifest is merged, never replaced: the target's `__metadata` is the editor's install
-        // record. Losing it leaves the extension running but untracked — see copyManifest.
+        // The manifest is written last: its install record carries the size of the finished copy.
         if (rel === 'package.json') {
-            if (copyManifest(from, to)) manifestsKept += 1;
-            copied += 1;
+            manifestPending = true;
             continue;
         }
         copyFileSync(from, to);
@@ -354,6 +425,10 @@ for (const { role, dir, roots } of targets) {
     }
 
     const pruned = pruneTarget(dir, wanted, roots);
+    if (manifestPending) {
+        writeManifest(dir, role);
+        copied += 1;
+    }
     console.log(
         `deploy: [${role}] verified ${copied}/${plan.size} files by sha256; ` +
             `pruned ${pruned.length} stale file(s)` +
@@ -361,11 +436,13 @@ for (const { role, dir, roots } of targets) {
                 ? ': ' + pruned.slice(0, 5).join(', ') + (pruned.length > 5 ? `, … ${pruned.length - 5} more` : '')
                 : '')
     );
-    console.log(
-        manifestsKept
-            ? `deploy: [${role}] manifest written, kept the editor's __metadata (${manifestsKept})`
-            : `deploy: [${role}] manifest written, no __metadata in the target — install this copy from its VSIX`
-    );
+    if (manifestPending) {
+        const written = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).__metadata;
+        console.log(
+            `deploy: [${role}] manifest written with a fresh install record — ` +
+                `installedTimestamp ${written.installedTimestamp}, size ${written.size}, targetPlatform ${written.targetPlatform}`
+        );
+    }
     if (mismatched.length) {
         console.error(`deploy: [${role}] these did not land byte-identical:\n  ` + mismatched.join('\n  '));
         failures += 1;
