@@ -92,6 +92,9 @@ try {
     mkdirSync(buildDir, { recursive: true });
     install();
 
+    // tsc never deletes the output of a file that moved or went away, so a stale .js would ship in the
+    // VSIX. Wipe first, the way deploy.mjs does: after the compile, out/ is exactly what src/ produces.
+    rmSync(join(repo, 'out'), { recursive: true, force: true });
     const compile = spawnSync(process.execPath, [localBin('typescript', 'bin', 'tsc'), '-p', './'], { cwd: repo, stdio: 'inherit' });
     if (compile.status !== 0) {
         throw new Error('compile failed; nothing packaged');

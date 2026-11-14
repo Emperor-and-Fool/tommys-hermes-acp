@@ -175,6 +175,39 @@ function folderVersion(dir) {
 }
 
 /**
+ * The folders a profile lists, keyed by absolute path, for one extension id.
+ *
+ * `registryFiles()` covers every profile in this install, and plain VS Code beside VSCodium. An entry
+ * counts when its id matches case-blind and its location — `location.path`, or `relativeLocation`
+ * resolved against the extensions folder — points at that folder. The version is kept with it: a
+ * profile can name a folder at a version that is not the one on disk.
+ */
+function listedFolders(id) {
+    const byPath = new Map();
+    for (const { file } of registryFiles()) {
+        let entries;
+        try {
+            entries = JSON.parse(readFileSync(file, 'utf8'));
+        } catch {
+            continue;
+        }
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+            if ((entry.identifier?.id || '').toLowerCase() !== id) continue;
+            const location = entry.location;
+            const absolute = typeof location === 'string' ? location : location?.path;
+            const resolved = absolute
+                ? path.resolve(absolute)
+                : entry.relativeLocation
+                    ? path.resolve(extensionsDir, entry.relativeLocation)
+                    : '';
+            if (resolved) byPath.set(resolved, String(entry.version || ''));
+        }
+    }
+    return byPath;
+}
+
+/**
  * The folders deploy may write into, and the ones it must leave alone.
  *
  * Deploy copies files; it cannot change what a folder is. A folder is only updated at the version it
@@ -184,18 +217,26 @@ function folderVersion(dir) {
  * applies is keyed on `<id>-<manifest.version>`: the next real install deletes that folder as
  * "existing" and extracts a new one, and upgrade and cleanup logic stop matching what is on disk.
  * A version change is an install — package, then install through the editor — not a deploy.
+ *
+ * A folder no profile lists is an orphan, and the editor owns those: at every start its watcher runs
+ * `deleteExtensionsNotInProfiles()`, marks them, and deletes them at the following start. Deploying
+ * into one is wasted work and hides that the extension is not installed anywhere.
  */
-function selectTargets(dirs, prefix, sourceVersion) {
+function selectTargets(dirs, prefix, sourceVersion, listed) {
     const qualifying = [];
     const skipped = [];
     for (const dir of dirs) {
         const nameVersion = path.basename(dir).slice(prefix.length);
         const installedVersion = folderVersion(dir);
-        if (nameVersion === sourceVersion && installedVersion === sourceVersion) {
-            qualifying.push(dir);
-        } else {
+        if (nameVersion !== sourceVersion || installedVersion !== sourceVersion) {
             skipped.push({ dir, nameVersion, installedVersion: installedVersion || '(unreadable manifest)' });
+            continue;
         }
+        if (listed.get(path.resolve(dir)) !== sourceVersion) {
+            skipped.push({ dir, orphan: true });
+            continue;
+        }
+        qualifying.push(dir);
     }
     return { qualifying, skipped };
 }
@@ -375,12 +416,10 @@ function checkTarget(target, role) {
         console.error(`deploy: [${role}] manifest and host build disagree — this copy will not run`);
         return false;
     }
+    // At least one profile lists this folder — otherwise it would not have been a target — so this is
+    // always a write, never a no-op.
     const written = registerInstall(target);
-    console.log(
-        written.length
-            ? `deploy: [${role}] registered in ${written.join(', ')}`
-            : `deploy: [${role}] no registry lists this extension — nothing to update, the editor adds it when it scans`
-    );
+    console.log(`deploy: [${role}] registered in ${written.join(', ')}`);
     return true;
 }
 
@@ -418,9 +457,12 @@ if (secondantDirs.length === 0) {
 }
 
 /** The install hint, for every path where deploy cannot proceed. */
-function printInstallHint(vsix) {
+function printInstallHint(vsix, alternative) {
     console.error('deploy: install it once, in the profile you work in:');
     console.error('deploy:   Extensions view → "Install from VSIX…" in a window of that profile, or');
+    if (alternative) {
+        console.error(`deploy:   ${alternative}, or`);
+    }
     console.error(
         `deploy:   ${installCli()} --profile "<name>" --install-extension ${vsix} --force  ` +
             `(profiles here: ${profileNames().join(', ')})`
@@ -430,6 +472,7 @@ function printInstallHint(vsix) {
 const roles = [
     {
         role: 'primary',
+        id: `${pkg.publisher}.${pkg.name}`.toLowerCase(),
         dirs: primaryDirs,
         prefix: primaryPrefix,
         sourceVersion: pkg.version,
@@ -437,19 +480,26 @@ const roles = [
     },
     {
         role: 'secondant',
+        id: `${secondantPkg.publisher}.${secondantPkg.name}`.toLowerCase(),
         dirs: secondantDirs,
         prefix: secondantPrefix,
         sourceVersion: secondantPkg.version,
-        vsix: 'secondant/tommys-hermes-secondant.vsix (or the primary\'s "Install secondant" menu)',
+        vsix: 'secondant/tommys-hermes-secondant.vsix',
+        alternative: 'use the primary\'s "Install secondant" menu',
     },
 ];
 
 const selected = [];
 let refused = 0;
 for (const spec of roles) {
-    const { qualifying, skipped } = selectTargets(spec.dirs, spec.prefix, spec.sourceVersion);
+    const { qualifying, skipped } = selectTargets(spec.dirs, spec.prefix, spec.sourceVersion, listedFolders(spec.id));
     for (const item of skipped) {
-        if (qualifying.length > 0) {
+        if (item.orphan) {
+            console.log(
+                `deploy: [${spec.role}] skipping ${path.basename(item.dir)}: no profile lists it; the editor ` +
+                    'removes it at its next start. Install the VSIX in your profile if you meant to keep it.'
+            );
+        } else if (qualifying.length > 0) {
             console.log(
                 `deploy: [${spec.role}] skipping ${path.basename(item.dir)} — its name says ${item.nameVersion}, ` +
                     `its manifest says ${item.installedVersion}; repo is ${spec.sourceVersion}`
@@ -464,7 +514,7 @@ for (const spec of roles) {
     if (qualifying.length === 0) {
         if (spec.dirs.length > 0) {
             refused += 1;
-            printInstallHint(spec.vsix);
+            printInstallHint(spec.vsix, spec.alternative);
         }
         continue;
     }
