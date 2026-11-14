@@ -157,8 +157,11 @@ for (const name of obsolete) {
         console.log(`deploy: skipping ${name} — queued for deletion by the editor (.obsolete)`);
     }
 }
+// The secondant's identity and version come from its own manifest: rename it there and both the
+// folders this scans for and the VSIX the refusal hint names follow.
+const secondantPkg = JSON.parse(readFileSync(path.join(repo, 'packaging', 'secondant', 'package.json'), 'utf8'));
 const primaryPrefix = `${publisher}.${pkg.name}-`;
-const secondantPrefix = `${publisher}.tommys-hermes-secondant-`;
+const secondantPrefix = `${secondantPkg.publisher.toLowerCase()}.${secondantPkg.name}-`;
 const primaryDirs = installed(primaryPrefix);
 const secondantDirs = installed(secondantPrefix);
 
@@ -424,8 +427,6 @@ function printInstallHint(vsix) {
     );
 }
 
-// The version each role would write, from that role's own manifest — never from the repo root.
-const secondantVersion = JSON.parse(readFileSync(path.join(repo, 'packaging', 'secondant', 'package.json'), 'utf8')).version;
 const roles = [
     {
         role: 'primary',
@@ -438,7 +439,7 @@ const roles = [
         role: 'secondant',
         dirs: secondantDirs,
         prefix: secondantPrefix,
-        sourceVersion: secondantVersion,
+        sourceVersion: secondantPkg.version,
         vsix: 'secondant/tommys-hermes-secondant.vsix (or the primary\'s "Install secondant" menu)',
     },
 ];
