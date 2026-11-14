@@ -1,5 +1,32 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+
+/**
+ * Where the extension keeps its data.
+ *
+ * Deliberately not `context.globalStorageUri`: that folder lives inside the editor's user-data
+ * directory, so uninstalling the extension, resetting a profile or starting a fresh editor version
+ * can take the sessions, projects and attachments with it. Each platform gets the user's own
+ * location for application data, and the extension id keeps the primary and the secondant apart:
+ *
+ *   Windows  %LOCALAPPDATA% (not Roaming: this state belongs to the machine)
+ *   macOS    ~/Library/Application Support
+ *   Linux    $XDG_DATA_HOME when it is absolute, else ~/.local/share
+ */
+export function dataHomeFor(extensionId: string): string {
+    const home = os.homedir();
+    const xdg = (process.env.XDG_DATA_HOME || '').trim();
+    let base: string;
+    if (process.platform === 'win32') {
+        base = (process.env.LOCALAPPDATA || '').trim() || path.join(home, 'AppData', 'Local');
+    } else if (process.platform === 'darwin') {
+        base = path.join(home, 'Library', 'Application Support');
+    } else {
+        base = path.isAbsolute(xdg) ? xdg : path.join(home, '.local', 'share');
+    }
+    return path.join(base, extensionId.toLowerCase());
+}
 
 export interface ProfileState {
     modelId?: string;

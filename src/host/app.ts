@@ -7,7 +7,7 @@ import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { migrateLegacySessionStorage, profileDir } from './cache/profileStorage';
+import { dataHomeFor, migrateLegacySessionStorage, profileDir } from './cache/profileStorage';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
@@ -270,7 +270,7 @@ export class App implements vscode.WebviewViewProvider {
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
             'hermes-chat'
         );
-        const storagePath = context.globalStorageUri.fsPath;
+        const storagePath = dataHomeFor(this._extensionId);
         fs.mkdirSync(storagePath, { recursive: true });
         this._historyDir = storagePath;
         this._attachments = new AttachmentStore(this._historyDir);
