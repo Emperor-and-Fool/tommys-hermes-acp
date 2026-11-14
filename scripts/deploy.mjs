@@ -157,8 +157,45 @@ for (const name of obsolete) {
         console.log(`deploy: skipping ${name} — queued for deletion by the editor (.obsolete)`);
     }
 }
-const primaryDirs = installed(`${publisher}.${pkg.name}-`);
-const secondantDirs = installed(`${publisher}.tommys-hermes-secondant-`);
+const primaryPrefix = `${publisher}.${pkg.name}-`;
+const secondantPrefix = `${publisher}.tommys-hermes-secondant-`;
+const primaryDirs = installed(primaryPrefix);
+const secondantDirs = installed(secondantPrefix);
+
+/** The version an installed folder claims, read from that folder's own manifest. */
+function folderVersion(dir) {
+    try {
+        return String(JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).version || '');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * The folders deploy may write into, and the ones it must leave alone.
+ *
+ * Deploy copies files; it cannot change what a folder is. A folder is only updated at the version it
+ * already holds, so both the version in its name and the version in its installed manifest have to
+ * equal the version the repo would write. Otherwise the folder name, the manifest inside it and the
+ * registry entry (which deploy stamps with the repo version) disagree, and every rule the editor
+ * applies is keyed on `<id>-<manifest.version>`: the next real install deletes that folder as
+ * "existing" and extracts a new one, and upgrade and cleanup logic stop matching what is on disk.
+ * A version change is an install — package, then install through the editor — not a deploy.
+ */
+function selectTargets(dirs, prefix, sourceVersion) {
+    const qualifying = [];
+    const skipped = [];
+    for (const dir of dirs) {
+        const nameVersion = path.basename(dir).slice(prefix.length);
+        const installedVersion = folderVersion(dir);
+        if (nameVersion === sourceVersion && installedVersion === sourceVersion) {
+            qualifying.push(dir);
+        } else {
+            skipped.push({ dir, nameVersion, installedVersion: installedVersion || '(unreadable manifest)' });
+        }
+    }
+    return { qualifying, skipped };
+}
 
 const { PRIMARY } = require(path.join(repo, 'out', 'shared', 'extensionId.js'));
 
@@ -344,11 +381,6 @@ function checkTarget(target, role) {
     return true;
 }
 
-const targets = [
-    ...primaryDirs.map(dir => ({ role: 'primary', dir, roots: ['out', 'media', 'secondant'] })),
-    ...secondantDirs.map(dir => ({ role: 'secondant', dir, roots: ['out', 'media'] })),
-];
-
 /**
  * Profile names in this install, for the hint below.
  *
@@ -378,18 +410,81 @@ function installCli() {
     return path.basename(path.dirname(extensionsDir)) === '.vscode' ? 'code' : 'codium';
 }
 
-if (targets.length === 0) {
-    console.error(`deploy: no installed copy found under ${extensionsDir}`);
+if (secondantDirs.length === 0) {
+    console.log('deploy: secondant not installed (scanned the extensions folder); only the primary will be updated');
+}
+
+/** The install hint, for every path where deploy cannot proceed. */
+function printInstallHint(vsix) {
     console.error('deploy: install it once, in the profile you work in:');
     console.error('deploy:   Extensions view → "Install from VSIX…" in a window of that profile, or');
     console.error(
-        `deploy:   ${installCli()} --profile "<name>" --install-extension dist/${pkg.name}-${pkg.version}.vsix --force  ` +
+        `deploy:   ${installCli()} --profile "<name>" --install-extension ${vsix} --force  ` +
             `(profiles here: ${profileNames().join(', ')})`
     );
+}
+
+// The version each role would write, from that role's own manifest — never from the repo root.
+const secondantVersion = JSON.parse(readFileSync(path.join(repo, 'packaging', 'secondant', 'package.json'), 'utf8')).version;
+const roles = [
+    {
+        role: 'primary',
+        dirs: primaryDirs,
+        prefix: primaryPrefix,
+        sourceVersion: pkg.version,
+        vsix: `dist/${pkg.name}-${pkg.version}.vsix`,
+    },
+    {
+        role: 'secondant',
+        dirs: secondantDirs,
+        prefix: secondantPrefix,
+        sourceVersion: secondantVersion,
+        vsix: 'secondant/tommys-hermes-secondant.vsix (or the primary\'s "Install secondant" menu)',
+    },
+];
+
+const selected = [];
+let refused = 0;
+for (const spec of roles) {
+    const { qualifying, skipped } = selectTargets(spec.dirs, spec.prefix, spec.sourceVersion);
+    for (const item of skipped) {
+        if (qualifying.length > 0) {
+            console.log(
+                `deploy: [${spec.role}] skipping ${path.basename(item.dir)} — its name says ${item.nameVersion}, ` +
+                    `its manifest says ${item.installedVersion}; repo is ${spec.sourceVersion}`
+            );
+        } else {
+            console.error(
+                `deploy: [${spec.role}] ${path.basename(item.dir)} is ${item.installedVersion}, repo is ` +
+                    `${spec.sourceVersion}: a version change is an install, not a deploy.`
+            );
+        }
+    }
+    if (qualifying.length === 0) {
+        if (spec.dirs.length > 0) {
+            refused += 1;
+            printInstallHint(spec.vsix);
+        }
+        continue;
+    }
+    for (const dir of qualifying) {
+        selected.push({ role: spec.role, dir });
+    }
+}
+if (refused > 0) {
     process.exit(1);
 }
-if (secondantDirs.length === 0) {
-    console.log('deploy: secondant not installed (scanned the extensions folder); only the primary will be updated');
+
+const targets = selected.map(({ role, dir }) => ({
+    role,
+    dir,
+    roots: role === 'primary' ? ['out', 'media', 'secondant'] : ['out', 'media'],
+}));
+
+if (targets.length === 0) {
+    console.error(`deploy: no installed copy found under ${extensionsDir}`);
+    printInstallHint(`dist/${pkg.name}-${pkg.version}.vsix`);
+    process.exit(1);
 }
 
 let failures = 0;
