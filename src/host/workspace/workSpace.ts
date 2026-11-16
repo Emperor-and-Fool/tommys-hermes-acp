@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project, Workspace } from '../../shared/chat';
+import { writeAtomic } from '../store/connection';
 
 /**
  * The workspace: which one this window is, and the list of the ones this editor has opened.
@@ -192,25 +193,6 @@ export class WorkspaceStore {
             }
         } catch { /* no file, or nothing readable: there is nothing to carry */ }
         writeAtomic(this.path, carried ? { ...file, projects: carried } : file);
-    }
-}
-
-/**
- * Write JSON through a temp file and a rename, so a failed write cannot truncate the target.
- *
- * `writeFileSync` straight onto the target leaves a truncated file if the write dies halfway, and
- * these files hold the only copy of what he made. A rename is the filesystem's one atomic step:
- * the target is the old file or the new one, never a half of either.
- */
-export function writeAtomic(target: string, value: unknown): void {
-    const temp = target + '.tmp';
-    try {
-        fs.writeFileSync(temp, JSON.stringify(value, null, 2));
-        fs.renameSync(temp, target);
-    } catch {
-        try {
-            fs.rmSync(temp, { force: true });
-        } catch { /* the next write overwrites it */ }
     }
 }
 

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { activeSessionPathFor, sessionsPathFor } from './profileStorage';
+import { writeAtomic } from '../store/connection';
 import type { SessionInfo } from '../../shared/chat';
 
 /** The catalog keeps the most recent 50 sessions. Transcripts are Hermes' business now. */
@@ -57,7 +58,7 @@ export class SessionStore {
     /** Returns whether the write happened, for a caller that does more on success. */
     writeCatalog(records: SessionInfo[]): boolean {
         try {
-            fs.writeFileSync(this.catalogPath, JSON.stringify(records.slice(0, CATALOG_LIMIT), null, 2));
+            writeAtomic(this.catalogPath, records.slice(0, CATALOG_LIMIT));
             return true;
         } catch {
             return false;

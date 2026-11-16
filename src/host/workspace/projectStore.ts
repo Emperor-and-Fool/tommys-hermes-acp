@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Project } from '../../shared/chat';
 import { profileDir } from '../cache/profileStorage';
-import { mintId, writeAtomic, WorkspaceStore } from './workSpace';
+import { writeAtomic } from '../store/connection';
+import { mintId, WorkspaceStore } from './workSpace';
 
 /**
  * THE SHAPE THIS FILE IS WRITTEN FOR, so a move to SQLite is a schema, not a rewrite.

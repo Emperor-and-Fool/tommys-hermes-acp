@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Project, SessionInfo } from '../../shared/chat';
 import { profileDir } from '../cache/profileStorage';
-import { writeAtomic } from './workSpace';
+import { writeAtomic } from '../store/connection';
 
 /** One tab, as the tree file shows it: enough to name a session and find its way back. */
 export interface TreeTab {
