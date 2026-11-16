@@ -294,6 +294,9 @@ export class App implements vscode.WebviewViewProvider {
             openWorkspace: (path) => {
                 void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
             },
+            currentWorkspacePath: () => this._workspacePathFromEditor(),
+            onDidChangeWorkspaceFolders: (handler) =>
+                vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
         });
         this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
             post: (msg) => this._postMessage(msg),
@@ -403,6 +406,25 @@ export class App implements vscode.WebviewViewProvider {
 
 
 
+
+    /**
+     * Which window this is, as one path: a saved workspace file, else the first root folder.
+     *
+     * VS Code is the authority for that, so the answer is produced here and handed to the
+     * workspace feature as part of its port; the feature itself never imports `vscode` (F6).
+     * Empty means a window with no folder and no workspace file: a place of its own.
+     */
+    private _workspacePathFromEditor(): string {
+        const file = vscode.workspace.workspaceFile;
+        if (file && file.scheme === 'file') {
+            return file.fsPath;
+        }
+        const folders = vscode.workspace.workspaceFolders;
+        if (folders && folders.length > 0) {
+            return folders[0].uri.fsPath;
+        }
+        return '';
+    }
 
     private _isViewingPromptSession(): boolean {
         return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;

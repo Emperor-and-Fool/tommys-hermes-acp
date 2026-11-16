@@ -1,7 +1,7 @@
-import type * as vscode from 'vscode';
 import type { HostToPane } from '../../shared/webview';
 import type { Project, SessionInfo } from '../../shared/chat';
 import { moveTabToWorkspace, workspaceOwnsCwd, WorkspaceIdentity } from './workSpace';
+import type { WorkspaceSubscription } from './workSpace';
 import { ProjectStore, WorkspaceStore } from './store';
 
 /**
@@ -26,6 +26,10 @@ export interface ProjectsHost {
     activeTabId(): string;
     /** Open another workspace in this window. A reload, and the only way to follow a tab. */
     openWorkspace(workspacePath: string): void;
+    /** Which window this is: the editor answers, and the feature never asks it directly (F6). */
+    currentWorkspacePath(): string;
+    /** Told when the window's folders change. */
+    onDidChangeWorkspaceFolders(handler: () => void): WorkspaceSubscription;
 }
 
 /** What the router reaches: one member on `RouterHost`, not five. */
@@ -128,6 +132,8 @@ export class Projects {
                 this._store.register(value);
                 this.postList();
             },
+            currentPath: () => this._host.currentWorkspacePath(),
+            onDidChangeFolders: handler => this._host.onDidChangeWorkspaceFolders(handler),
         });
         this.commands = {
             createProject: name => this._createProject(name),
@@ -150,7 +156,7 @@ export class Projects {
      * Nothing is posted here: at activation no webview surface exists yet, so it belongs in the
      * pane's ready replay (`_onWebviewReady`).
      */
-    start(): vscode.Disposable {
+    start(): WorkspaceSubscription {
         return this._identity.start();
     }
 
