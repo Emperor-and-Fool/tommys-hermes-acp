@@ -216,7 +216,7 @@ export class Sessions {
     }
 
     /**
-     * One write point for the session catalog: the same 50-record snapshot was assembled in
+     * One write point for the session catalog: the same snapshot was assembled in
      * eleven places, and the store that owns this file needs a single seam to cut along.
      * Returns whether the write happened, for the one caller that does more on success.
      */

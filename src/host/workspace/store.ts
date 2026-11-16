@@ -291,16 +291,13 @@ export class ProjectStore {
     }
 }
 
-/** The catalog keeps the most recent 50 sessions. Transcripts are Hermes' business now. */
-export const CATALOG_LIMIT = 50;
-
 /**
  * Everything the extension keeps on disk about sessions: an index of which tab belongs to which
  * Hermes session, and which session was last active. Transcripts are Hermes'.
  *
  * This class reads and writes files and does nothing else. It holds no session state, knows
- * nothing about the webview, and never decides what to keep — the caps are the caller's
- * contract, spelled out in the constants above.
+ * nothing about the webview, and keeps no cap of its own: what it is handed is what it writes.
+ * A tab the user stopped using leaves the catalog when the caller drops it, not at a count.
  */
 export class TabStore {
     constructor(private _historyDir: string, private _scopeKey: string) {}
@@ -346,7 +343,7 @@ export class TabStore {
     /** Returns whether the write happened, for a caller that does more on success. */
     writeCatalog(records: SessionInfo[]): boolean {
         try {
-            writeAtomic(this.catalogPath, records.slice(0, CATALOG_LIMIT));
+            writeAtomic(this.catalogPath, records);
             return true;
         } catch {
             return false;

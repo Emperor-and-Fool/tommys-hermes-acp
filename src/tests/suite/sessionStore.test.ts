@@ -3,7 +3,7 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CATALOG_LIMIT, TabStore } from '../../host/workspace/store';
+import { TabStore } from '../../host/workspace/store';
 import type { SessionInfo } from '../../shared/chat';
 
 const row = (id: string): SessionInfo => ({
@@ -31,9 +31,11 @@ describe('session store: the catalog', () => {
         assert.deepStrictEqual(store.readCatalog().map(entry => entry.id), ['a', 'b']);
     });
 
-    it('caps the catalog', () => {
-        store.writeCatalog(Array.from({ length: CATALOG_LIMIT + 10 }, (_, index) => row(`s${index}`)));
-        assert.strictEqual(store.readCatalog().length, CATALOG_LIMIT);
+    it('keeps every tab, with no cap', () => {
+        const many = Array.from({ length: 500 }, (_, index) => row(`s${index}`));
+        store.writeCatalog(many);
+        assert.deepStrictEqual(store.readCatalog().map(entry => entry.id), many.map(entry => entry.id),
+            'nothing is dropped: the catalog is as long as the list it was given');
     });
 
     it('round-trips the active id', () => {
