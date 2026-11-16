@@ -9,7 +9,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { buildTreeSnapshot, TreeCache, treePathsFor } from '../../host/workspace/treeCache';
+import { buildTreeSnapshot } from '../../host/workspace/workSpace';
+import { TreeStore, treePathsFor } from '../../host/workspace/store';
 
 function tmp(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'treecache-'));
@@ -35,10 +36,10 @@ function input(workspaceId: string, over: Record<string, unknown> = {}) {
     };
 }
 
-/** A cache whose inputs are whatever the test last set: the same shape App wires. */
+/** A store whose inputs are whatever the test last set: the same shape App wires. */
 function cacheOn(dir: string, log: (line: string) => void = () => undefined) {
     const holder: { current: any } = { current: input('w1') };
-    const cache = new TreeCache(dir, log, () => holder.current);
+    const cache = new TreeStore(dir, log, () => holder.current);
     return { cache, holder };
 }
 

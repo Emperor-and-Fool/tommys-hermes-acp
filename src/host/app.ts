@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
 import { ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
-import { TreeCache } from './workspace/treeCache';
+import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
@@ -105,7 +105,7 @@ export class App implements vscode.WebviewViewProvider {
     private _attachments: AttachmentStore;
     /** The project group: workspaces, the projects named against them, and tab membership. */
     private _projects: Projects;
-    private _trees?: TreeCache;
+    private _trees?: TreeStore;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -306,7 +306,7 @@ export class App implements vscode.WebviewViewProvider {
         }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
-        this._trees = new TreeCache(this._historyDir, line => this._log(line), () => ({
+        this._trees = new TreeStore(this._historyDir, line => this._log(line), () => ({
             profile: this._projects.scopeKey,
             workspacePath: this._projects.current(),
             workspaceId: this._projects.currentId(),

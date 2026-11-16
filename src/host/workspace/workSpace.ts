@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import * as vscode from 'vscode';
-import type { SessionInfo } from '../../shared/chat';
+import type { Project, SessionInfo } from '../../shared/chat';
 
 /**
  * The workspace: which one this window is.
@@ -79,6 +79,103 @@ export function workspaceOwnsCwd(workspace: string, cwd: string | undefined): bo
         : workspace;
     const trimmed = cwd.replace(/[\\/]+$/, '');
     return trimmed === root || trimmed.startsWith(root + '/') || trimmed.startsWith(root + '\\');
+}
+
+/**
+ * The tree: this window's workspace seen whole — the projects, their tabs in order, the plane
+ * underneath and the active session named.
+ *
+ * Built here, written by `TreeStore` in `store.ts`: the shape is a workspace fact and stays pure,
+ * so it can be tested without a file, and only the store touches the data home (ST1).
+ */
+
+/** One tab, as the tree file shows it: enough to name a session and find its way back. */
+export interface TreeTab {
+    id: string;
+    title: string;
+    hermesSessionId?: string;
+    sticky: boolean;
+    cwd?: string;
+    updatedAt: number;
+}
+
+export interface TreeProject {
+    id: string;
+    name: string;
+    tabs: TreeTab[];
+}
+
+export interface TreeSnapshot {
+    generatedAt: string;
+    profile: string;
+    workspace: { id: string; path: string };
+    activeSessionId: string;
+    projects: TreeProject[];
+    /** Tabs that belong to no project of this workspace: the plane. */
+    plane: TreeTab[];
+}
+
+export interface TreeInput {
+    /** The profile scope key: these files are per profile, beside that profile's tabs. */
+    profile: string;
+    workspacePath: string;
+    workspaceId: string;
+    activeSessionId: string;
+    /** This window's projects, in the order the pane shows them. */
+    projects: Project[];
+    /** This window's tabs: already filtered to this workspace. */
+    tabs: SessionInfo[];
+    now?: number;
+}
+
+/** The snapshot itself. Pure, so the shape can be tested without a workspace or a file. */
+export function buildTreeSnapshot(input: TreeInput): TreeSnapshot {
+    const row = (tab: SessionInfo): TreeTab => ({
+        id: tab.id,
+        title: tab.title,
+        ...(tab.hermesSessionId ? { hermesSessionId: tab.hermesSessionId } : {}),
+        sticky: tab.sticky === true,
+        ...(tab.cwd ? { cwd: tab.cwd } : {}),
+        updatedAt: tab.updatedAt || 0,
+    });
+    const owned = input.projects.map(project => project.id);
+    return {
+        generatedAt: new Date(input.now === undefined ? Date.now() : input.now).toISOString(),
+        profile: input.profile,
+        workspace: { id: input.workspaceId, path: input.workspacePath },
+        activeSessionId: input.activeSessionId,
+        projects: input.projects.map(project => ({
+            id: project.id,
+            name: project.name,
+            tabs: input.tabs.filter(tab => tab.project === project.id).map(row),
+        })),
+        // A tab naming a project that is not in this workspace's list is drawn on the plane, which
+        // is where the pane draws it too: one rule, two readers.
+        plane: input.tabs.filter(tab => !tab.project || owned.indexOf(tab.project) < 0).map(row),
+    };
+}
+
+/** The two files: `current` is where the window is, `passive` where it was. */
+export interface TreePaths {
+    current: string;
+    passive: string;
+}
+
+/**
+ * The block that names the two files, for the first turn of a session in a workspace.
+ *
+ * It rides in front of the user's own text as a separate prompt block, so the transcript shows
+ * only what the user typed. Pure: the store that owns the files hands it the paths.
+ */
+export function treeNoticeBlock(paths: TreePaths): string {
+    return [
+        '<workspace-tree>',
+        'The editor extension keeps this window\'s session tree on disk. Read it before asking which',
+        'session lives where, and to see the projects, their tabs and the active session:',
+        `current (this workspace): ${paths.current}`,
+        `previous workspace: ${paths.passive}`,
+        '</workspace-tree>',
+    ].join('\n');
 }
 
 /** What the identity needs from the extension: a log line, and where a new value is recorded. */

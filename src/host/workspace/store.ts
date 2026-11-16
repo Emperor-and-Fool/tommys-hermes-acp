@@ -3,7 +3,8 @@ import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor } from '../cache/profileStorage';
 import { writeAtomic, writeAtomicText } from '../store/connection';
-import { mintId, workspaceIdFor } from './workSpace';
+import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
+import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './workSpace';
 
 /**
  * The workspace feature's one door to its data: workspaces, the projects named against them, and
@@ -367,4 +368,103 @@ export class TabStore {
             return false;
         }
     }
+}
+
+/** Where the two tree files live: beside the profile's tabs. */
+export function treePathsFor(historyDir: string, scopeKey: string): TreePaths {
+    const dir = profileDir(historyDir, scopeKey);
+    return {
+        current: path.join(dir, 'tree-current.json'),
+        passive: path.join(dir, 'tree-passive.json'),
+    };
+}
+
+/**
+ * Writes the two tree files. Called after every change that can move a tab or a project.
+ *
+ * The tree is built in `workSpace.ts`; this is the half that knows the data home, so a refresh is
+ * temp-file-and-rename like every other write of ours (ST1). It also remembers which sessions were
+ * told the files exist, because that is a fact about what was written, not about the tree.
+ */
+export class TreeStore {
+    /** Sessions already told which files hold their tree, per session and workspace. */
+    private readonly _announced = new Set<string>();
+
+    /**
+     * @param _input What to write, read at the moment of the write — the tree is assembled from
+     * three owners (identity, projects, tabs) and this is the one place that asks all of them.
+     */
+    constructor(
+        private readonly _historyDir: string,
+        private readonly _log: (line: string) => void,
+        private readonly _input: () => TreeInput,
+    ) {}
+
+    /**
+     * The block that names the two files, once per session and workspace.
+     *
+     * A reload empties the set, a session switch or a workspace switch changes the key, so each of
+     * those is told again. Nothing to point at means no block — and no introduction burned.
+     */
+    noticeBlock(scopeKey: string, workspaceId: string, sessionId: string): string {
+        if (!scopeKey || !workspaceId || !sessionId) {
+            return '';
+        }
+        const key = `${sessionId}|${workspaceId}`;
+        if (this._announced.has(key)) {
+            return '';
+        }
+        this._announced.add(key);
+        return treeNoticeBlock(treePathsFor(this._historyDir, scopeKey));
+    }
+
+    /**
+     * Refresh `current`, and rotate the old one into `passive` when the window changed workspace.
+     *
+     * No profile or no workspace means there is nothing to name a tree after; say so rather than
+     * writing a file that claims an empty workspace. A tree that has not changed is not rewritten:
+     * a catalog refresh fires this often, and a file that keeps its bytes keeps its mtime.
+     */
+    refresh(): void {
+        const input = this._input();
+        if (!input.profile) {
+            this._log('Tree cache: no profile bound, nothing written');
+            return;
+        }
+        if (!input.workspaceId) {
+            this._log('Tree cache: this window has no workspace, nothing written');
+            return;
+        }
+        const paths = treePathsFor(this._historyDir, input.profile);
+        const snapshot = buildTreeSnapshot(input);
+        const previous = this._previous(paths.current);
+        const before = previous && previous.workspace ? previous.workspace.id : '';
+        if (before && before !== input.workspaceId) {
+            // The window moved: what it had in the other workspace is the reference from here on.
+            try {
+                fs.copyFileSync(paths.current, paths.passive);
+                this._log(`Tree cache: ${before} -> passive, ${input.workspaceId} -> current`);
+            } catch (error) {
+                this._log(`Tree cache: could not keep the previous tree: ${String(error)}`);
+            }
+        } else if (previous && sameTree(previous, snapshot)) {
+            return;
+        }
+        writeAtomic(paths.current, snapshot);
+    }
+
+    private _previous(file: string): TreeSnapshot | undefined {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(file, 'utf-8')) as TreeSnapshot;
+            return parsed && parsed.workspace ? parsed : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+}
+
+/** Same tree, ignoring when it was written: the only field that changes on every refresh. */
+function sameTree(a: TreeSnapshot, b: TreeSnapshot): boolean {
+    const strip = (value: TreeSnapshot) => JSON.stringify({ ...value, generatedAt: '' });
+    return strip(a) === strip(b);
 }
