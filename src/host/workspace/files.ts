@@ -196,24 +196,4 @@ export class WorkspaceFiles {
         });
     }
 
-    /** ACP's fs/read_text_file: the agent asks this side to read, so the pane applies its own rules. */
-    async readTextFile(p: string): Promise<string> {
-        this._host.log(`fs.readTextFile: ${p}`);
-        if (!this.isPathAllowed(p)) {
-            throw new Error(`Access denied: '${p}' is outside workspace folders`);
-        }
-        const uri = vscode.Uri.file(p);
-        const bytes = await vscode.workspace.fs.readFile(uri);
-        return new TextDecoder().decode(bytes);
-    }
-
-    /** ACP's fs/write_text_file: same rule as the read side. */
-    async writeTextFile(p: string, content: string): Promise<void> {
-        this._host.log(`fs.writeTextFile: ${p} (${content.length} chars)`);
-        if (!this.isPathAllowed(p)) {
-            throw new Error(`Access denied: '${p}' is outside workspace folders`);
-        }
-        const uri = vscode.Uri.file(p);
-        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
-    }
 }

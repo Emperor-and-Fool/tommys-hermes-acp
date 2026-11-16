@@ -270,10 +270,6 @@ export class Connection {
                 });
                 void this.reconnectAfterLoss();
             },
-            {
-                readTextFile: (p: string) => this._host.files.readTextFile(p),
-                writeTextFile: (p: string, content: string) => this._host.files.writeTextFile(p, content),
-            },
             (cmd: string, args: string[], cwd: string) => {
                 // Showing a command must not run it. This callback used to open a VS Code
                 // terminal and `sendText()` the same command the ACP terminal had already

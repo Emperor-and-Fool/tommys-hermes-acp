@@ -23,7 +23,6 @@ import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
-import { sliceTextByLines } from './fsRead';
 import { shouldReportReplay } from './replayProgress';
 import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
@@ -55,10 +54,6 @@ export interface PermissionRequest {
 /** Resolves with the selected optionId, or null when cancelled. */
 export type PermissionHandler = (request: PermissionRequest) => Promise<string | null>;
 export type ConnectionLostHandler = () => void;
-export type FileSystemHandler = {
-    readTextFile: (path: string) => Promise<string>;
-    writeTextFile: (path: string, content: string) => Promise<void>;
-};
 export type TerminalHandler = (command: string, args: string[], cwd: string) => void;
 export type LogHandler = (text: string) => void;
 export type TokenUsage = { used: number; size: number };
@@ -222,7 +217,6 @@ export class AcpClient {
     private _onStatus: StatusHandler;
     private _onPermission: PermissionHandler;
     private _onConnectionLost: ConnectionLostHandler;
-    private _onFileSystem: FileSystemHandler;
     private _onTerminal: TerminalHandler;
     private _onLog: LogHandler;
     private _onSteerNotice: SteerNoticeHandler = () => {};
@@ -278,7 +272,6 @@ export class AcpClient {
         /** Required: a client with no answer must not invent one. */
         onPermission: PermissionHandler,
         onConnectionLost?: ConnectionLostHandler,
-        onFileSystem?: FileSystemHandler,
         onTerminal?: TerminalHandler,
         onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler,
@@ -290,7 +283,6 @@ export class AcpClient {
         this._onStatus = onStatus;
         this._onPermission = onPermission;
         this._onConnectionLost = onConnectionLost || (() => {});
-        this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
         this._onTerminal = onTerminal || (() => {});
         this._onLog = () => {};
         this._onUsage = onUsage || (() => {});
@@ -489,17 +481,6 @@ export class AcpClient {
                 this._handleSessionUpdate(params);
             });
 
-            // Register fs capability handlers
-            this._app.onRequest(methods.client.fs.readTextFile as any, async ({ params }: any) => {
-                const content = await this._onFileSystem.readTextFile(params.path);
-                return { content: sliceTextByLines(content, params.line, params.limit) };
-            });
-
-            this._app.onRequest(methods.client.fs.writeTextFile as any, async ({ params }: any) => {
-                await this._onFileSystem.writeTextFile(params.path, params.content);
-                return {};
-            });
-
             // Register terminal capability handlers
             this._app.onRequest(methods.client.terminal.create as any, async ({ params }: any) => {
                 return this._handleTerminalCreate(params);
@@ -523,7 +504,6 @@ export class AcpClient {
             await ctx.request(methods.agent.initialize, {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {
-                    fs: { readTextFile: true, writeTextFile: true },
                     terminal: true
                 }
             } as any);
