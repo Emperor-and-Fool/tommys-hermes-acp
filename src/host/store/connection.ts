@@ -47,22 +47,37 @@ export function dataHomeFor(extensionId: string): string {
 }
 
 /**
- * Write JSON through a temp file and a rename, so a failed write cannot truncate the target.
+ * Replace a target with a temp file and a rename, so a failed write cannot truncate it.
  *
  * `writeFileSync` straight onto the target leaves a truncated file if the write dies halfway, and
  * these files hold the only copy of what he made. A rename is the filesystem's one atomic step:
  * the target is the old file or the new one, never a half of either.
  */
-export function writeAtomic(target: string, value: unknown): void {
+function replaceViaTemp(target: string, contents: string): void {
     const temp = target + '.tmp';
     try {
-        fs.writeFileSync(temp, JSON.stringify(value, null, 2));
+        fs.writeFileSync(temp, contents);
         fs.renameSync(temp, target);
     } catch {
         try {
             fs.rmSync(temp, { force: true });
         } catch { /* the next write overwrites it */ }
     }
+}
+
+/** Write JSON through a temp file and a rename. */
+export function writeAtomic(target: string, value: unknown): void {
+    replaceViaTemp(target, JSON.stringify(value, null, 2));
+}
+
+/**
+ * Write plain text through a temp file and a rename: the twin for a target that is not JSON.
+ *
+ * The active-session pointer is one bare id. Encoding it would change the file on disk (`"abc"`
+ * instead of `abc`), so this variant keeps the exact bytes and takes the same care with them.
+ */
+export function writeAtomicText(target: string, text: string): void {
+    replaceViaTemp(target, text);
 }
 
 /** What a transaction hands the caller's function: the writes to commit, collected first. */

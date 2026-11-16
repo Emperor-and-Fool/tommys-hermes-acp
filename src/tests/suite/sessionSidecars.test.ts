@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Sessions } from '../../host/cache/sessions';
 import { PendingUserStore } from '../../host/cache/pendingUsers';
+import { TabStore } from '../../host/workspace/store';
 
 /**
  * One sidecar, one question: did the agent ever receive the message I just sent? It is written
@@ -24,7 +25,7 @@ describe('sessions: the user sidecar', () => {
             currentWorkspaceId: () => '',
             workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
-        });
+        }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-a';
     });
 
@@ -75,7 +76,7 @@ describe('sessions: a chat becomes a record only when it says something', () => 
             currentWorkspaceId: () => 'ws-1',
             workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
-        });
+        }, new TabStore(dir, 'scope'));
     });
 
     afterEach(() => {

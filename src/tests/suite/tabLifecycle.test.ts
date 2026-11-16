@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Sessions } from '../../host/cache/sessions';
+import { TabStore } from '../../host/workspace/store';
 import { TabLifecycle, TabLifecycleHost } from '../../host/tabs/lifecycle';
 import { t } from '../../host/i18n';
 import type { HostToPane } from '../../shared/webview';
@@ -24,7 +25,7 @@ describe('tab switch: a session that will not replay', () => {
             currentWorkspaceId: () => '',
             workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
-        });
+        }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-a';
         session.tabs = [
             { id: 'tab-a', title: 'A', createdAt: 0, updatedAt: 0, hermesSessionId: 'hermes-a' },

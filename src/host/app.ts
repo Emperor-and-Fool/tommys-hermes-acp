@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
+import { ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
 import { TreeCache } from './workspace/treeCache';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
@@ -278,7 +279,13 @@ export class App implements vscode.WebviewViewProvider {
         migrateLegacySessionStorage(this._historyDir, '__default__');
 
         const initialTarget = this._profiles.seed();
-        this._projects = new Projects(this._historyDir, initialTarget.scopeKey, {
+        // The workspace feature's three stores: built once, here, and handed to the two
+        // features that use them (C2). A profile switch reaches them through those
+        // features' bindProfileScope, so nothing below builds a store of its own.
+        const workspaces = new WorkspaceStore(this._historyDir);
+        const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
+        const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
+        this._projects = new Projects(workspaces, agentProjects, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             tabs: () => this._session.tabs,
@@ -296,7 +303,7 @@ export class App implements vscode.WebviewViewProvider {
             currentWorkspaceId: () => this._projects.currentId(),
             workspaceIdForCwd: (cwd) => this._projects.workspaceIdForCwd(cwd),
             knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
-        });
+        }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
         this._trees = new TreeCache(this._historyDir, line => this._log(line), () => ({

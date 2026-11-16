@@ -3,7 +3,7 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CATALOG_LIMIT, SessionStore } from '../../host/cache/sessionStore';
+import { CATALOG_LIMIT, TabStore } from '../../host/workspace/store';
 import type { SessionInfo } from '../../shared/chat';
 
 const row = (id: string): SessionInfo => ({
@@ -15,11 +15,11 @@ const row = (id: string): SessionInfo => ({
 
 describe('session store: the catalog', () => {
     let dir: string;
-    let store: SessionStore;
+    let store: TabStore;
 
     beforeEach(() => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-'));
-        store = new SessionStore(dir, 'scope');
+        store = new TabStore(dir, 'scope');
     });
 
     afterEach(() => {

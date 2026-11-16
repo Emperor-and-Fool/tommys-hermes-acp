@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Sessions } from '../../host/cache/sessions';
+import { TabStore } from '../../host/workspace/store';
 import type { SessionsHost } from '../../host/cache/sessions';
 import type { CatalogSession } from '../../host/acp/AcpClient';
 import type { HostToPane } from '../../shared/webview';
@@ -30,7 +31,7 @@ const catalogRow = (sessionId: string, messageCount: number, hidden = false): Ca
 });
 
 const sessionsIn = (dir: string, activeId: string, boundTo?: string): Sessions => {
-    const sessions = new Sessions(dir, 'scope', quietHost());
+    const sessions = new Sessions(dir, 'scope', quietHost(), new TabStore(dir, 'scope'));
     sessions.activeId = activeId;
     sessions.tabs = [{
         id: activeId,

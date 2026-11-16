@@ -3,8 +3,8 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { workspaceIdFor, WorkspaceStore } from '../../host/workspace/workSpace';
-import { ProjectStore, projectsPathFor } from '../../host/workspace/projectStore';
+import { workspaceIdFor } from '../../host/workspace/workSpace';
+import { ProjectStore, projectsPathFor, WorkspaceStore } from '../../host/workspace/store';
 
 const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'workspaces-'));
 

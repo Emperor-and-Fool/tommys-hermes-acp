@@ -1,8 +1,8 @@
 import type * as vscode from 'vscode';
 import type { HostToPane } from '../../shared/webview';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { WorkspaceIdentity, WorkspaceStore } from './workSpace';
-import { ProjectStore } from './projectStore';
+import { WorkspaceIdentity } from './workSpace';
+import { ProjectStore, WorkspaceStore } from './store';
 import {
     dropProjectFromTabs, moveTabIntoProject, moveTabToProject, moveTabToWorkspace,
     projectsInWorkspace, workspaceOwnsCwd,
@@ -45,18 +45,18 @@ export interface ProjectCommands {
  * The component: the workspace registry, the projects named against it, and the tab membership
  * that ties a tab to one.
  *
- * Construction takes the storage directory and one port; everything it does to the app goes
- * through that port, so nothing in here names `App`.
+ * It receives its two stores from the composition root and one port; everything it does to the
+ * app goes through that port, so nothing in here names `App` and nothing builds its own store.
  */
 export class Projects {
-    private readonly _store: WorkspaceStore;
-    private readonly _agentProjects: ProjectStore;
     private readonly _identity: WorkspaceIdentity;
     readonly commands: ProjectCommands;
 
-    constructor(historyDir: string, scopeKey: string, private readonly _host: ProjectsHost) {
-        this._store = new WorkspaceStore(historyDir);
-        this._agentProjects = new ProjectStore(historyDir, scopeKey, this._store);
+    constructor(
+        private readonly _store: WorkspaceStore,
+        private readonly _agentProjects: ProjectStore,
+        private readonly _host: ProjectsHost,
+    ) {
         // Adopt the shared file's list now: `start()` registers the workspace moments later, and
         // that write must never be the thing that decides whether the projects survive.
         this._agentProjects.projects();

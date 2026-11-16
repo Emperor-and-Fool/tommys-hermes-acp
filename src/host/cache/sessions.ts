@@ -1,7 +1,7 @@
 import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
-import { SessionStore } from './sessionStore';
+import { TabStore } from '../workspace/store';
 import { applyCatalogRows } from './catalog';
 import { PendingUserStore } from './pendingUsers';
 import {
@@ -52,7 +52,7 @@ export class Sessions {
     catalogRows: CatalogSession[] = [];
     hiddenSessions: CatalogSession[] = [];
     scopeKey: string;
-    store: SessionStore;
+    store: TabStore;
     /** Last few user turns: the one state Hermes cannot hold for us. */
     pendingUsers: PendingUserStore;
 
@@ -60,9 +60,10 @@ export class Sessions {
         private readonly historyDir: string,
         scopeKey: string,
         private readonly host: SessionsHost,
+        store: TabStore,
     ) {
         this.scopeKey = scopeKey;
-        this.store = new SessionStore(this.historyDir, this.scopeKey);
+        this.store = store;
         this.pendingUsers = new PendingUserStore(this.historyDir);
     }
 
