@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import * as vscode from 'vscode';
+import type { SessionInfo } from '../../shared/chat';
 
 /**
  * The workspace: which one this window is.
@@ -8,6 +9,9 @@ import * as vscode from 'vscode';
  * tabs that point at it. What is left here is the identity: the path VS Code says this window is,
  * and the one subscription that records it. A workspace is the same fact for every profile in the
  * window; projects and tabs are per profile, so they are not here.
+ *
+ * The tab rules that only need a workspace are here too — array in, array out, no file and no
+ * editor, so the component, the pane's filters and the tests share one definition of them.
  */
 
 /** An id for a thing this file owns: the time it was made, plus four characters against a tie. */
@@ -30,6 +34,51 @@ export function workspaceIdFor(workspacePath: string): string {
         return '';
     }
     return createHash('sha256').update(workspacePath).digest('hex').slice(0, 12);
+}
+
+/**
+ * Move a tab to another workspace.
+ *
+ * `workspace` is where the tab was opened; ours to rewrite, where `cwd` is Hermes' to report and is
+ * overwritten on every catalog read.
+ */
+export function moveTabToWorkspace(tabs: SessionInfo[], tabId: string, workspaceId: string): SessionInfo[] {
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index < 0 || !workspaceId || tabs[index].workspaceId === workspaceId) {
+        return tabs;
+    }
+    const next = tabs.slice();
+    next[index] = { ...tabs[index], workspaceId };
+    return next;
+}
+
+/**
+ * This window's slice of the tab index.
+ *
+ * Ownership is a filter, not a second store: one record set, and a window draws the records whose
+ * workspace is its own. A tab with no workspace belongs to a window that has none — a window with
+ * no folder and no workspace file — so an empty string matches an untagged tab and nothing else.
+ */
+export function tabsInWorkspace(tabs: SessionInfo[], workspaceId: string): SessionInfo[] {
+    return tabs.filter(tab => (tab.workspaceId || '') === (workspaceId || ''));
+}
+
+/**
+ * Whether a window may claim a tab written before the tag existed.
+ *
+ * The tab's `cwd` is where Hermes ran the session, and a workspace is either that folder or the
+ * directory holding its `.code-workspace`. Without this check the first window to reload would
+ * adopt every untagged tab in the index, including the other window's.
+ */
+export function workspaceOwnsCwd(workspace: string, cwd: string | undefined): boolean {
+    if (!workspace || !cwd) {
+        return false;
+    }
+    const root = workspace.toLowerCase().endsWith('.code-workspace')
+        ? workspace.slice(0, workspace.lastIndexOf(workspace.includes('\\') ? '\\' : '/'))
+        : workspace;
+    const trimmed = cwd.replace(/[\\/]+$/, '');
+    return trimmed === root || trimmed.startsWith(root + '/') || trimmed.startsWith(root + '\\');
 }
 
 /** What the identity needs from the extension: a log line, and where a new value is recorded. */

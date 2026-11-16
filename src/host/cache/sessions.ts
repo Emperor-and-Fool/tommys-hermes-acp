@@ -10,7 +10,7 @@ import {
     registerSession,
     reorderSessions,
 } from '../workspace/sessionTab';
-import { tabsInWorkspace } from '../workspace/projectRules';
+import { tabsInWorkspace } from '../workspace/workSpace';
 import { mintId } from '../workspace/workSpace';
 import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';

@@ -1,12 +1,8 @@
 import type * as vscode from 'vscode';
 import type { HostToPane } from '../../shared/webview';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { WorkspaceIdentity } from './workSpace';
+import { moveTabToWorkspace, workspaceOwnsCwd, WorkspaceIdentity } from './workSpace';
 import { ProjectStore, WorkspaceStore } from './store';
-import {
-    dropProjectFromTabs, moveTabIntoProject, moveTabToProject, moveTabToWorkspace,
-    projectsInWorkspace, workspaceOwnsCwd,
-} from './projectRules';
 
 /**
  * The project group: the projects named against this window's workspace, and which tab sits in one.
@@ -39,6 +35,72 @@ export interface ProjectCommands {
     deleteProject(projectId: string): void;
     moveTabToProject(tabId: string, projectId: string): void;
     moveTabToWorkspace(tabId: string, workspace: string): void;
+}
+
+/**
+ * Put a tab in a project, or back on the plane when `projectId` is empty.
+ *
+ * The value is a project id, not a name: a rename must not move the tabs that belong to it.
+ */
+export function moveTabToProject(tabs: SessionInfo[], tabId: string, projectId: string): SessionInfo[] {
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index < 0 || (tabs[index].project || '') === projectId) {
+        return tabs;
+    }
+    const next = tabs.slice();
+    const record: SessionInfo = { ...tabs[index] };
+    if (projectId) {
+        record.project = projectId;
+    } else {
+        delete record.project;
+    }
+    next[index] = record;
+    return next;
+}
+
+/**
+ * A tab in a project belongs to that project's workspace: the project wins in every evaluation but
+ * the explicit "move this tab to a workspace", so the two cannot disagree.
+ */
+export function moveTabIntoProject(tabs: SessionInfo[], tabId: string, project: Project): SessionInfo[] {
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index < 0) {
+        return tabs;
+    }
+    const moved = moveTabToProject(tabs, tabId, project.id);
+    const next = moved === tabs ? tabs.slice() : moved;
+    const record: SessionInfo = { ...next[index] };
+    if (project.workspaceId) {
+        record.workspaceId = project.workspaceId;
+    }
+    if (!project.id) {
+        delete record.project;
+    }
+    next[index] = record;
+    return next;
+}
+
+/**
+ * The projects of one window: a project belongs to a workspace *and* an agent, so this window is
+ * handed only the projects named against its own workspace.
+ *
+ * A project made in a window with no folder or workspace file has no workspace either, and belongs
+ * to that window — the empty string matches the empty string, exactly as `tabsInWorkspace` does.
+ */
+export function projectsInWorkspace(projects: Project[], workspaceId: string): Project[] {
+    return projects.filter(project => (project.workspaceId || '') === (workspaceId || ''));
+}
+
+/** Every tab a project holds, back on the plane: a group is a view, not an owner. */
+export function dropProjectFromTabs(tabs: SessionInfo[], projectId: string): SessionInfo[] {
+    return tabs.map(tab => {
+        if (tab.project !== projectId) {
+            return tab;
+        }
+        const record: SessionInfo = { ...tab };
+        delete record.project;
+        return record;
+    });
 }
 
 /**

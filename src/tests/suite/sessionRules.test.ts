@@ -6,7 +6,8 @@ import {
     registerSession,
     reorderSessions,
 } from '../../host/workspace/sessionTab';
-import { moveTabIntoProject, moveTabToProject, moveTabToWorkspace, projectsInWorkspace, tabsInWorkspace, workspaceOwnsCwd } from '../../host/workspace/projectRules';
+import { moveTabToWorkspace, tabsInWorkspace, workspaceOwnsCwd } from '../../host/workspace/workSpace';
+import { moveTabIntoProject, moveTabToProject, projectsInWorkspace } from '../../host/workspace/projectGrouped';
 import type { SessionInfo } from '../../shared/chat';
 
 const session = (id: string, over: Partial<SessionInfo> = {}): SessionInfo => ({
