@@ -2,57 +2,17 @@ import { tabBar, tabContextMenu } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
-import { renderSessionTabs } from './sessionTab';
+import { clearPopup, placePopup } from '../../util/popup';
 import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
-import type { HostToPane } from '../../../shared/webview';
 
 /**
- * The project group in the pane: the popup shell, the projects drawn as parents, and their own menu.
+ * A project group in the pane: its markup as a parent of tabs, the fold, the rename, its own menu,
+ * the picker a tab is moved with, and the notice a refused create appears in.
  *
- * The tree needs a tab's markup and does not own it: `projectTreeHtml` takes the renderer the tab
- * file supplies, so the drawing points one way. The one edge back is `onProjectList`, which asks
- * the strip to redraw: a projects message carries no tabs, and the strip is the only thing that
- * shows what the two lists now say.
+ * This file is a child of the workspace file (F7). It draws a group and wires what a group does;
+ * the two lists it shows are handed to it on every call, so it holds no state of the feature and
+ * imports neither the parent nor its sibling.
  */
-
-/**
- * The workspaces and the projects the host last reported: this feature's own state (S1).
- *
- * Only `onProjectList` writes them — a message from the host is the only source for either list —
- * and the rest of the feature reads them through `lastWorkspaces()` and `lastProjects()`.
- */
-let workspaceList: Workspace[] = [];
-let projectList: Project[] = [];
-
-/** The workspaces this editor has opened: the tab's "move to" list, and the popup's rows. */
-export function lastWorkspaces(): Workspace[] {
-    return workspaceList;
-}
-
-/** The projects named in this window: the strip's parents, and the menu's list. */
-export function lastProjects(): Project[] {
-    return projectList;
-}
-
-/** Place the one popup where it was asked for, kept inside the pane. */
-export function placePopup(x: number, y: number): void {
-    if (!tabContextMenu) return;
-    tabContextMenu.hidden = false;
-    tabContextMenu.style.left = '0px';
-    tabContextMenu.style.top = '0px';
-    const rect = tabContextMenu.getBoundingClientRect();
-    const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
-    const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
-    tabContextMenu.style.left = Math.min(x, maxLeft) + 'px';
-    tabContextMenu.style.top = Math.min(y, maxTop) + 'px';
-}
-
-/** Empty the popup. Whoever owns the state behind it clears that itself. */
-export function clearPopup(): void {
-    if (!tabContextMenu) return;
-    tabContextMenu.hidden = true;
-    tabContextMenu.innerHTML = '';
-}
 
 /**
  * Draw the projects the way the user left them: a closed project shows only its header.
@@ -60,7 +20,7 @@ export function clearPopup(): void {
  * The latch is in `state.collapsedProjects`, keyed by project id, so a re-render — a new tab, a
  * rename — does not pop every project open again.
  */
-export function applyProjectCollapsed(group: HTMLElement): void {
+function applyProjectCollapsed(group: HTMLElement): void {
     const id = group.dataset.project || '';
     const collapsed = !!id && state.collapsedProjects.has(id);
     group.classList.toggle('is-collapsed', collapsed);
@@ -72,9 +32,14 @@ export function applyProjectCollapsed(group: HTMLElement): void {
  * Projects are parents: their tabs are drawn inside them. A tab in no project — or in one that no
  * longer exists — sorts below all of them, unindented, which is what tells the two apart.
  */
-export function projectTreeHtml(sessions: SessionInfo[], tabsHtml: (list: SessionInfo[]) => string): string {
+export function projectTreeHtml(
+    sessions: SessionInfo[],
+    tabsHtml: (list: SessionInfo[]) => string,
+    projects: Project[],
+    workspaces: Workspace[],
+): string {
     const groups: Array<{ project: Project; sessions: SessionInfo[] }> = [];
-    projectList.forEach(function(project) {
+    projects.forEach(function(project) {
         groups.push({ project: project, sessions: [] });
     });
     const plane: SessionInfo[] = [];
@@ -87,7 +52,7 @@ export function projectTreeHtml(sessions: SessionInfo[], tabsHtml: (list: Sessio
     groups.forEach(function(group, index) {
         parts.push('<div class="tab-group" data-project="' + escapeHtml(group.project.id) + '"' +
             ' style="--project-accent:' + projectAccent(index, groups.length) + '">' +
-            '<div class="tab-group-header" title="' + escapeHtml(workspacePathOf(group.project.workspaceId)) + '">' +
+            '<div class="tab-group-header" title="' + escapeHtml(workspacePathOf(workspaces, group.project.workspaceId)) + '">' +
                 '<span class="tab-group-caret"></span>' +
                 '<span class="tab-group-name">' + escapeHtml(group.project.name) + '</span>' +
             '</div>' +
@@ -116,56 +81,38 @@ function projectAccent(index: number, total: number): string {
 }
 
 /** The path behind a workspace id, for a tooltip. The list the host sent is the whole truth. */
-function workspacePathOf(workspaceId: string): string {
-    const entry = workspaceList.find(function(workspace) { return workspace.id === workspaceId; });
+function workspacePathOf(workspaces: Workspace[], workspaceId: string): string {
+    const entry = workspaces.find(function(workspace) { return workspace.id === workspaceId; });
     return entry ? entry.path : '';
 }
 
 /**
- * Leave the folder you are working in open, and one more to fetch context from.
+ * A group, or the plane, as a drop target: dropping a tab here moves it.
  *
- * A start shows every folder, because that is how the workspace reads at a glance. From the first
- * switch onwards, the open set is the active session's project plus the most recently *opened*
- * other one — so a session can be opened just to read it, the working one returned to, and both
- * still be there. The rule is applied only when the active session changes, so dragging, renaming
- * and manual folding in between are left alone.
+ * The tab's own drag carries its id, so the drop only has to name the project. An empty id is the
+ * plane, which is how a tab gets back out of a project without the menu.
  */
-export function applyProjectFocus(): void {
-    const activeId = state.lastActiveSessionId;
-    if (!activeId || state.focusAppliedFor === activeId) {
-        return;
-    }
-    const firstApplication = state.focusAppliedFor === '';
-    state.focusAppliedFor = activeId;
-    const activeProject = state.lastSessions.find(tab => tab.id === activeId)?.project || '';
-    // Recency is the pane's own: a session that was opened *is* the evidence, and the tab list it
-    // came from is already here — no round trip, and no dependence on which list the host posts.
-    if (activeProject) {
-        state.recentProjects = [activeProject, ...state.recentProjects.filter(id => id !== activeProject)].slice(0, 8);
-    }
-    if (firstApplication) {
-        // A fresh window: every folder open.
-        state.collapsedProjects = new Set<string>();
-        return;
-    }
-    const open: string[] = [];
-    if (activeProject) {
-        open.push(activeProject);
-    }
-    for (const id of state.recentProjects) {
-        if (id !== activeProject) {
-            open.push(id);
-            break;
+function wireProjectDropTarget(group: HTMLElement, projectId: string): void {
+    group.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (!e.dataTransfer) return;
+        e.dataTransfer.dropEffect = 'move';
+        group.classList.add('drag-over');
+    });
+    group.addEventListener('dragleave', function(e) {
+        // Leaving for a child is not leaving the target: without this the highlight flickers.
+        if (e.relatedTarget && group.contains(e.relatedTarget as Node)) return;
+        group.classList.remove('drag-over');
+    });
+    group.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        group.classList.remove('drag-over');
+        const tabId = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+        if (tabId) {
+            post({ type: 'setTabProject', sessionId: tabId, projectId: projectId });
         }
-    }
-    if (!activeProject) {
-        for (const id of state.recentProjects.slice(0, 2)) {
-            if (open.indexOf(id) < 0) open.push(id);
-        }
-    }
-    state.collapsedProjects = new Set(
-        projectList.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
-    );
+    });
 }
 
 /** The header element of one project, as the strip drew it. */
@@ -180,8 +127,8 @@ function projectHeader(projectId: string): HTMLElement | null {
 }
 
 /** Rename a project where its name is: the same inline input a tab rename uses. */
-function startProjectRename(projectId: string): void {
-    const project = projectList.find(function(p) { return p.id === projectId; });
+function startProjectRename(projectId: string, projects: Project[]): void {
+    const project = projects.find(function(p) { return p.id === projectId; });
     const header = projectHeader(projectId);
     const nameEl = header ? header.querySelector('.tab-group-name') : null;
     if (!project || !header || !nameEl) {
@@ -235,7 +182,7 @@ function startProjectRename(projectId: string): void {
  * It reuses the tab menu's element and styling: a second popup would be a second place for
  * outside-click and Escape to be handled differently.
  */
-export function showProjectContextMenu(projectId: string, clientX: number, clientY: number): void {
+function showProjectContextMenu(projectId: string, clientX: number, clientY: number, projects: Project[]): void {
     if (!tabContextMenu) {
         return;
     }
@@ -248,7 +195,7 @@ export function showProjectContextMenu(projectId: string, clientX: number, clien
             const action = item.dataset.projectAction;
             clearPopup();
             if (action === 'rename') {
-                startProjectRename(projectId);
+                startProjectRename(projectId, projects);
             } else if (action === 'delete') {
                 post({ type: 'deleteProject', projectId: projectId });
             }
@@ -261,14 +208,14 @@ export function showProjectContextMenu(projectId: string, clientX: number, clien
  * The projects, as the tab menu's second level, with the plane as a row of its own: a tab that was
  * moved in has to have a way back out.
  */
-export function showProjectPicker(sessionId: string): void {
+export function showProjectPicker(sessionId: string, projects: Project[], workspaces: Workspace[]): void {
     if (!tabContextMenu) {
         return;
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveProject) + '</div>';
     html += '<button type="button" class="tab-ctx-item" data-project="">' + escapeHtml(locale.tabContextNoProject) + '</button>';
-    projectList.forEach(function(project) {
-        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(workspacePathOf(project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
+    projects.forEach(function(project) {
+        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(workspacePathOf(workspaces, project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
     });
     tabContextMenu.innerHTML = html;
     tabContextMenu.querySelectorAll<HTMLElement>('.tab-ctx-item[data-project]').forEach(function(item) {
@@ -282,11 +229,87 @@ export function showProjectPicker(sessionId: string): void {
 }
 
 /**
- * The rail's own action: name a project in this window's workspace.
+ * Leave the folder you are working in open, and one more to fetch context from.
  *
- * The rail's empty space below the tabs is where a project can be made before any tab belongs to
- * it. The label doubles as the placeholder; Enter commits, Escape or a blur puts the button back.
+ * A start shows every folder, because that is how the workspace reads at a glance. From the first
+ * switch onwards, the open set is the active session's project plus the most recently *opened*
+ * other one — so a session can be opened just to read it, the working one returned to, and both
+ * still be there. The rule is applied only when the active session changes, so dragging, renaming
+ * and manual folding in between are left alone.
  */
+export function applyProjectFocus(projects: Project[]): void {
+    const activeId = state.lastActiveSessionId;
+    if (!activeId || state.focusAppliedFor === activeId) {
+        return;
+    }
+    const firstApplication = state.focusAppliedFor === '';
+    state.focusAppliedFor = activeId;
+    const activeProject = state.lastSessions.find(tab => tab.id === activeId)?.project || '';
+    // Recency is the pane's own: a session that was opened *is* the evidence, and the tab list it
+    // came from is already here — no round trip, and no dependence on which list the host posts.
+    if (activeProject) {
+        state.recentProjects = [activeProject, ...state.recentProjects.filter(id => id !== activeProject)].slice(0, 8);
+    }
+    if (firstApplication) {
+        // A fresh window: every folder open.
+        state.collapsedProjects = new Set<string>();
+        return;
+    }
+    const open: string[] = [];
+    if (activeProject) {
+        open.push(activeProject);
+    }
+    for (const id of state.recentProjects) {
+        if (id !== activeProject) {
+            open.push(id);
+            break;
+        }
+    }
+    if (!activeProject) {
+        for (const id of state.recentProjects.slice(0, 2)) {
+            if (open.indexOf(id) < 0) open.push(id);
+        }
+    }
+    state.collapsedProjects = new Set(
+        projects.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
+    );
+}
+
+/**
+ * Wire the groups the parent just drew: the fold, the header's menu, and the drop target that
+ * moves a tab into this project — plus the plane, which is the way back out.
+ */
+export function wireProjectGroups(container: HTMLElement, projects: Project[], workspaces: Workspace[]): void {
+    container.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
+        const header = group.querySelector<HTMLElement>('.tab-group-header');
+        if (!header) return;
+        applyProjectCollapsed(group);
+        header.addEventListener('click', function(e) {
+            // A rename input lives in the header; a click in it is not a fold.
+            if (e.target && (e.target as HTMLElement).classList.contains('tab-rename-input')) return;
+            const id = group.dataset.project || '';
+            if (!id) return;
+            if (state.collapsedProjects.has(id)) {
+                state.collapsedProjects.delete(id);
+            } else {
+                state.collapsedProjects.add(id);
+            }
+            applyProjectCollapsed(group);
+        });
+        header.addEventListener('contextmenu', function(e: MouseEvent) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = group.dataset.project;
+            if (id) showProjectContextMenu(id, e.clientX, e.clientY, projects);
+        });
+        wireProjectDropTarget(group, group.dataset.project || '');
+    });
+    const planeGroup = container.querySelector<HTMLElement>('.tab-group--plane');
+    if (planeGroup) {
+        wireProjectDropTarget(planeGroup, '');
+    }
+}
+
 /**
  * Put the host's answer about a project create under the button that asked for it.
  *
@@ -303,21 +326,11 @@ export function showProjectNotice(message: string): void {
 }
 
 /**
- * The host's project list: both lists replace, the strip redraws from what it now holds, and the
- * notice clears — a list that arrived is itself the answer to whatever was refused.
+ * The rail's own action: name a project in this window's workspace.
+ *
+ * The rail's empty space below the tabs is where a project can be made before any tab belongs to
+ * it. The label doubles as the placeholder; Enter commits, Escape or a blur puts the button back.
  */
-export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>): void {
-    workspaceList = msg.workspaces || [];
-    projectList = msg.projects || [];
-    renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
-    showProjectNotice('');
-}
-
-/** Something the host wants the user to read: a refused create, and nothing else today. */
-export function onProjectNotice(msg: Extract<HostToPane, { type: 'projectNotice' }>): void {
-    showProjectNotice(msg.message);
-}
-
 export function initCreateProjectButton(): void {
     const found = document.getElementById('createFolderBtn');
     if (!found) {
