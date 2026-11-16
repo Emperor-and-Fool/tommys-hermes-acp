@@ -214,12 +214,6 @@ export interface LocaleStrings {
     permissionAllowOnce: string;
     permissionAllowAlways: string;
     permissionAllowSession: string;
-    /** Balloon on the greyed session button: how to unlock the scope. */
-    permissionSessionNeedsManual: string;
-    /** What the card says when the session answer was pressed on it. */
-    permissionSessionArmed: string;
-    /** Balloon on the session answer once Manual has made it live. */
-    permissionSessionArmedHint: string;
     permissionRejectOnce: string;
     permissionRejectAlways: string;
     permissionDeny: string;

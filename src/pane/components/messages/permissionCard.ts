@@ -31,13 +31,6 @@ import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming
 export const pendingPermissions = new Map<string, any>();
 
 
-/**
- * Set when the session answer was pressed on a card that could not send it: that card takes
- * allow-once, and the next permission request in this pane is answered with session on its own.
- * One request, not a standing policy — a pane-wide auto-answer would approve commands nobody read.
- */
-let sessionAnswerArmed = false;
-
 const PERM_COLLAPSED_LINES = 3;
 
 const PERM_LINE_HEIGHT_EM = 1.45;
@@ -224,32 +217,6 @@ function buildPermissionActions(id: string, options: PermissionOption[] | undefi
         });
         actions.appendChild(btn);
     });
-    // A gate that offered no session scope still names the choice and how to unlock it: the
-    // moment the first card appears is when a reader wants "for session", so the instruction
-    // belongs on the card, not in a document read later. Not `disabled`: a disabled button does
-    // not reliably show its balloon, and this one exists to be read.
-    if (!answers.some(isSessionScope)) {
-        const once = answers.find(isAllowOption);
-        const hint = document.createElement('button');
-        hint.type = 'button';
-        hint.className = 'permission-btn button is-unavailable is-session-hint';
-        hint.dataset.optionId = 'allow_session';
-        hint.textContent = locale.permissionAllowSession || 'Allow for session';
-        hint.title = locale.permissionSessionNeedsManual || 'For session, set to manual';
-        hint.setAttribute('aria-disabled', 'true');
-        hint.addEventListener('click', function(e) {
-            e.stopPropagation();
-            // This card cannot send `allow_session` — Hermes built its answer list without it, so
-            // the answer would be mapped to a deny. It takes allow-once instead and arms the NEXT
-            // request for the session answer, which is a list that does carry it.
-            if (hint.getAttribute('aria-disabled') === 'true' || !once) {
-                return;
-            }
-            sessionAnswerArmed = true;
-            resolvePermission(id, once.optionId, locale.permissionSessionArmed || permissionOptionLabel(once));
-        });
-        actions.appendChild(hint);
-    }
     return actions;
 }
 
@@ -280,18 +247,6 @@ function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
     status.textContent = statusText;
 }
 
-/** The session answer on a card the gate did not offer it on: live only while the mode is manual. */
-function syncSessionHint(group: HTMLElement): void {
-    group.querySelectorAll('.permission-btn.is-session-hint').forEach(function(btn) {
-        const live = state.approvalMode === 'manual';
-        btn.classList.toggle('is-unavailable', !live);
-        btn.setAttribute('aria-disabled', live ? 'false' : 'true');
-        btn.title = live
-            ? (locale.permissionSessionArmedHint || 'Allow once now, and answer the next request for the session')
-            : (locale.permissionSessionNeedsManual || 'For session, set to manual');
-    });
-}
-
 /**
  * One card's switch follows the shared state. `withError` is false for a card that is being
  * mounted: a failure that happened before it existed is not its error to show.
@@ -301,7 +256,6 @@ function syncApprovalRow(group: HTMLElement, withError = true): void {
     if (block) {
         syncApprovalModeBlock(block as HTMLElement, withError);
     }
-    syncSessionHint(group);
 }
 
 /** A locale change: the switch's words are ours, so they move with the rest. */
@@ -330,9 +284,6 @@ export function applyApprovalMode(
     }
     endApprovalModePending();
     syncAllApprovalModeBlocks();
-    pendingPermissions.forEach(function(group) {
-        syncSessionHint(group);
-    });
 }
 
 function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?: PermissionCardOptions) {
@@ -482,29 +433,10 @@ export function showPermissionRequest(msg: PermissionCardInput) {
         updatePermissionContent(pendingPermissions.get(id), msg.title, msg.detail);
         return;
     }
-    if (sessionAnswerArmed) {
-        sessionAnswerArmed = false;
-        const sessionOption = (msg.options || []).find(isSessionScope);
-        if (sessionOption) {
-            // Armed by the previous card's session press: this request carries the answer it could
-            // not send, so it is answered here — and the card stays as the record of that.
-            const group = mountPermissionCard(id, msg);
-            messagesEl.appendChild(group);
-            pendingPermissions.set(id, group);
-            resolvePermission(id, sessionOption.optionId, locale.permissionAllowSession || 'Allow for session');
-            maybeScrollToBottom();
-            return;
-        }
-    }
     const group = mountPermissionCard(id, msg);
     messagesEl.appendChild(group);
     pendingPermissions.set(id, group);
     maybeScrollToBottom();
-}
-
-/** A rebuilt pane starts unarmed: the armed answer belonged to the conversation that set it. */
-export function disarmSessionAnswer(): void {
-    sessionAnswerArmed = false;
 }
 
 function resolvePermission(id: string, optionId: string, selectedLabel?: string) {

@@ -191,7 +191,6 @@ export function init(): void {
                 break;
 
             case 'restoreHistory':
-                permissionCard.disarmSessionAnswer();
                 messageList.restoreHistory(msg.messages, msg.localHistoryOnly);
                 historyViewer.afterHistoryRestored(msg.messages, msg.sessionId);
                 break;

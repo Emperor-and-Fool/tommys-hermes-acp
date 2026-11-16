@@ -3928,19 +3928,6 @@ body.is-viewer .multi-select-toolbar {
     line-height: 1.5;
 }
 
-/* The session answer when the gate did not offer it: readable, obviously not pressable. The
-   balloon (title) says how to unlock it; a disabled attribute would swallow the tooltip. */
-.message.permission .permission-btn.is-unavailable {
-    opacity: 0.5;
-    cursor: default;
-    border-style: dashed;
-}
-
-.message.permission .permission-btn.is-unavailable:hover {
-    background: inherit;
-}
-
-
 /* Rail-only permission control. The markup is shared with the editor panel and `surface-rail`
    on the body decides which surface shows the button, so nothing is forked per surface. */
 #permissionModeBtn {
