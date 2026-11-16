@@ -275,7 +275,8 @@ export class AcpClient {
     constructor(
         onMessage: MessageHandler,
         onStatus: StatusHandler,
-        onPermission?: PermissionHandler,
+        /** Required: a client with no answer must not invent one. */
+        onPermission: PermissionHandler,
         onConnectionLost?: ConnectionLostHandler,
         onFileSystem?: FileSystemHandler,
         onTerminal?: TerminalHandler,
@@ -287,11 +288,7 @@ export class AcpClient {
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
-        this._onPermission = onPermission || (async (request) => {
-            const allow = request.options.find(o =>
-                o.kind?.startsWith('allow') || o.optionId.startsWith('allow'));
-            return allow?.optionId ?? request.options[0]?.optionId ?? null;
-        });
+        this._onPermission = onPermission;
         this._onConnectionLost = onConnectionLost || (() => {});
         this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
         this._onTerminal = onTerminal || (() => {});
