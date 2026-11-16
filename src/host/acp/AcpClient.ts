@@ -54,7 +54,6 @@ export interface PermissionRequest {
 /** Resolves with the selected optionId, or null when cancelled. */
 export type PermissionHandler = (request: PermissionRequest) => Promise<string | null>;
 export type ConnectionLostHandler = () => void;
-export type TerminalHandler = (command: string, args: string[], cwd: string) => void;
 export type LogHandler = (text: string) => void;
 export type TokenUsage = { used: number; size: number };
 export type UsageHandler = (usage: TokenUsage) => void;
@@ -62,50 +61,6 @@ export type UsageHandler = (usage: TokenUsage) => void;
 export type McpServersResolver = (cwd: string) => SessionMcpServer[];
 /** Called when an assistant/thought segment ends (tool call, permission, etc.). */
 export type SegmentEndHandler = () => void;
-
-interface TerminalInstance {
-    process: ChildProcess;
-    stdout: string;
-    stderr: string;
-    exitCode: number | null;
-    exitSignal: string | null;
-    exited: Promise<void>;
-    resolveExit: () => void;
-    /** Asked for at create time; null means keep everything. */
-    outputByteLimit?: number;
-    /** True once any output was dropped, so a read can say so. */
-    truncated: boolean;
-}
-
-/** Keep the newest `limit` bytes: the tail is what a reader is looking for. */
-function trimToByteLimit(text: string, limit: number | undefined): { text: string; dropped: boolean } {
-    if (!limit || limit <= 0) {
-        return { text, dropped: false };
-    }
-    const bytes = Buffer.from(text, 'utf-8');
-    if (bytes.length <= limit) {
-        return { text, dropped: false };
-    }
-    return { text: bytes.subarray(bytes.length - limit).toString('utf-8'), dropped: true };
-}
-
-/** ACP sends terminal env as a list of {name, value} pairs; Node wants one object. */
-function terminalEnv(requested: unknown): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    if (Array.isArray(requested)) {
-        for (const entry of requested) {
-            const pair = entry as { name?: unknown; value?: unknown };
-            if (pair && typeof pair.name === 'string' && pair.name) {
-                env[pair.name] = typeof pair.value === 'string' ? pair.value : String(pair.value ?? '');
-            }
-        }
-        return env;
-    }
-    if (requested && typeof requested === 'object') {
-        Object.assign(env, requested as NodeJS.ProcessEnv);
-    }
-    return env;
-}
 
 function readTextFromContentBlock(block: unknown): string {
     if (!block || typeof block !== 'object') {
@@ -217,11 +172,8 @@ export class AcpClient {
     private _onStatus: StatusHandler;
     private _onPermission: PermissionHandler;
     private _onConnectionLost: ConnectionLostHandler;
-    private _onTerminal: TerminalHandler;
     private _onLog: LogHandler;
     private _onSteerNotice: SteerNoticeHandler = () => {};
-    private _terminals: Map<string, TerminalInstance> = new Map();
-    private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
     /** Steers awaiting Hermes' answer; only then can a chunk be a steer notice. */
     private _steersInFlight: number = 0;
@@ -272,7 +224,6 @@ export class AcpClient {
         /** Required: a client with no answer must not invent one. */
         onPermission: PermissionHandler,
         onConnectionLost?: ConnectionLostHandler,
-        onTerminal?: TerminalHandler,
         onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler,
         onSegmentEnd?: SegmentEndHandler,
@@ -283,7 +234,6 @@ export class AcpClient {
         this._onStatus = onStatus;
         this._onPermission = onPermission;
         this._onConnectionLost = onConnectionLost || (() => {});
-        this._onTerminal = onTerminal || (() => {});
         this._onLog = () => {};
         this._onUsage = onUsage || (() => {});
         this._onModelsChanged = onModelsChanged || (() => {});
@@ -428,11 +378,6 @@ export class AcpClient {
                     this._conn = null;
                     this._app = null;
                     this._process = null;
-                    // Kill terminal children
-                    for (const [, t] of this._terminals) {
-                        try { t.process.kill(); } catch { /* ignore */ }
-                    }
-                    this._terminals.clear();
                     this._transitionTo('error', `Process exited (code: ${code}, signal: ${signal})`);
                     this._onConnectionLost();
                 }
@@ -481,35 +426,15 @@ export class AcpClient {
                 this._handleSessionUpdate(params);
             });
 
-            // Register terminal capability handlers
-            this._app.onRequest(methods.client.terminal.create as any, async ({ params }: any) => {
-                return this._handleTerminalCreate(params);
-            });
-            this._app.onRequest(methods.client.terminal.output as any, async ({ params }: any) => {
-                return this._handleTerminalOutput(params);
-            });
-            this._app.onRequest(methods.client.terminal.waitForExit as any, async ({ params }: any) => {
-                return this._handleTerminalWaitForExit(params);
-            });
-            this._app.onRequest(methods.client.terminal.release as any, async ({ params }: any) => {
-                return this._handleTerminalRelease(params);
-            });
-            this._app.onRequest(methods.client.terminal.kill as any, async ({ params }: any) => {
-                return this._handleTerminalKill(params);
-            });
-
             this._conn = this._app.connect(stream);
             const ctx = this._conn.agent;
 
             await ctx.request(methods.agent.initialize, {
                 protocolVersion: PROTOCOL_VERSION,
-                clientCapabilities: {
-                    terminal: true
-                }
+                clientCapabilities: {}
             } as any);
-            // Note: `as any` is needed because ClientContext.request() type
-            // doesn't include the fs/terminal capability fields in its schema type.
-            // When ACP SDK schema updates, this cast can be removed.
+            // `as any` because ClientContext.request()'s schema type carries no
+            // clientCapabilities field at all; the cast goes when the SDK types it.
 
             // No session/new here. Connecting used to create one immediately and then
             // `_resumeOrAdoptSession` loaded the tab's real session on top of it, leaving an
@@ -979,10 +904,6 @@ export class AcpClient {
         this._session = null;
         this._activeSessionId = '';
         this._loadedSessionId = '';
-        for (const [, term] of this._terminals) {
-            try { term.process.kill(); } catch { /* ignore */ }
-        }
-        this._terminals.clear();
         this._toolCallTracker.clear();
         this._modelOptionsKnownUnsupported = false;
         this._hermesSetModelKnownUnsupported = false;
@@ -1001,98 +922,6 @@ export class AcpClient {
 
     dispose(): void {
         this.stop();
-    }
-
-    // ---- Terminal handlers ----
-
-    private _handleTerminalCreate(params: any): any {
-        const id = `term_${this._nextTerminalId++}`;
-        const cmd = params.command;
-        const args = params.args || [];
-        const cwd = params.cwd || process.cwd();
-        const env = terminalEnv(params.env);
-        const outputByteLimit = typeof params.outputByteLimit === 'number' ? params.outputByteLimit : undefined;
-
-        this._onTerminal(cmd, args, cwd); // mirror to VS Code terminal
-
-        let resolveExit: () => void = () => {};
-        const exited = new Promise<void>((r) => { resolveExit = r; });
-
-        const proc = spawn(cmd, args, {
-            cwd,
-            shell: args.length === 0,
-            env,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        const term: TerminalInstance = {
-            process: proc,
-            stdout: '',
-            stderr: '',
-            exitCode: null,
-            exitSignal: null,
-            exited,
-            resolveExit,
-            outputByteLimit,
-            truncated: false,
-        };
-
-        const append = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
-            const capped = trimToByteLimit(term[stream] + chunk.toString(), term.outputByteLimit);
-            term[stream] = capped.text;
-            term.truncated = term.truncated || capped.dropped;
-        };
-        proc.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
-        proc.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
-        proc.on('exit', (code, sig) => {
-            term.exitCode = code;
-            term.exitSignal = sig === null ? null : sig;
-            resolveExit();
-        });
-        // An unknown executable raises 'error' and never 'exit'. Without this the request waiting
-        // on `exited` never resolves, and the host logs an unhandled error event.
-        proc.on('error', (err) => {
-            append('stderr', Buffer.from(`\n${err.message}`));
-            term.exitCode = term.exitCode ?? 127;
-            resolveExit();
-        });
-
-        this._terminals.set(id, term);
-        return { terminalId: id };
-    }
-
-    private _handleTerminalOutput(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (!term) return { output: '', truncated: false, exitStatus: {} };
-        const combined = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
-        const capped = trimToByteLimit(combined, term.outputByteLimit);
-        return {
-            output: capped.text,
-            truncated: term.truncated || capped.dropped,
-            exitStatus: term.exitCode !== null ? { exitCode: term.exitCode } : undefined,
-        };
-    }
-
-    private async _handleTerminalWaitForExit(params: any): Promise<any> {
-        const term = this._terminals.get(params.terminalId);
-        if (!term) return { signal: undefined, exitCode: undefined };
-        await term.exited;
-        return { exitCode: term.exitCode, signal: term.exitSignal };
-    }
-
-    private _handleTerminalRelease(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (term) {
-            term.process.kill();
-            this._terminals.delete(params.terminalId);
-        }
-    }
-
-    private _handleTerminalKill(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (term) {
-            term.process.kill();
-        }
     }
 
     // ---- ACP session update handler ----

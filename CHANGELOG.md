@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Four pieces of extension-side code that decided permissions nobody saw, and two ACP
+  capabilities Hermes never asks for.** The permission card drew its own "Allow for session"
+  button on gates where Hermes had deliberately withheld that scope, and pressed it answered the
+  next request unseen; the ACP client fell back to answering "allow" when no handler was passed;
+  and the client advertised `fs` and `terminal` capabilities that Hermes never calls, the terminal
+  side spawning processes inside the extension, outside every approval gate. All four are gone
+  rather than replaced: the card shows only the options Hermes sends, a permission handler is now
+  required, and `clientCapabilities` advertises nothing. The workspace path guard stays — the
+  chat preview still uses it.
+
 ## [2.3.1] - 2026-11-12
 
 The rail shows and sets the permission mode, and an approval granted on your behalf is drawn as a

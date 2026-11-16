@@ -270,14 +270,6 @@ export class Connection {
                 });
                 void this.reconnectAfterLoss();
             },
-            (cmd: string, args: string[], cwd: string) => {
-                // Showing a command must not run it. This callback used to open a VS Code
-                // terminal and `sendText()` the same command the ACP terminal had already
-                // spawned: every tool call could execute twice, and the second copy lost its
-                // argument quoting in `args.join(' ')`. The log keeps the visible record.
-                const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
-                this._host.log(`Terminal (${cwd}): ${fullCmd.slice(0, 200)}`);
-            },
             (usage) => {
                 if (!this._host.isViewingPromptSession()) {
                     return;
