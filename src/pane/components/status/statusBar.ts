@@ -1,6 +1,7 @@
 import { byId, detectEnvBtn, inputEl, retryBtn, statusText, required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
+import type { HostToPane } from '../../../shared/webview';
 import { escapeHtml } from '../../util/html';
 import { currentProviderVendor } from '../pickers/modelPicker';
 import { profileDisplayName } from '../pickers/profilePicker';
@@ -93,6 +94,16 @@ function doRetry() {
 export function doDetectEnvironment() {
     if (detectEnvBtn && detectEnvBtn.disabled) return;
     post({ type: 'detectEnvironment' });
+}
+
+/**
+ * The host's session list: a list that arrived means the pane has something to show, so the
+ * "no active tab" hint goes. The condition is the feature's, never the router's (R1).
+ */
+export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>): void {
+    if ((msg.sessions || []).length) {
+        state.paneHintText = '';
+    }
 }
 
 export function emptyStateText() {

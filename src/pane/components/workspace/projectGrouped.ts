@@ -2,14 +2,37 @@ import { tabBar, tabContextMenu } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
-import type { Project, SessionInfo } from '../../../shared/chat';
+import { renderSessionTabs } from './sessionTab';
+import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
+import type { HostToPane } from '../../../shared/webview';
 
 /**
  * The project group in the pane: the popup shell, the projects drawn as parents, and their own menu.
  *
  * The tree needs a tab's markup and does not own it: `projectTreeHtml` takes the renderer the tab
- * file supplies, so the two files depend in one direction only.
+ * file supplies, so the drawing points one way. The one edge back is `onProjectList`, which asks
+ * the strip to redraw: a projects message carries no tabs, and the strip is the only thing that
+ * shows what the two lists now say.
  */
+
+/**
+ * The workspaces and the projects the host last reported: this feature's own state (S1).
+ *
+ * Only `onProjectList` writes them — a message from the host is the only source for either list —
+ * and the rest of the feature reads them through `lastWorkspaces()` and `lastProjects()`.
+ */
+let workspaceList: Workspace[] = [];
+let projectList: Project[] = [];
+
+/** The workspaces this editor has opened: the tab's "move to" list, and the popup's rows. */
+export function lastWorkspaces(): Workspace[] {
+    return workspaceList;
+}
+
+/** The projects named in this window: the strip's parents, and the menu's list. */
+export function lastProjects(): Project[] {
+    return projectList;
+}
 
 /** Place the one popup where it was asked for, kept inside the pane. */
 export function placePopup(x: number, y: number): void {
@@ -51,7 +74,7 @@ export function applyProjectCollapsed(group: HTMLElement): void {
  */
 export function projectTreeHtml(sessions: SessionInfo[], tabsHtml: (list: SessionInfo[]) => string): string {
     const groups: Array<{ project: Project; sessions: SessionInfo[] }> = [];
-    state.lastProjects.forEach(function(project) {
+    projectList.forEach(function(project) {
         groups.push({ project: project, sessions: [] });
     });
     const plane: SessionInfo[] = [];
@@ -94,7 +117,7 @@ function projectAccent(index: number, total: number): string {
 
 /** The path behind a workspace id, for a tooltip. The list the host sent is the whole truth. */
 function workspacePathOf(workspaceId: string): string {
-    const entry = state.lastWorkspaces.find(function(workspace) { return workspace.id === workspaceId; });
+    const entry = workspaceList.find(function(workspace) { return workspace.id === workspaceId; });
     return entry ? entry.path : '';
 }
 
@@ -141,7 +164,7 @@ export function applyProjectFocus(): void {
         }
     }
     state.collapsedProjects = new Set(
-        state.lastProjects.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
+        projectList.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
     );
 }
 
@@ -158,7 +181,7 @@ function projectHeader(projectId: string): HTMLElement | null {
 
 /** Rename a project where its name is: the same inline input a tab rename uses. */
 function startProjectRename(projectId: string): void {
-    const project = state.lastProjects.find(function(p) { return p.id === projectId; });
+    const project = projectList.find(function(p) { return p.id === projectId; });
     const header = projectHeader(projectId);
     const nameEl = header ? header.querySelector('.tab-group-name') : null;
     if (!project || !header || !nameEl) {
@@ -244,7 +267,7 @@ export function showProjectPicker(sessionId: string): void {
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveProject) + '</div>';
     html += '<button type="button" class="tab-ctx-item" data-project="">' + escapeHtml(locale.tabContextNoProject) + '</button>';
-    state.lastProjects.forEach(function(project) {
+    projectList.forEach(function(project) {
         html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(workspacePathOf(project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
     });
     tabContextMenu.innerHTML = html;
@@ -277,6 +300,22 @@ export function showProjectNotice(message: string): void {
     }
     notice.textContent = message || '';
     notice.hidden = !message;
+}
+
+/**
+ * The host's project list: both lists replace, the strip redraws from what it now holds, and the
+ * notice clears — a list that arrived is itself the answer to whatever was refused.
+ */
+export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>): void {
+    workspaceList = msg.workspaces || [];
+    projectList = msg.projects || [];
+    renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
+    showProjectNotice('');
+}
+
+/** Something the host wants the user to read: a refused create, and nothing else today. */
+export function onProjectNotice(msg: Extract<HostToPane, { type: 'projectNotice' }>): void {
+    showProjectNotice(msg.message);
 }
 
 export function initCreateProjectButton(): void {

@@ -1,8 +1,7 @@
 import { tabContextMenu } from '../../dom';
 import { post } from '../../post';
-import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
-import { clearPopup, placePopup } from './projectGrouped';
+import { clearPopup, lastWorkspaces, placePopup } from './projectGrouped';
 
 /**
  * The workspace in the pane: the list of the ones this editor has opened, as a menu level.
@@ -23,7 +22,7 @@ export function showWorkspacePicker(sessionId: string): void {
         return;
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveWorkspace) + '</div>';
-    state.lastWorkspaces.forEach(function(entry) {
+    lastWorkspaces().forEach(function(entry) {
         html += '<button type="button" class="tab-ctx-item" data-workspace="' + escapeHtml(entry.id) + '" title="' + escapeHtml(entry.path) + '">' + escapeHtml(workspaceLabel(entry.path)) + '</button>';
     });
     tabContextMenu.innerHTML = html;

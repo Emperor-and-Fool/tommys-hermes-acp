@@ -1,6 +1,7 @@
 import { required } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
+import type { HostToPane } from '../../../shared/webview';
 import { hideModal, showModal } from './modal';
 
 
@@ -54,6 +55,18 @@ export function clearSwitchQueued() {
     document.querySelectorAll('.session-tab.switch-pending').forEach(t => t.classList.remove('switch-pending'));
     hideModal(switchSessionModal);
     state.pendingSwitchSessionId = null;
+}
+
+/**
+ * The host's session list: the switch we queued has landed when the list names that session.
+ *
+ * The condition lives here, not in the router (R1): "is this the switch that was waiting?" is a
+ * question about this modal, and the router only hands the message on.
+ */
+export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>): void {
+    if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
+        clearSwitchQueued();
+    }
 }
 
 export function requestSwitchSession(sessionId: string) {

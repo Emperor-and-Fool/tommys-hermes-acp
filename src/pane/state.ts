@@ -1,5 +1,5 @@
 /* Pane state shared by more than one module. Reads and writes go through `state.x`. */
-import type { Project, SessionInfo, Workspace } from '../shared/chat';
+import type { SessionInfo } from '../shared/chat';
 import type { CatalogSession } from '../shared/acp';
 import type { ApprovalMode } from '../shared/webview';
 import type { ModelListItem, ModelProviderGroup } from '../shared/models';
@@ -122,10 +122,6 @@ export interface PaneState {
     viewerSessionId: string;
     lastSelectionQuote: SelectionCapture | null;
     lastSessions: SessionInfo[];
-    /** The workspaces the host last reported: what the tab's "move to" list offers. */
-    lastWorkspaces: Workspace[];
-    /** The projects the host last reported: the strip's parents, and the menu's list. */
-    lastProjects: Project[];
     /** Projects the user closed, by id: their tabs are hidden until it is opened again. */
     collapsedProjects: Set<string>;
     /** The blank chat being written in: it has no record, so the pane carries it itself. */
@@ -236,8 +232,6 @@ export const state: PaneState = {
     viewerSessionId: '',
     lastSelectionQuote: null,
     lastSessions: [],
-    lastWorkspaces: [],
-    lastProjects: [],
     collapsedProjects: new Set<string>(),
     blankChat: null,
     recentProjects: [],

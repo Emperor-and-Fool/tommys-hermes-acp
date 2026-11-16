@@ -6,9 +6,10 @@ import { escapeHtml } from '../../util/html';
 import { COPY_ICON_SVG } from '../messages/markdown';
 import { requestSessionExport } from '../multiSelect';
 import { requestSwitchSession } from '../modals/switchSession';
-import { applyProjectCollapsed, clearPopup, placePopup, projectTreeHtml, showProjectContextMenu, showProjectPicker } from './projectGrouped';
+import { applyProjectCollapsed, applyProjectFocus, clearPopup, lastProjects, lastWorkspaces, placePopup, projectTreeHtml, showProjectContextMenu, showProjectPicker } from './projectGrouped';
 import { showWorkspacePicker } from './workSpace';
 import type { SessionInfo } from '../../../shared/chat';
+import type { HostToPane } from '../../../shared/webview';
 
 /**
  * The tab in the pane: the strip it is drawn in, the drag that reorders it, and its own menu.
@@ -173,6 +174,19 @@ function withBlankChat(sessions: SessionInfo[]): SessionInfo[] {
     ];
 }
 
+/**
+ * The tab part of the host's session list: which tab is on screen, the list the strip draws from,
+ * and the redraw. The rest of that message belongs to other features — the hint in the status bar,
+ * the history list, the switch modal — and the router hands it to each of them in turn (R1).
+ */
+export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>): void {
+    state.activeSessionId = msg.activeSessionId || state.activeSessionId;
+    state.lastSessions = msg.sessions || [];
+    state.lastActiveSessionId = state.activeSessionId;
+    applyProjectFocus();
+    renderSessionTabs(msg.sessions, msg.activeSessionId);
+}
+
 export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
     state.activeSessionId = activeId || state.activeSessionId;
     const list = withBlankChat(sessions || []);
@@ -280,8 +294,8 @@ export function showTabContextMenu(sessionId: string, clientX: number, clientY: 
         '<button type="button" class="tab-ctx-item" data-action="export">' + escapeHtml(locale.tabContextExport) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="copy">' + escapeHtml(locale.tabContextCopy) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="rename">' + escapeHtml(locale.tabContextRename) + '</button>' +
-        '<button type="button" class="tab-ctx-item" data-action="moveTo"' + (state.lastWorkspaces.length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveWorkspace) + '</button>' +
-        '<button type="button" class="tab-ctx-item" data-action="moveProject"' + (state.lastProjects.length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveProject) + '</button>' +
+        '<button type="button" class="tab-ctx-item" data-action="moveTo"' + (lastWorkspaces().length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveWorkspace) + '</button>' +
+        '<button type="button" class="tab-ctx-item" data-action="moveProject"' + (lastProjects().length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveProject) + '</button>' +
         '<div class="tab-ctx-divider"></div>' +
         '<button type="button" class="tab-ctx-item" data-action="close">' + escapeHtml(locale.tabContextClose) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="closeOthers"' + (canCloseOthers ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextCloseOthers) + '</button>' +

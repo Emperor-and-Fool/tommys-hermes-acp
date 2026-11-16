@@ -15,14 +15,14 @@ import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliar
 import { renderAboutContent } from './components/modals/info';
 import { renderLogContent } from './components/modals/logViewer';
 import { isLogModalOpen, openLogModal, showModal } from './components/modals/modal';
-import { clearSwitchQueued } from './components/modals/switchSession';
+import { onSessionList as switchOnSessionList } from './components/modals/switchSession';
 import { renderClosedList } from './components/pickers/closedSessions';
 import { renderModelList } from './components/pickers/modelPicker';
 import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
-import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
+import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, onSessionList as statusOnSessionList, updateLoadProgress, updateStatus } from './components/status/statusBar';
 import { updateTokenUsage } from './components/status/tokenMeter';
-import { applyProjectFocus, showProjectNotice } from './components/workspace/projectGrouped';
-import { renderSessionTabs } from './components/workspace/sessionTab';
+import { onProjectList, onProjectNotice } from './components/workspace/projectGrouped';
+import { onSessionList as tabsOnSessionList, renderSessionTabs } from './components/workspace/sessionTab';
 import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
 import { aboutModal, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
@@ -276,29 +276,20 @@ export function init(): void {
                 break;
 
             case 'sessionList':
-                if ((msg.sessions || []).length) state.paneHintText = '';
-                state.activeSessionId = msg.activeSessionId || state.activeSessionId;
-                state.lastSessions = msg.sessions || [];
-                state.lastActiveSessionId = state.activeSessionId;
-                applyProjectFocus();
-                renderSessionTabs(msg.sessions, msg.activeSessionId);
+                // Four features share this message: each is handed it in turn, and each decides for
+                // itself what part is its own. The order is the order of the effects it replaces.
+                statusOnSessionList(msg);
+                tabsOnSessionList(msg);
                 renderHistorySessionList();
-                if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
-                    clearSwitchQueued();
-                }
+                switchOnSessionList(msg);
                 break;
 
             case 'projectList':
-                // The tree is its own message: the strip redraws from what it already holds.
-                state.lastWorkspaces = msg.workspaces || [];
-                state.lastProjects = msg.projects || [];
-                renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
-                // A list that arrived is itself the answer: whatever was refused is settled.
-                showProjectNotice('');
+                onProjectList(msg);
                 break;
 
             case 'projectNotice':
-                showProjectNotice(msg.message);
+                onProjectNotice(msg);
                 break;
 
             case 'sessionExport':
