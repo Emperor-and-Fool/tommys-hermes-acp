@@ -43,7 +43,6 @@ import { HistoryStages, blockMessageLines, historySliceBody } from './chat/histo
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
-import { ApprovalModeControl } from './permissions/approvalModeControl';
 import { Approvals } from './permissions/approvals';
 import { PermissionsStore } from './permissions/store';
 import type { HistoryPick } from './webview/historyViewer';
@@ -237,7 +236,6 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _historyStages: HistoryStages = new HistoryStages();
 
     /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
-    private readonly _approvalModeControl = new ApprovalModeControl();
 
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
@@ -312,7 +310,6 @@ export class App implements vscode.WebviewViewProvider {
                 onRunEnded: (handler) => this._connection.runEnded.on(handler),
                 onSessionMode: (handler) => this._connection.onSessionMode(handler),
             },
-            this._approvalModeControl,
             new PermissionsStore(this._historyDir, () => this._session.scopeKey),
         );
         this._rootPicker = new RootPicker({
@@ -718,7 +715,7 @@ export class App implements vscode.WebviewViewProvider {
         const reconnectKeys = [setting('path'), setting('profile')];
         if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
-            this._approvalModeControl.clear();
+            this._approvals.onProfileChanged();
         }
         if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
             if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
@@ -982,7 +979,7 @@ export class App implements vscode.WebviewViewProvider {
             projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
-                this._approvalModeControl.clear();
+                this._approvals.onProfileChanged();
                 this._connection.switchProfile(name);
             },
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),

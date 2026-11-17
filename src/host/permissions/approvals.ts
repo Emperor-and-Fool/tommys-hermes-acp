@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { isSettableApprovalMode } from './approvalModeRules';
-import type { ApprovalModeControl } from './approvalModeControl';
+import { ApprovalModeControl } from './approvalModeControl';
 import type { PermissionsStore } from './store';
 import type { ApprovalMode, HostToPane } from '../../shared/webview';
 import type { AcpClient } from '../acp/AcpClient';
@@ -72,8 +72,14 @@ export class Approvals {
 
     constructor(
         private readonly _host: ApprovalsHost,
-        private readonly _control: ApprovalModeControl,
         private readonly _store: PermissionsStore,
+        /**
+         * The mode each profile reported, read back by the buttons.
+         *
+         * Built here unless a test hands in its own: it is this feature's memory of Hermes'
+         * answer, and the composition root holds one permissions object, not two.
+         */
+        private readonly _control: ApprovalModeControl = new ApprovalModeControl(),
     ) {
         this.commands = {
             setMode: mode => this.setMode(mode),
@@ -102,6 +108,16 @@ export class Approvals {
             unRun();
             unMode();
         };
+    }
+
+    /**
+     * Another profile means another `approvals.mode`: forget what this one reported.
+     *
+     * Called by the composition root when the profile setting changes or the pane switches agent;
+     * the forgetting is this feature's, so the caller only says that it happened.
+     */
+    onProfileChanged(): void {
+        this._control.clear();
     }
 
     /** What the button implies, as an edit mode, for the session that is open. */

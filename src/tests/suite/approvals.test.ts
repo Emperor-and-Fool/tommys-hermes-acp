@@ -69,7 +69,7 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
         },
         onSessionMode: () => () => undefined,
     };
-    const approvals = new Approvals(host, control as never, store as never);
+    const approvals = new Approvals(host, store as never, control as never);
     approvals.start();
     return {
         approvals,
