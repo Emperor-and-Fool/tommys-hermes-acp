@@ -90,7 +90,8 @@ export class Approvals {
     start(): () => void {
         const unRun = this._host.onRunEnded(() => {
             if (this._pendingEdits) {
-                this._pendingEdits = false;
+                // Not cleared here: applyEdits either sets the mode (and says the notice is over) or
+                // finds itself refused again and keeps waiting.
                 void this.applyEdits();
             }
         });
@@ -122,22 +123,36 @@ export class Approvals {
             return;
         }
         if (acp.currentSessionMode === desired) {
-            this._pendingEdits = false;
+            this._defer(false);
             return;
         }
         if (this._host.activeSessionBusy()) {
-            this._pendingEdits = true;
+            this._defer(true);
             this._host.log(`Edit mode ${desired} waits for the next run`);
             return;
         }
         try {
             await acp.setSessionMode(desired);
-            this._pendingEdits = false;
+            this._defer(false);
             this._host.log(`Edit mode set to ${desired}`);
         } catch (err) {
-            this._pendingEdits = true;
+            this._defer(true);
             this._host.log(`Edit mode ${desired} refused: ${err instanceof Error ? err.message : String(err)}`);
         }
+    }
+
+    /**
+     * Record whether an edit mode is waiting, and say it when that changes.
+     *
+     * The pane shows "Applies from the next run." while it waits, beside the buttons — the command
+     * side has already followed the press, and this is the half that has not.
+     */
+    private _defer(waiting: boolean): void {
+        if (this._pendingEdits === waiting) {
+            return;
+        }
+        this._pendingEdits = waiting;
+        this._say({});
     }
 
     /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
@@ -156,6 +171,9 @@ export class Approvals {
             openAccess: openAccess ?? this._store.openAccess(),
             ...(extra.denyBackup ? { denyBackup: extra.denyBackup } : {}),
             ...(extra.error ? { error: extra.error } : {}),
+            // Derived, never passed: a deferred edit mode is the only reason to defer, and
+            // `_pendingEdits` is its one owner.
+            ...(this._pendingEdits ? { notice: 'appliesNextRun' as const } : {}),
         });
     }
 

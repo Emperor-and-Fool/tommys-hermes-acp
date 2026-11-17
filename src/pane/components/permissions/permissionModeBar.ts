@@ -10,6 +10,7 @@
  */
 import { byId } from '../../dom';
 import { post } from '../../post';
+import { state } from '../../state';
 import {
     beginApprovalModePending,
     createApprovalModeBlock,
@@ -31,7 +32,7 @@ export function setPermissionModeRow(next: boolean): void {
         return;
     }
     open = next;
-    bar.hidden = !open;
+    bar.hidden = !(open || !!state.approvalModeNotice);
     if (btn) {
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
@@ -43,9 +44,30 @@ export function setPermissionModeRow(next: boolean): void {
     }
 }
 
+/**
+ * Say, beside the buttons, that the edit half waits for the run in flight.
+ *
+ * Commands follow the button at once — that is the profile's own setting — while the session's edit
+ * mode is frozen per run by Hermes. Showing the row has the same rule as the permission root: the
+ * row appears while it has something to say, and disappears when the run ends and it is applied.
+ */
+export function syncPermissionModeNotice(): void {
+    const bar = byId('permissionModeBar');
+    const notice = byId('permissionModeNotice');
+    const waiting = state.approvalModeNotice === 'appliesNextRun';
+    if (notice) {
+        notice.textContent = waiting ? (locale.appliesNextRun || 'Applies from the next run.') : '';
+        notice.hidden = !waiting;
+    }
+    if (bar) {
+        bar.hidden = !(open || waiting);
+    }
+}
+
 export function applyPermissionModeLabels(): void {
     // The button's words and accent belong to the state: the switch module writes them.
     syncAllApprovalModeBlocks();
+    syncPermissionModeNotice();
     const close = byId('permissionModeClose');
     if (close) {
         const label = locale.permissionModeClose || 'Close';

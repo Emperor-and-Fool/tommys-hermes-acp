@@ -88,6 +88,8 @@ export interface PaneState {
     /** A mode write is in flight: the switch shows it is working instead of looking inert. */
     approvalModePending: boolean;
     approvalModeError: string;
+    /** While an edit mode waits for the run in flight; '' when nothing is deferred. */
+    approvalModeNotice: 'appliesNextRun' | '';
     /** Entries in the profile's `approvals.deny`; 0 means nothing of the user's own is blocking. */
     approvalDenyCount: number;
     /** The mode to resume when the red action is stopped; null when nothing is engaged. */
@@ -203,6 +205,7 @@ export const state: PaneState = {
     approvalMode: 'unknown',
     approvalModePending: false,
     approvalModeError: '',
+    approvalModeNotice: '',
     approvalDenyCount: 0,
     approvalModeBeforeOpen: null,
     approvalDenyBackup: '',

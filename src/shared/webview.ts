@@ -81,7 +81,11 @@ export type HostToPane =
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
     /** The approval mode the pending cards offer, and why a change did not take. */
-    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean }
+    /**
+     * The button's state. `notice` is set while an edit mode waits for the run in flight: commands
+     * follow the button at once, edits only when that run ends.
+     */
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean; notice?: 'appliesNextRun' }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }

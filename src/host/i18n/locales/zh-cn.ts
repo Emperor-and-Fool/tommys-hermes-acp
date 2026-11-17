@@ -47,7 +47,7 @@ export const zhCn: LocaleStrings = {
         + '请选择 {profile} 的工作文件夹；该文件夹之外的编辑需要授权。',
     permissionRootLastRemoved: '最后一个根目录已移除：本项目无法再从本窗口访问。'
         + '其会话将保持未归属状态，只能通过 Hermes TUI 或重新打开该文件夹访问。',
-    permissionRootNextRun: '将在下一轮运行时生效。',
+    appliesNextRun: '将在下一轮运行时生效。',
     noFolderOpen: '请先打开文件夹或工作区以开始',
     permissionOpenConfirm: '再次按下：关闭审批并清空 approvals.deny，规则已保存到 JSON 备份。',
     permissionRestoreLabel: '恢复拒绝规则',

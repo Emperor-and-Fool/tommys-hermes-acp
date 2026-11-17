@@ -206,3 +206,12 @@ body.surface-rail #permissionRootBtn .permission-root-icon {
 body.surface-rail #permissionRootBtnLabel {
     display: none;
 }
+
+/* The half of a permission press that has not happened yet: commands follow the button at once,
+   the session's edit mode waits for the run in flight. Same place, same words as the root's. */
+#permissionModeNotice {
+    flex: 1 1 auto;
+    font-size: 11px;
+    line-height: 1.4;
+    opacity: 0.85;
+}

@@ -96,7 +96,7 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
                 || 'Last root removed: projects are no longer reachable from this window. Their '
                     + 'sessions stay untagged, available only through the Hermes TUI or by reopening the folder.')
             : msg.notice === 'appliesNextRun'
-                ? (locale.permissionRootNextRun || 'Applies from the next run.')
+                ? (locale.appliesNextRun || 'Applies from the next run.')
                 : '';
         notice.textContent = text;
         notice.hidden = !text;

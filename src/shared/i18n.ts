@@ -45,7 +45,7 @@ export interface LocaleStrings {
     permissionRootTitle: string;
     permissionRootBody: string;
     permissionRootLastRemoved: string;
-    permissionRootNextRun: string;
+    appliesNextRun: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */
     permissionRestoreLabel: string;

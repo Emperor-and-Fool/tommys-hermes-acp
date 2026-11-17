@@ -48,7 +48,7 @@ export const en: LocaleStrings = {
         + 'Choose the folder {profile} works in; outside it, edits ask for permission.',
     permissionRootLastRemoved: 'Last root removed: projects are no longer reachable from this window. '
         + 'Their sessions stay untagged, available only through the Hermes TUI or by reopening the folder.',
-    permissionRootNextRun: 'Applies from the next run.',
+    appliesNextRun: 'Applies from the next run.',
     noFolderOpen: 'Open a folder or workspace to start',
     permissionOpenConfirm: 'Press again: approvals off and approvals.deny cleared. The deny patterns are kept in a JSON backup.',
     permissionRestoreLabel: 'Restore deny rules',

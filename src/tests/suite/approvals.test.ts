@@ -155,3 +155,36 @@ describe('permissions feature: edits follow the buttons', () => {
         assert.deepStrictEqual(h.sessionModes, ['accept_edits'], 'applied once the run is over');
     });
 });
+
+/**
+ * The press has two halves. Commands follow the button at once; the session's edit mode is frozen
+ * for the run in flight, so the pane is told to expect it at the next run — and told when it lands.
+ */
+describe('permissions feature: a change made while a run is in flight', () => {
+    it('says the edit half waits, and stops saying it when the run applies it', async () => {
+        // The session is on Hermes' own default, the button implies something else.
+        const h = harness({ reported: 'default' });
+        h.setBusy(true);
+        await h.approvals.applyEdits();
+
+        const waiting = h.posts.filter(msg => msg.type === 'approvalMode') as Array<{ notice?: string }>;
+        assert.strictEqual(waiting[waiting.length - 1]?.notice, 'appliesNextRun');
+        assert.deepStrictEqual(h.sessionModes, [], 'nothing is sent during the run');
+
+        h.setBusy(false);
+        h.endRun();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits'], 'applied when the run ends');
+        const after = h.posts.filter(msg => msg.type === 'approvalMode') as Array<{ notice?: string }>;
+        assert.strictEqual(after[after.length - 1]?.notice, undefined, 'the notice is gone with it');
+    });
+
+    it('an idle change never raises the notice', async () => {
+        const h = harness({ reported: 'default' });
+        await h.approvals.applyEdits();
+        const posts = h.posts.filter(msg => msg.type === 'approvalMode') as Array<{ notice?: string }>;
+        assert.strictEqual(posts[posts.length - 1]?.notice, undefined);
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits']);
+    });
+});

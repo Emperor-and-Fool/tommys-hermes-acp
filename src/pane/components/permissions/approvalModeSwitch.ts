@@ -280,8 +280,10 @@ export function applyApprovalMode(
     denyCount?: number,
     denyBackup?: string,
     openAccess?: boolean,
+    notice?: 'appliesNextRun',
 ): void {
     state.approvalMode = mode || 'unknown';
+    state.approvalModeNotice = notice === 'appliesNextRun' ? 'appliesNextRun' : '';
     state.approvalModeError = error || '';
     if (typeof denyCount === 'number') {
         state.approvalDenyCount = denyCount;
