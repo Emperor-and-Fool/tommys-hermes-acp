@@ -7,7 +7,6 @@ import { classifyLogLevel, LogLevel } from '../logLevel';
 import type { HostToPane } from '../../shared/webview';
 import type { Profiles } from '../environment/profiles';
 import type { EnvironmentDetection } from '../environment/detection';
-import type { WorkspaceFiles } from '../workspace/files';
 import type { Sessions } from '../cache/sessions';
 import type { ModelState } from '../models/modelState';
 import type { PromptRunner } from './promptRunner';
@@ -26,7 +25,8 @@ export interface ConnectionHost {
     turn: PromptRunner;
     models: ModelState;
     detection: EnvironmentDetection;
-    files: WorkspaceFiles;
+    /** This window's cwd, or '' when it opened no folder. */
+    resolveCwd(): string;
     lifecycle: TabLifecycle;
     post(msg: HostToPane): void;
     log(line: string): void;
@@ -146,7 +146,14 @@ export class Connection {
         this._host.log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._host.post({ type: 'activeAgent', name: target.displayName });
 
-        const cwd = this._host.files.resolveCwd(target.configCwd);
+        const cwd = this._host.resolveCwd();
+        if (!cwd) {
+            // No folder open is not a working area: there is no cwd to hand Hermes, so no session.
+            this._host.log('No folder open: not starting Hermes');
+            this._host.post({ type: 'status', status: 'idle', message: t('noFolderOpen') });
+            return;
+        }
+
 
         this._host.post({
             type: 'status',

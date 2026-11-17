@@ -82,3 +82,67 @@ describe('tab switch: a session that will not replay', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+/**
+ * A tab moved to another workspace belongs to that workspace's folder: the tab's recorded cwd is a
+ * mirror of what Hermes reported, not a decision. Loading it with the new workspace's cwd is also
+ * what moves the session (session/load with a different cwd moves it).
+ */
+describe('tab move: the workspace cwd decides, not the tab record', () => {
+    it('loads a moved tab with this window\'s cwd and not the recorded one', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-move-'));
+        const session = new Sessions(dir, 'scope', {
+            post: () => {},
+            log: () => {},
+            updatePanelTitle: () => {},
+            modelLabel: () => undefined,
+            currentWorkspaceId: () => '/work/new',
+            workspaceIdForCwd: () => '/work/new',
+            knownWorkspaceIds: () => ['/work/new'],
+        }, new TabStore(dir, 'scope'));
+        session.activeId = 'tab-moved';
+        session.tabs = [
+            { id: 'tab-moved', title: 'Moved', createdAt: 0, updatedAt: 0,
+              hermesSessionId: 'hermes-moved', cwd: '/work/old' },
+        ];
+
+        const loaded: Array<{ cwd: string; sessionId: string }> = [];
+        const host = {
+            acp: () => ({
+                activeSessionId: 'hermes-elsewhere',
+                status: 'ready',
+                loadSession: async (cwd: string, sessionId: string) => {
+                    loaded.push({ cwd, sessionId });
+                },
+            }),
+            session,
+            post: () => {},
+            postTo: () => {},
+            log: () => {},
+            resolveCwd: () => '/work/new',
+            profile: () => 'test',
+            attachments: { hydrateImages: () => [] },
+            promptSessionId: () => undefined,
+            detachActivePrompt: async () => {},
+            otherSessionIsPrompting: () => false,
+            syncModelStateForCurrentSession: async () => {},
+            syncPromptUiIfReturningToOwner: () => {},
+            snapshotModelFromProfile: () => {},
+            saveCatalog: () => true,
+            saveCurrent: () => {},
+            ensureRegistered: () => {},
+            postSessionList: () => {},
+            postHistoryState: () => {},
+            dropHistoryStage: () => {},
+            activate: () => {},
+            workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+        } as unknown as TabLifecycleHost;
+
+        await new TabLifecycle(host).resumeTabHermesSession('tab-moved');
+
+        assert.deepStrictEqual(loaded, [{ cwd: '/work/new', sessionId: 'hermes-moved' }],
+            'the new workspace\'s cwd is what Hermes is given');
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+});

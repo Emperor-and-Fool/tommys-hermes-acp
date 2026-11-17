@@ -115,12 +115,17 @@ export class TabLifecycle {
         // leaving the throwaway session `session/new` just created in front of the
         // user. This is what makes existing conversations reappear as tabs.
         if (!target && !session.activeIsLinked()) {
-            const newest = session.tabs.find(rec => !!rec.hermesSessionId && !!session.catalogRow(rec.hermesSessionId));
+            // Only this window's own tabs: another workspace's tab is another workspace's session,
+            // and loading it here with our cwd would move it (session/load with a different cwd
+            // moves a session; gateway_server.py:403-404, 443-452).
+            const newest = session.tabsInWindow().find(
+                rec => !!rec.hermesSessionId && !!session.catalogRow(rec.hermesSessionId)
+            );
             if (newest?.hermesSessionId) {
                 session.activeId = newest.id;
                 session.messages = [];
                 this._host.post({ type: 'newChat' });
-                if (!await this._loadForReplay(acp, newest.cwd || cwd, newest.hermesSessionId, 'Adopt')) {
+                if (!await this._loadForReplay(acp, cwd, newest.hermesSessionId, 'Adopt')) {
                     // The tab stays empty and this pane stays unbound: binding the throwaway would
                     // present a session Hermes never had, and letting the error escape would send
                     // it to Connection's catch, which disposes the whole client.
@@ -134,8 +139,7 @@ export class TabLifecycle {
             }
         }
         if (target && target !== acp.activeSessionId) {
-            const targetCwd = session.tabs.find(rec => rec.hermesSessionId === target)?.cwd || cwd;
-            if (await this._loadForReplay(acp, targetCwd, target, 'Resume')) {
+            if (await this._loadForReplay(acp, cwd, target, 'Resume')) {
                 this.bindHermesSessionId(target);
                 this._host.log(`Resumed Hermes session ${target}`);
                 return;
@@ -188,10 +192,9 @@ export class TabLifecycle {
             this._host.log(`Replaying ${bound} again — the pane holds no transcript of its own`);
         }
         try {
-            const record = this._host.session.tabs.find(rec => rec.id === sessionId);
             this._renderReplayOnLoad = true;
             try {
-                await acp.loadSession(record?.cwd || this._host.resolveCwd(), bound);
+                await acp.loadSession(this._host.resolveCwd(), bound);
             } finally {
                 this._renderReplayOnLoad = false;
             }

@@ -36,6 +36,8 @@ export interface LocaleStrings {
     permissionModeClose: string;
     /** The red action: what it does, and what it does on the confirming press. */
     permissionOpenTooltip: string;
+    /** Nothing to work in: Hermes is not started until a folder or workspace is open. */
+    noFolderOpen: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */
     permissionRestoreLabel: string;

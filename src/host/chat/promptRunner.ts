@@ -308,9 +308,8 @@ export class PromptRunner {
         const sessionId = this.host.sessionId();
         const bound = this.host.tabs().find((rec) => rec.id === sessionId)?.hermesSessionId;
         if (bound && acp.activeSessionId !== bound) {
-            const record = this.host.tabs().find((rec) => rec.id === sessionId);
             try {
-                await acp.loadSession(record?.cwd || this.host.resolveCwd(), bound);
+                await acp.loadSession(this.host.resolveCwd(), bound);
                 this.host.log(`Switched Hermes session to ${bound}`);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);

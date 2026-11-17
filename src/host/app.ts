@@ -366,7 +366,7 @@ export class App implements vscode.WebviewViewProvider {
             turn: this._turn,
             models: this._models,
             detection: this._detection,
-            files: this._files,
+            resolveCwd: () => this._cwd.forWindow(),
             lifecycle: this._lifecycle,
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),

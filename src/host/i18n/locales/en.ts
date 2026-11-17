@@ -39,6 +39,7 @@ export const en: LocaleStrings = {
     permissionModeTitle: 'Permission mode',
     permissionModeClose: 'Close',
     permissionOpenTooltip: 'DANGER! (only critical actions blocked)',
+    noFolderOpen: 'Open a folder or workspace to start',
     permissionOpenConfirm: 'Press again: approvals off and approvals.deny cleared. The deny patterns are kept in a JSON backup.',
     permissionRestoreLabel: 'Restore deny rules',
     noClosedSessions: 'No closed sessions',

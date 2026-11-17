@@ -39,6 +39,7 @@ export const zhCn: LocaleStrings = {
     permissionModeTitle: '权限模式',
     permissionModeClose: '关闭',
     permissionOpenTooltip: '危险！（仅拦截关键操作）',
+    noFolderOpen: '请先打开文件夹或工作区以开始',
     permissionOpenConfirm: '再次按下：关闭审批并清空 approvals.deny，规则已保存到 JSON 备份。',
     permissionRestoreLabel: '恢复拒绝规则',
     noClosedSessions: '没有已关闭的会话',
