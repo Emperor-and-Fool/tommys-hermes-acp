@@ -20,7 +20,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 PROFILE = sys.argv[1] if len(sys.argv) > 1 else "dev-vsc"
-MODULE = REPO / "out" / "host" / "environment" / "approvalMode.js"
+MODULE = REPO / "out" / "host" / "permissions" / "approvalModeControl.js"
 
 # The module pulls in profileDiscovery, which reaches for vscode at import time; a stub is
 # enough for the two config calls and keeps this runnable without an extension host.
