@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The permission card shows only what Hermes offers, and says why when it is about an edit.** The
+  Manual/Smart/None switch no longer sits inside the card — the mode is a setting, and its button is
+  in the toolbar. Edit cards carry one plain line naming the three things that can make an edit ask
+  (the button, the permission root, a protected file) and telling the reader which to change; the
+  hint applies from the next run, as the mode does. Command cards get no hint.
 - **The permission buttons now govern edits as well as commands.** Manual asks for both; Smart and
   None run commands as before and free file edits inside the permission root, asking outside it;
   DANGER frees edits everywhere and clears the deny rules. Sensitive files — `.git`, `.ssh`, `.env`,
