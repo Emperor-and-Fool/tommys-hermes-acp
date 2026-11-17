@@ -14,7 +14,6 @@ import * as vscode from 'vscode';
 import type { AcpClient, CatalogSession, ReplayMessage } from '../acp/AcpClient';
 import type { AttachmentStore } from '../cache/attachments';
 import { renameSession } from '../cache/catalog';
-import { countsTowardMessageCount, replayCountDiffers } from '../acp/replayProgress';
 import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 
@@ -226,16 +225,6 @@ export class TabLifecycle {
         this._host.session.pendingUsers.dropBefore(localId, newestUserAt);
         const surviving = this._host.session.pendingUsers.read(localId);
         const undelivered = surviving.length ? surviving[surviving.length - 1].text : '';
-        // More rows than Hermes counts means the two disagree. The pending user turns explain a
-        // little of it; beyond that it is a signal worth a line rather than something to hide.
-        const countedRows = replay.filter(row => countsTowardMessageCount(row.role)).length;
-        const sourceCount = this._host.session.catalogRow(hermesSessionId)?.messageCount ?? 0;
-        if (replayCountDiffers(countedRows, sourceCount, surviving.length)) {
-            this._host.log(
-                `Replay for ${localId} carried ${countedRows} row(s) against the catalog's ${sourceCount} — ` +
-                    `Hermes' count and its replay disagree`
-            );
-        }
         // The replay is text-only, so refs are restored from the attachment sidecar: the agent's
         // sequence carries thought and tool records and rewrites this file, so neither position
         // nor the file itself can be trusted to still hold them.
