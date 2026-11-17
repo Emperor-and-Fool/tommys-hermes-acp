@@ -962,7 +962,8 @@ export class App implements vscode.WebviewViewProvider {
             handleSteer: (text) => this._handleSteer(text),
             permissionRoot: {
                 set: (root) => this._rootPicker.setRoot(root),
-                open: () => this._rootPicker.state({ open: true }),
+                // The surface has already opened its own row; it only needs the facts.
+                open: () => this._rootPicker.state(),
             },
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),

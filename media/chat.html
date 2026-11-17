@@ -53,8 +53,10 @@
         <button class="picker-btn menu__trigger" id="permissionModeBtn" aria-expanded="false">
             <span id="permissionModeBtnLabel"></span>
         </button>
-        <!-- Rail only: which folder Hermes works in when the workspace shows several. -->
+        <!-- Which folder Hermes works in when the workspace shows several. The rail shows the
+             symbol (a folder name does not fit there); the panel shows the name. -->
         <button class="picker-btn menu__trigger" id="permissionRootBtn" hidden>
+            <svg class="permission-root-icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.2l1.2 1.5H13A1.5 1.5 0 0 1 14.5 5v7A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V3.5zm1.5 0V12h10V5H7.1L5.9 3.5H3z"/></svg>
             <span id="permissionRootBtnLabel"></span>
         </button>
         <div class="picker is-empty menu" id="closedPicker" data-open="false">

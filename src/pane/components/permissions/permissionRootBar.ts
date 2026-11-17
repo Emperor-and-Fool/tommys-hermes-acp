@@ -1,5 +1,11 @@
 import { byId } from '../../dom';
 import { post } from '../../post';
+import { shouldShowRow, type RootFacts } from './rootRow';
+
+/** The row is open because this surface's own button was pressed, or the host asked. */
+let open = false;
+/** The last facts the host sent, so a click can draw before the answer arrives. */
+let facts: RootFacts | undefined;
 
 /**
  * The permission root in the pane: a button in the rail showing the folder Hermes works in, and the
@@ -13,29 +19,49 @@ export function initPermissionRoot(): void {
     const btn = byId('permissionRootBtn');
     if (btn) {
         btn.addEventListener('click', function () {
+            // This surface opens its own row, now: the click belongs to the surface it happened
+            // in, and the host is only asked for fresh facts — never to open anything.
+            open = true;
+            drawRow();
             post({ type: 'openPermissionRoot' });
         });
     }
     const close = byId('permissionRootClose');
     if (close) {
         close.addEventListener('click', function () {
-            const bar = byId('permissionRootBar');
-            if (bar) {
-                bar.hidden = true;
-            }
+            open = false;
+            drawRow();
         });
     }
 }
 
+/** Draw the row from the facts on hand and the local open state. */
+function drawRow(): void {
+    const bar = byId('permissionRootBar');
+    if (!bar || !facts) {
+        return;
+    }
+    bar.hidden = !shouldShowRow(facts, open);
+    if (bar.hidden) {
+        delete bar.dataset.open;
+    } else {
+        bar.dataset.open = 'true';
+    }
+}
+
 /** The host's answer: what the root is, which folders it may be, and whether to open the row. */
-export function applyPermissionRootState(msg: {
-    root: string;
-    folders: string[];
-    offered: string[];
-    open: boolean;
-    profile: string;
-    notice?: 'lastRootRemoved' | 'appliesNextRun';
-}): void {
+export function applyPermissionRootState(msg: RootFacts & { open: boolean }): void {
+    facts = {
+        root: msg.root,
+        folders: msg.folders,
+        offered: msg.offered,
+        profile: msg.profile,
+        ...(msg.notice ? { notice: msg.notice } : {}),
+    };
+    // `open` is the host's automatic open, and it is only ever sent to a surface meant to show it.
+    if (msg.open) {
+        open = true;
+    }
     const btn = byId('permissionRootBtn');
     const label = byId('permissionRootBtnLabel');
     const tip = locale.permissionRootLabel || 'Permission root';
@@ -94,15 +120,7 @@ export function applyPermissionRootState(msg: {
         });
     }
 
-    const bar = byId('permissionRootBar');
-    if (bar) {
-        bar.hidden = !(msg.open && msg.offered.length > 0) && !msg.notice;
-        if (!bar.hidden) {
-            bar.dataset.open = 'true';
-        } else {
-            delete bar.dataset.open;
-        }
-    }
+    drawRow();
 }
 
 /** The folder's own name: what a reader calls it, and what fits in a rail button. */

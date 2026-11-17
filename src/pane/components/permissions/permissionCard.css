@@ -182,3 +182,27 @@
     line-height: 1.45;
     color: var(--dim);
 }
+
+/* The permission-root button, one markup two looks: a symbol where there is no room for a name
+   (the rail), the folder's name where there is (the panel). */
+#permissionRootBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#permissionRootBtn .permission-root-icon {
+    display: none;
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    flex: 0 0 auto;
+}
+
+body.surface-rail #permissionRootBtn .permission-root-icon {
+    display: inline-block;
+}
+
+body.surface-rail #permissionRootBtnLabel {
+    display: none;
+}
