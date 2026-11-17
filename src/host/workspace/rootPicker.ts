@@ -14,6 +14,8 @@ export interface RootPickerHost {
     reloadActiveSession(): Promise<void>;
     /** The profile whose name the dialog uses. */
     profileLabel(): string;
+    /** Told when a run ends: a pick refused while it ran applies then. */
+    onRunEnded(handler: () => void): () => void;
 }
 
 /**
@@ -41,9 +43,27 @@ export class RootPicker {
         }
     }
 
+    /** A pick that arrived while a run was busy: it applies when that run ends. */
+    private _appliesAfterRun = false;
+
     /** Start watching: the window's folders decide when the dialog opens. */
     start(): () => void {
-        return this._host.cwd.watch(() => this.onFoldersChanged());
+        const unwatch = this._host.cwd.watch(() => this.onFoldersChanged());
+        const unlisten = this._host.onRunEnded(() => this.afterRun());
+        return () => {
+            unwatch();
+            unlisten();
+        };
+    }
+
+    /** The run that refused the pick is over: move the session now, and say so. */
+    async afterRun(): Promise<void> {
+        if (!this._appliesAfterRun) {
+            return;
+        }
+        this._appliesAfterRun = false;
+        await this._host.reloadActiveSession();
+        this.state();
     }
 
     /** The current state, as the pane draws it. */
@@ -88,7 +108,9 @@ export class RootPicker {
             return;
         }
         if (this._host.activeSessionBusy()) {
-            // Hermes moves a session only while it is idle, so say when this one takes effect.
+            // Hermes moves a session only while it is idle, so say when this one takes effect —
+            // and remember to do it, because nothing else will.
+            this._appliesAfterRun = true;
             this.state({ notice: 'appliesNextRun' });
             return;
         }

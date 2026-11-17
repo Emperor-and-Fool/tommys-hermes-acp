@@ -1,3 +1,4 @@
+import { RunEnded } from './runEnded';
 import * as vscode from 'vscode';
 import { AcpClient, TokenUsage } from '../acp/AcpClient';
 import { tryResolveHermesQuick } from '../environment/profileDiscovery';
@@ -256,6 +257,8 @@ export class Connection {
                     }
                     this._host.turn.clearText();
                     this._host.turn.promptSessionId = undefined;
+                    // The run is over: whatever was refused while it ran acts now.
+                    this.runEnded.fire();
                 }
                 if (status === 'prompting') {
                     this._host.turn.clearText();
@@ -426,6 +429,9 @@ export class Connection {
         await this.connect(target.selectionId);
         this._host.lifecycle.restoreMessages();
     }
+
+    /** Said whenever a run ends: the features that were refused while it ran act on it. */
+    readonly runEnded = new RunEnded();
 
     postTokenUsage(): void {
         if (!this.tokenUsage) {

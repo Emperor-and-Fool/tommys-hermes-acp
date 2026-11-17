@@ -28,6 +28,7 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
     );
     const posts: HostToPane[] = [];
     const reloads: string[] = [];
+    const ended: Array<() => void> = [];
     let busy = false;
     const host: RootPickerHost = {
         post: (msg: HostToPane) => {
@@ -40,6 +41,10 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
             reloads.push(cwd.forWindow());
         },
         profileLabel: () => 'dev-vsc',
+        onRunEnded: (handler: () => void) => {
+            ended.push(handler);
+            return () => undefined;
+        },
     };
     const picker = new RootPicker(host);
     picker.start();
@@ -51,6 +56,7 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
         setBusy: (value: boolean) => {
             busy = value;
         },
+        endRun: () => ended.forEach(handler => handler()),
         changeFolders: (next: string[]) => {
             list = next.slice();
             handlers.forEach(handler => handler());
@@ -99,6 +105,20 @@ describe('permission root: the picker', () => {
         assert.deepStrictEqual(h.reloads, [], 'nothing is interrupted');
         assert.strictEqual(h.last().notice, 'appliesNextRun');
         assert.strictEqual(h.state.permissionRoot, '/w/b', 'the choice is still recorded');
+    });
+
+    it('a pick refused while busy is applied when that run ends', async () => {
+        const h = harness(['/w/a', '/w/b']);
+        h.setBusy(true);
+        await h.picker.setRoot('/w/b');
+        assert.deepStrictEqual(h.reloads, [], 'nothing is interrupted');
+
+        h.setBusy(false);
+        h.endRun();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepStrictEqual(h.reloads, ['/w/b'], 'the session moves once the run is over');
+        assert.strictEqual(h.last().notice, undefined, 'and the notice goes away');
     });
 
     it('refuses a folder this window does not show', async () => {

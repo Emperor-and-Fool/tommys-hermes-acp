@@ -319,6 +319,7 @@ export class App implements vscode.WebviewViewProvider {
             // Hermes moves an idle session on load, so the reload is the move.
             reloadActiveSession: () => this._lifecycle.resumeTabHermesSession(this._session.activeId).then(() => undefined),
             profileLabel: () => this._profiles.resolveTarget().displayName,
+            onRunEnded: (handler) => this._connection.runEnded.on(handler),
         });
         const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
         const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
