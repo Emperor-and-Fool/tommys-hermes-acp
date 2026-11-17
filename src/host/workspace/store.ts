@@ -3,6 +3,7 @@ import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor } from '../cache/profileStorage';
 import { writeAtomic, writeAtomicText } from '../store/connection';
+import type { RootState } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
 import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './workSpace';
 
@@ -95,6 +96,32 @@ export class WorkspaceStore {
         file.workspaces.push(entry);
         this._write(file);
         return entry;
+    }
+
+    /**
+     * The two roots this workspace recorded: its default folder and the one the user picked.
+     *
+     * Paths, not indexes: a folder keeps its meaning when the others move, and the store speaks the
+     * same vocabulary as the owner that applies the rules (ST2).
+     */
+    roots(workspacePath: string): RootState {
+        const entry = this.entryFor(workspacePath);
+        return {
+            primaryRoot: entry?.primaryRoot || '',
+            permissionRoot: entry?.permissionRoot || '',
+        };
+    }
+
+    /** Write them. One writer, so a pick and a folder change cannot interleave on disk. */
+    setRoots(workspacePath: string, roots: RootState): void {
+        const file = this._read();
+        const entry = file.workspaces.find(item => item.path === workspacePath);
+        if (!entry) {
+            return;
+        }
+        entry.primaryRoot = roots.primaryRoot || undefined;
+        entry.permissionRoot = roots.permissionRoot || undefined;
+        this._write(file);
     }
 
     /** Record that this workspace was opened now. An empty string is not a workspace. */

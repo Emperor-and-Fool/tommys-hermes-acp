@@ -9,6 +9,61 @@ export function pathWithin(root: string, target: string): boolean {
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+/** The two roots a workspace records. Empty string means unset, and a workspace may have none. */
+export interface RootState {
+    primaryRoot: string;
+    permissionRoot: string;
+}
+
+/** A workspace that has recorded no roots yet. */
+export const NO_ROOTS: RootState = { primaryRoot: '', permissionRoot: '' };
+
+/**
+ * Which folders the picker offers: only a workspace showing two or more folders has a choice.
+ * With one folder there is nothing to pick — that folder is the workspace (tier 1).
+ */
+export function offeredRoots(folders: string[]): string[] {
+    return folders.length > 1 ? folders.slice() : [];
+}
+
+/**
+ * What a workspace's roots become when the editor's folder list has changed.
+ *
+ * Three rules, and the third is why they are here:
+ *   - a chosen root that is gone falls back to the primary;
+ *   - a primary that is gone becomes the most recent folder — the last in the editor's order,
+ *     which is where VS Code puts a folder added to a window (until folders record the moment
+ *     they were opened, which is a later job);
+ *   - a workspace that has never recorded a primary takes the first folder, and an empty folder
+ *     list means no roots at all.
+ */
+export function reconcileRoots(state: RootState, folders: string[]): RootState {
+    if (folders.length === 0) {
+        return NO_ROOTS;
+    }
+    if (folders.length === 1) {
+        // One folder is the whole workspace (tier 1): there is nothing to pick, so no pick is kept.
+        return { primaryRoot: folders[0], permissionRoot: '' };
+    }
+    const permissionRoot = state.permissionRoot && folders.includes(state.permissionRoot)
+        ? state.permissionRoot
+        : '';
+    let primaryRoot: string;
+    if (!state.primaryRoot) {
+        primaryRoot = folders[0];
+    } else if (folders.includes(state.primaryRoot)) {
+        primaryRoot = state.primaryRoot;
+    } else {
+        primaryRoot = folders[folders.length - 1];
+    }
+    return { primaryRoot, permissionRoot };
+}
+
+/** The folder Hermes works in: the chosen root, else the primary. */
+export function effectiveRoot(state: RootState): string {
+    return state.permissionRoot || state.primaryRoot;
+}
+
 /** What the locator needs from the editor. Declared here; the composition root fills it. */
 export interface CwdSource {
     /** The window's `.code-workspace` file, or '' when it opened plain folders. Not used to locate yet. */

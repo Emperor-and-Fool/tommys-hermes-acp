@@ -169,6 +169,10 @@ export interface Workspace {
     id: string;
     path: string;
     lastSeen: number;
+    /** The default root: the first folder, until a rule or a pick changes it. A folder path. */
+    primaryRoot?: string;
+    /** The folder the user picked for Hermes to work in; absent means the primary. */
+    permissionRoot?: string;
 }
 
 /**
