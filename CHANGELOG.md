@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The permission root is shown at start, and asks once per start when there is a choice.** After a
+  plain reload the rail's button was blank and the dialog never appeared, because the state was only
+  posted when a folder changed. A window showing two or more folders now opens the dialog on every
+  start with the active root marked — the primary the first time, the stored choice afterwards — and
+  a single-folder window posts the state alone. Nothing is compared at start-up: the stored roots are
+  reconciled on every read, so the window simply picks up where it left off.
 - **A session is no longer claimed for a window because its folder happens to be inside one.** Once
   ownership was decided by containment, an untagged session — written before tags existed, or made
   by the TUI, the CLI or Desktop — was tagged to whichever window had that folder, and opening it
