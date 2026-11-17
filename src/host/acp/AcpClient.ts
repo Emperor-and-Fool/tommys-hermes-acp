@@ -17,7 +17,6 @@ import {
     shouldUseHermesSetModel,
     type ModelListState
 } from '../models/modelConfig';
-import type { SessionMcpServer } from './mcpConfig';
 import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
@@ -58,7 +57,6 @@ export type LogHandler = (text: string) => void;
 export type TokenUsage = { used: number; size: number };
 export type UsageHandler = (usage: TokenUsage) => void;
 /** Resolves MCP servers for ACP session/new (from editor mcp.json). */
-export type McpServersResolver = (cwd: string) => SessionMcpServer[];
 /** Called when an assistant/thought segment ends (tool call, permission, etc.). */
 export type SegmentEndHandler = () => void;
 
@@ -187,7 +185,6 @@ export class AcpClient {
     private _onModelsChanged: ModelsChangedHandler;
     private _onUsage: UsageHandler;
     private _onSegmentEnd: SegmentEndHandler;
-    private _resolveMcpServers: McpServersResolver;
     private _onHistoryReplay: HistoryReplayHandler;
     private _onReplayProgress: ReplayProgressHandler = () => {};
     /** Monotonic id so stale prompt rejections after cancel are ignored. */
@@ -227,7 +224,6 @@ export class AcpClient {
         onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler,
         onSegmentEnd?: SegmentEndHandler,
-        resolveMcpServers?: McpServersResolver,
         onHistoryReplay?: HistoryReplayHandler
     ) {
         this._onMessage = onMessage;
@@ -238,7 +234,6 @@ export class AcpClient {
         this._onUsage = onUsage || (() => {});
         this._onModelsChanged = onModelsChanged || (() => {});
         this._onSegmentEnd = onSegmentEnd || (() => {});
-        this._resolveMcpServers = resolveMcpServers || (() => []);
         this._onHistoryReplay = onHistoryReplay || (() => {});
     }
 
@@ -1171,10 +1166,12 @@ export class AcpClient {
         }
     }
 
-    private _buildNewSessionRequest(cwd: string): { cwd: string; mcpServers: SessionMcpServer[] } {
-        const mcpServers = this._resolveMcpServers(cwd);
-        this._onLog(`session/new cwd=${cwd} mcpServers=${mcpServers.length}`);
-        return { cwd, mcpServers };
+    private _buildNewSessionRequest(cwd: string): { cwd: string; mcpServers: never[] } {
+        // Always empty, by choice. ACP requires the field, and Hermes would add editor-supplied MCP servers
+        // to the session next to the profile's own (gateway_server.py new_session). We opt out of that
+        // duplicate source: MCP servers are managed in the Hermes profile (config.yaml mcp_servers) only.
+        this._onLog(`session/new cwd=${cwd} mcpServers=0`);
+        return { cwd, mcpServers: [] };
     }
 
     private _transitionTo(status: AcpStatus, message?: string): boolean {

@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than replaced: the card shows only the options Hermes sends, a permission handler is now
   required, and `clientCapabilities` advertises nothing. The workspace path guard stays — the
   chat preview still uses it.
+- **The editor's own `mcp.json` is no longer a second source of MCP servers.** The session request
+  used to be built from `mcp.json` in the session folder and in `~/.cursor` / `~/.vscode`, and Hermes
+  added those servers to the session next to the profile's own — a hidden source next to the one
+  place servers are meant to live. The field is still sent, always empty, because ACP requires it;
+  MCP servers are configured in the Hermes profile (`config.yaml` → `mcp_servers`) only. The reader
+  that parsed that file, and `fsRead`, whose only caller went with the fs capability, are removed
+  rather than left unused.
 
 ## [2.3.1] - 2026-11-12
 

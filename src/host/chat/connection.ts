@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { AcpClient, TokenUsage } from '../acp/AcpClient';
-import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { localizeStatusMessage, t } from '../i18n';
@@ -286,13 +285,6 @@ export class Connection {
                 }
                 this._host.turn.flushThought();
                 this._host.post({ type: 'finishAssistantBubble', sessionId: this._host.session.activeId });
-            },
-            (cwd) => {
-                const servers = resolveMcpServersForSession(cwd, (line) => this._host.log(line));
-                if (servers.length > 0) {
-                    this._host.log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
-                }
-                return servers;
             },
             (sessionId, messages) => {
                 this._host.lifecycle.handleHistoryReplay(sessionId, messages);
