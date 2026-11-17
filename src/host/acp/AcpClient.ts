@@ -183,6 +183,8 @@ export class AcpClient {
     private _runtimeModelId: string = '';
     /** The edit mode Hermes reports for the active session: `` until it says. */
     private _sessionMode: string = '';
+    /** Told whenever Hermes reports a mode, including on a session we just opened. */
+    private _onSessionMode: (mode: string) => void = () => {};
     /** Raw Hermes ``models`` payload; preserved across empty config_option updates. */
     private _hermesModelsRaw: unknown = null;
     private _onModelsChanged: ModelsChangedHandler;
@@ -618,6 +620,10 @@ export class AcpClient {
         return this._sessionMode;
     }
 
+    set onSessionMode(handler: (mode: string) => void) {
+        this._onSessionMode = handler;
+    }
+
     /**
      * Ask Hermes to switch this session's edit mode (`session/set_mode`).
      *
@@ -648,6 +654,7 @@ export class AcpClient {
         if (mode !== this._sessionMode) {
             this._sessionMode = mode;
             this._onLog(`session mode → ${mode}`);
+            this._onSessionMode(mode);
         }
     }
 

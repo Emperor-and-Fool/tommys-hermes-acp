@@ -301,6 +301,11 @@ export class Connection {
             }
         );
         this.acp!.onPromptAccepted = () => this._host.session.settlePendingTurn();
+        this.acp!.onSessionMode = (mode: string) => {
+            for (const handler of [...this._sessionModeListeners]) {
+                handler(mode);
+            }
+        };
         this.acp!.onLog = (line: string) => {
             // The output channel is where a live check reads this: every ACP line goes there, and
             // the ones that are errors or warnings also reach the pane's log viewer.
@@ -432,6 +437,16 @@ export class Connection {
 
     /** Said whenever a run ends: the features that were refused while it ran act on it. */
     readonly runEnded = new RunEnded();
+
+    /** Listeners for the mode Hermes reports: the permissions feature brings edits in line. */
+    private readonly _sessionModeListeners = new Set<(mode: string) => void>();
+
+    onSessionMode(handler: (mode: string) => void): () => void {
+        this._sessionModeListeners.add(handler);
+        return () => {
+            this._sessionModeListeners.delete(handler);
+        };
+    }
 
     postTokenUsage(): void {
         if (!this.tokenUsage) {

@@ -307,6 +307,10 @@ export class App implements vscode.WebviewViewProvider {
                 log: (line) => this._log(line),
                 profile: () => this._profiles.resolveTarget().cliProfile,
                 executable: () => this._resolveHermesExecutable(),
+                acp: () => this._connection.acp,
+                activeSessionBusy: () => this._connection.acp?.status === 'prompting',
+                onRunEnded: (handler) => this._connection.runEnded.on(handler),
+                onSessionMode: (handler) => this._connection.onSessionMode(handler),
             },
             this._approvalModeControl,
             new PermissionsStore(this._historyDir, () => this._session.scopeKey),
@@ -410,6 +414,7 @@ export class App implements vscode.WebviewViewProvider {
         context.subscriptions.push(
             this._projects.start(),
             { dispose: this._rootPicker.start() },
+            { dispose: this._approvals.start() },
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);

@@ -3,6 +3,25 @@ import { isSettableApprovalMode } from './approvalModeRules';
 import type { ApprovalModeControl } from './approvalModeControl';
 import type { PermissionsStore } from './store';
 import type { ApprovalMode, HostToPane } from '../../shared/webview';
+import type { AcpClient } from '../acp/AcpClient';
+
+/**
+ * The edit mode a button implies. Hermes' own mode ids: `default` asks, `accept_edits` frees the
+ * permission root and the temp dir, `dont_ask` frees everything but the sensitive paths it always
+ * asks about — that exception is Hermes', not ours, and no button can turn it off.
+ */
+export function editModeFor(mode: ApprovalMode, danger: boolean): string {
+    if (danger) {
+        return 'dont_ask';
+    }
+    if (mode === 'manual') {
+        return 'default';
+    }
+    if (mode === 'smart' || mode === 'off') {
+        return 'accept_edits';
+    }
+    return '';
+}
 
 /** What the permissions feature needs from the rest of the extension. */
 export interface ApprovalsHost {
@@ -12,6 +31,14 @@ export interface ApprovalsHost {
     profile(): string;
     /** The Hermes CLI, when one is installed. */
     executable(): Promise<string | undefined>;
+    /** The live client, when a session is open. */
+    acp(): AcpClient | undefined;
+    /** Whether a run is in flight: a mode change then applies to the next one. */
+    activeSessionBusy(): boolean;
+    /** Told when a run ends, so a deferred edit mode can be applied. */
+    onRunEnded(handler: () => void): () => void;
+    /** Told whenever Hermes reports a session's mode, including on a session just opened. */
+    onSessionMode(handler: (mode: string) => void): () => void;
 }
 
 /** What the router reaches: one member for the whole feature (R2). */
@@ -40,6 +67,9 @@ export class Approvals {
     /** Guards the red action's two writes: a second press must not be overtaken by the first. */
     private _token = 0;
 
+    /** An edit mode the run in flight refused: it is asked for again when that run ends. */
+    private _pendingEdits = false;
+
     constructor(
         private readonly _host: ApprovalsHost,
         private readonly _control: ApprovalModeControl,
@@ -51,6 +81,63 @@ export class Approvals {
             openAccess: () => this.openAccess(),
             restoreDeny: () => this.restoreDeny(),
         };
+    }
+
+    /**
+     * Start listening: a run that ends applies a deferred edit mode, and a session that reports a
+     * mode different from the button's is brought in line (Hermes starts every session on `default`).
+     */
+    start(): () => void {
+        const unRun = this._host.onRunEnded(() => {
+            if (this._pendingEdits) {
+                this._pendingEdits = false;
+                void this.applyEdits();
+            }
+        });
+        const unMode = this._host.onSessionMode(() => {
+            void this.applyEdits();
+        });
+        return () => {
+            unRun();
+            unMode();
+        };
+    }
+
+    /** What the button implies, as an edit mode, for the session that is open. */
+    private _desiredEditMode(): string {
+        const profile = this._host.profile();
+        return editModeFor(this._control.last(profile), this._store.openAccess());
+    }
+
+    /**
+     * Make the open session's edit mode match the buttons.
+     *
+     * Idle only. A run in flight refuses the change, so the intent is remembered and applied when
+     * that run ends — never sent twice, and never retried in a loop.
+     */
+    async applyEdits(): Promise<void> {
+        const acp = this._host.acp();
+        const desired = this._desiredEditMode();
+        if (!acp || !acp.activeSessionId || !desired) {
+            return;
+        }
+        if (acp.currentSessionMode === desired) {
+            this._pendingEdits = false;
+            return;
+        }
+        if (this._host.activeSessionBusy()) {
+            this._pendingEdits = true;
+            this._host.log(`Edit mode ${desired} waits for the next run`);
+            return;
+        }
+        try {
+            await acp.setSessionMode(desired);
+            this._pendingEdits = false;
+            this._host.log(`Edit mode set to ${desired}`);
+        } catch (err) {
+            this._pendingEdits = true;
+            this._host.log(`Edit mode ${desired} refused: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
@@ -104,6 +191,7 @@ export class Approvals {
             this._store.setOpenAccess(false);
             this._say({ mode }, false);
             this._host.log(`Approval mode set to ${mode} (profile=${profile})`);
+            await this.applyEdits();
             return;
         }
         this._host.log(`Approval mode write failed: ${mode} (profile=${profile})`);
@@ -152,6 +240,7 @@ export class Approvals {
         this._store.setOpenAccess(wrote);
         this._host.log(`Open access: deny cleared, mode ${wrote ? 'set to off' : 'write failed'} (profile=${profile})`);
         this._say({ denyBackup: backup, ...(wrote ? {} : { error: t('approvalModeFailed') }) }, wrote);
+        await this.applyEdits();
     }
 
     /** Put the saved deny list back — the other half of the red action. */
@@ -169,5 +258,6 @@ export class Approvals {
         this._store.setOpenAccess(false);
         this._host.log(`Deny restore: ${patterns.length} pattern(s) from ${file} — ${restored ? 'written' : 'failed'}`);
         this._say({ denyBackup: file, ...(restored ? {} : { error: t('approvalModeFailed') }) }, false);
+        await this.applyEdits();
     }
 }
