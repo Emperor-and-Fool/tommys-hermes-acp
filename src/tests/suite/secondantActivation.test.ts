@@ -17,7 +17,6 @@ const quietHost = (): SessionsHost & { lines: string[] } => {
         updatePanelTitle: () => {},
         modelLabel: () => undefined,
             currentWorkspaceId: () => '',
-            workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
     };
 };

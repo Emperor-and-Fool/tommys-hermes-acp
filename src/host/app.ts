@@ -337,7 +337,6 @@ export class App implements vscode.WebviewViewProvider {
                 void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
             },
             currentWorkspacePath: () => this._cwd.workspaceIdentity(),
-            ownsCwd: (cwd) => this._cwd.ownsCwd(cwd),
             onDidChangeWorkspaceFolders: (handler) =>
                 vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
         });
@@ -347,7 +346,6 @@ export class App implements vscode.WebviewViewProvider {
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
             modelLabel: () => this._models.currentLabel,
             currentWorkspaceId: () => this._projects.currentId(),
-            workspaceIdForCwd: (cwd) => this._projects.workspaceIdForCwd(cwd),
             knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
         }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it

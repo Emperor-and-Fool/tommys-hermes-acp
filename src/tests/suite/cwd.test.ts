@@ -29,28 +29,8 @@ describe('cwd locator', () => {
         assert.strictEqual(new WorkspaceCwd(source([])).workspaceIdentity(), '');
     });
 
-    it('owns a cwd under any folder of a workspace whose file sits elsewhere', () => {
-        // The old rule compared against the .code-workspace file's own directory, which holds none
-        // of the roots, so every cwd looked foreign.
-        const cwd = new WorkspaceCwd(source(['/repos/a', '/repos/b'], '/config/tools.code-workspace'));
-        assert.strictEqual(cwd.ownsCwd('/repos/b'), true);
-        assert.strictEqual(cwd.ownsCwd('/repos/b/sub'), true);
-        assert.strictEqual(cwd.ownsCwd('/repos'), false);
-    });
 
-    it('owns nothing when the window opened no folder', () => {
-        assert.strictEqual(new WorkspaceCwd(source([])).ownsCwd('/repos/a'), false);
-    });
 
-    it('owns a cwd inside any of its folders, and not a sibling that shares the prefix', () => {
-        const cwd = new WorkspaceCwd(source(['/work/a', '/work/b']));
-        assert.strictEqual(cwd.ownsCwd('/work/a'), true);
-        assert.strictEqual(cwd.ownsCwd('/work/b/sub/file.ts'), true);
-        assert.strictEqual(cwd.ownsCwd('/work/a-secrets'), false);
-        assert.strictEqual(cwd.ownsCwd('/work/a/../elsewhere'), false);
-        assert.strictEqual(cwd.ownsCwd(''), false);
-        assert.strictEqual(cwd.ownsCwd(undefined), false);
-    });
 });
 
 /** A workspace record that keeps what it is told, so a read can be checked against a write. */

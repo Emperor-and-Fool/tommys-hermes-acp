@@ -167,11 +167,4 @@ export class WorkspaceCwd {
         return this._source.onFoldersChanged ? this._source.onFoldersChanged(handler) : () => {};
     }
 
-    /** Whether a cwd lies within one of this window's folders. */
-    ownsCwd(cwd: string | undefined): boolean {
-        if (!cwd) {
-            return false;
-        }
-        return this._source.folders().some(folder => pathWithin(folder, cwd));
-    }
 }

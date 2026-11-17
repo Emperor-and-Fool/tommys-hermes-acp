@@ -28,8 +28,6 @@ export interface ProjectsHost {
     openWorkspace(workspacePath: string): void;
     /** Which window this is: the editor answers, and the feature never asks it directly (F6). */
     currentWorkspacePath(): string;
-    /** Whether a cwd lies within one of this window's folders: the cwd owner answers. */
-    ownsCwd(cwd: string | undefined): boolean;
     /** Told when the window's folders change. */
     onDidChangeWorkspaceFolders(handler: () => void): WorkspaceSubscription;
 }
@@ -180,16 +178,6 @@ export class Projects {
     /** Every workspace id this editor knows: a tab pointing anywhere else points nowhere. */
     knownWorkspaceIds(): string[] {
         return this._store.read().map(workspace => workspace.id);
-    }
-
-    /**
-     * The id of this window's workspace when the cwd lies within one of its folders.
-     *
-     * A cwd in another window's folder is not ours to claim: an untagged tab carrying it stays
-     * untagged here rather than being adopted into a workspace it never ran in.
-     */
-    workspaceIdForCwd(cwd: string | undefined): string {
-        return this._host.ownsCwd(cwd) ? this.currentId() : '';
     }
 
     /** The projects this window shows: the list the pane gets, for a reader that is not the pane. */

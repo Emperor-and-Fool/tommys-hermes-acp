@@ -23,7 +23,6 @@ describe('sessions: the user sidecar', () => {
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
             currentWorkspaceId: () => '',
-            workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
         }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-a';
@@ -74,7 +73,6 @@ describe('sessions: a chat becomes a record only when it says something', () => 
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
             currentWorkspaceId: () => 'ws-1',
-            workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
         }, new TabStore(dir, 'scope'));
     });

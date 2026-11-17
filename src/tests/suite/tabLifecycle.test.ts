@@ -23,7 +23,6 @@ describe('tab switch: a session that will not replay', () => {
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
             currentWorkspaceId: () => '',
-            workspaceIdForCwd: () => '',
             knownWorkspaceIds: () => [],
         }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-a';
@@ -97,7 +96,6 @@ describe('tab move: the workspace cwd decides, not the tab record', () => {
             updatePanelTitle: () => {},
             modelLabel: () => undefined,
             currentWorkspaceId: () => '/work/new',
-            workspaceIdForCwd: () => '/work/new',
             knownWorkspaceIds: () => ['/work/new'],
         }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-moved';

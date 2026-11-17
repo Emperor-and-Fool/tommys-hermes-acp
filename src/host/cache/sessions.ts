@@ -24,8 +24,6 @@ export interface SessionsHost {
     modelLabel(): string | undefined;
     /** The id of the workspace this window is, written onto a tab when its record is created. */
     currentWorkspaceId(): string;
-    /** The id of the registered workspace whose folder holds this cwd, if one does. */
-    workspaceIdForCwd(cwd: string | undefined): string;
     /** Every workspace id the registry holds. */
     knownWorkspaceIds(): string[];
 }
@@ -70,53 +68,13 @@ export class Sessions {
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
-        this.adoptWorkspace();
         this.activeId = this.restoreActive();
         this.ensureRegistered();
     }
 
-    /** This window's slice of the index. Ownership is a filter, not a second store. */
     /** The tabs this window shows: the slice the pane gets, and the one a reader is given. */
     tabsInWindow(): SessionInfo[] {
         return tabsInWorkspace(this.tabs, this.host.currentWorkspaceId());
-    }
-
-    /**
-     * Records written before the tag existed take this window's workspace, when their `cwd` proves
-     * they ran here.
-     *
-     * Without it they belong to no window and would never be drawn again. A window with no folder
-     * and no workspace file adopts nothing: it has no identity to give.
-     */
-    private adoptWorkspace(): void {
-        const workspaceId = this.host.currentWorkspaceId();
-        if (!workspaceId) {
-            return;
-        }
-        const known = new Set(this.host.knownWorkspaceIds());
-        let changed = false;
-        for (const tab of this.tabs) {
-            // A tag the registry does not hold is a reference to nothing — the id it named was
-            // replaced. Re-resolve it from the tab's own cwd instead of hiding the tab forever.
-            if (tab.workspaceId !== undefined && known.has(tab.workspaceId)) {
-                continue;
-            }
-            const resolved = this.host.workspaceIdForCwd(tab.cwd);
-            if (resolved) {
-                if (tab.workspaceId !== resolved) {
-                    tab.workspaceId = resolved;
-                    changed = true;
-                }
-                continue;
-            }
-            if (tab.workspaceId !== undefined) {
-                delete tab.workspaceId;
-                changed = true;
-            }
-        }
-        if (changed) {
-            this.saveCatalog();
-        }
     }
 
     private restoreActive(): string {
