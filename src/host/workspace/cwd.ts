@@ -64,6 +64,12 @@ export function effectiveRoot(state: RootState): string {
     return state.permissionRoot || state.primaryRoot;
 }
 
+/** The workspace record's roots, through the port: the store behind it is the only writer. */
+export interface RootsSource {
+    roots(workspacePath: string): RootState;
+    setRoots(workspacePath: string, roots: RootState): void;
+}
+
 /** What the locator needs from the editor. Declared here; the composition root fills it. */
 export interface CwdSource {
     /** The window's `.code-workspace` file, or '' when it opened plain folders. Not used to locate yet. */
@@ -87,13 +93,41 @@ export interface CwdSource {
  * No folder: `''` — not a working area, so no cwd, no session, and Hermes is not started.
  */
 export class WorkspaceCwd {
-    constructor(private readonly _source: CwdSource) {}
+    constructor(private readonly _source: CwdSource, private readonly _roots?: RootsSource) {}
 
-    /** The cwd for this window, or '' when the window opened no folder. */
+    /**
+     * The cwd for this window, or '' when the window opened no folder.
+     *
+     * Tier 1 and tier 2 are the first folder: with one folder that IS the workspace, and with a
+     * `.code-workspace` the first of its folders is the primary. Tier 3 is the user's pick, which
+     * only a workspace showing two or more folders can have.
+     */
     forWindow(): string {
         const folders = this._source.folders();
-        // Tiers 1 and 2 read the same field; they are named apart so tier 3 has one place to land.
-        return folders.length > 0 ? folders[0] : '';
+        if (folders.length === 0) {
+            return '';
+        }
+        if (folders.length === 1 || !this._roots) {
+            return folders[0];
+        }
+        return effectiveRoot(this.roots()) || folders[0];
+    }
+
+    /**
+     * This workspace's roots, reconciled with the folders the editor has now.
+     *
+     * Reconciling writes only when the rules actually moved something, so a plain read of the mode
+     * on every card does not turn into a write on every card.
+     */
+    roots(): RootState {
+        const folders = this._source.folders();
+        const workspacePath = this.workspaceIdentity();
+        const stored = this._roots && workspacePath ? this._roots.roots(workspacePath) : NO_ROOTS;
+        const next = reconcileRoots(stored, folders);
+        if (this._roots && workspacePath && (next.primaryRoot !== stored.primaryRoot || next.permissionRoot !== stored.permissionRoot)) {
+            this._roots.setRoots(workspacePath, next);
+        }
+        return next;
     }
 
     /**

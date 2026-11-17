@@ -52,3 +52,53 @@ describe('cwd locator', () => {
         assert.strictEqual(cwd.ownsCwd(undefined), false);
     });
 });
+
+/** A workspace record that keeps what it is told, so a read can be checked against a write. */
+function roots(initial: { primaryRoot: string; permissionRoot: string } = { primaryRoot: '', permissionRoot: '' }) {
+    const state = { ...initial };
+    const writes: Array<{ primaryRoot: string; permissionRoot: string }> = [];
+    return {
+        source: {
+            roots: () => ({ ...state }),
+            setRoots: (_path: string, next: { primaryRoot: string; permissionRoot: string }) => {
+                writes.push(next);
+                state.primaryRoot = next.primaryRoot;
+                state.permissionRoot = next.permissionRoot;
+            },
+        },
+        state,
+        writes,
+    };
+}
+
+describe('permission root: the cwd it produces', () => {
+    it('tier 3: a picked folder is the cwd, and it is what the record gets', () => {
+        const record = roots();
+        const cwd = new WorkspaceCwd(source(['/w/a', '/w/b'], '/w/x.code-workspace'), record.source);
+        record.source.setRoots('/w/x.code-workspace', { primaryRoot: '/w/a', permissionRoot: '/w/b' });
+
+        assert.strictEqual(cwd.forWindow(), '/w/b');
+    });
+
+    it('without a pick the first folder is the cwd, and that is recorded once', () => {
+        const record = roots();
+        const cwd = new WorkspaceCwd(source(['/w/a', '/w/b'], '/w/x.code-workspace'), record.source);
+
+        assert.strictEqual(cwd.forWindow(), '/w/a');
+        assert.deepStrictEqual(record.writes, [{ primaryRoot: '/w/a', permissionRoot: '' }],
+            'reconciling a fresh workspace writes its primary once');
+        assert.strictEqual(record.source.roots().primaryRoot, '/w/a');
+    });
+
+    it('one folder is never a choice, whatever the record still says', () => {
+        const record = roots({ primaryRoot: '/w/a', permissionRoot: '/w/b' });
+        const cwd = new WorkspaceCwd(source(['/w/only']), record.source);
+        assert.strictEqual(cwd.forWindow(), '/w/only');
+    });
+
+    it('no folder is no cwd, even with roots on record', () => {
+        const record = roots({ primaryRoot: '/w/a', permissionRoot: '/w/b' });
+        const cwd = new WorkspaceCwd(source([]), record.source);
+        assert.strictEqual(cwd.forWindow(), '');
+    });
+});

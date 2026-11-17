@@ -269,7 +269,6 @@ export class App implements vscode.WebviewViewProvider {
         /** The primary's API, when this is the secondant: it answers which profile is taken. */
         private readonly _primary?: PrimaryProfileSource
     ) {
-        this._cwd = new WorkspaceCwd(cwdSource);
         const context = this._context;
         this._extensionId = this._id.extensionId;
         this._profiles = new Profiles({
@@ -293,6 +292,9 @@ export class App implements vscode.WebviewViewProvider {
         // features that use them (C2). A profile switch reaches them through those
         // features' bindProfileScope, so nothing below builds a store of its own.
         const workspaces = new WorkspaceStore(this._historyDir);
+        // The roots live with the workspace record, so the locator reads and writes them there;
+        // the store only exists from here on, which is why the locator is built at this point.
+        this._cwd = new WorkspaceCwd(cwdSource, workspaces);
         const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
         const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
         this._projects = new Projects(workspaces, agentProjects, {
