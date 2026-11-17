@@ -310,14 +310,7 @@ export function init(): void {
                 break;
 
             case 'hiddenSessions':
-                state.closedSessions = Array.isArray(msg.sessions) ? msg.sessions : [];
-                if (state.pendingOpenSessionId !== null && !state.closedSessions.some(function(s) { return s.sessionId === state.pendingOpenSessionId; })) {
-                    // It was opened or deleted elsewhere; drop the stale pick.
-                    state.pendingOpenSessionId = null;
-                    state.pendingOpenTitle = '';
-                    state.pendingOpenCount = 0;
-                }
-                closedSessions.renderClosedList();
+                closedSessions.onHiddenSessions(msg);
                 historyAttach.renderHistorySessionList();
                 break;
 
