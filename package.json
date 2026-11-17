@@ -250,11 +250,6 @@
           "default": "",
           "description": "%configuration.tommys.path.description%"
         },
-        "tommys.cwd": {
-          "type": "string",
-          "default": "",
-          "description": "%configuration.tommys.cwd.description%"
-        },
         "tommys.profile": {
           "type": "string",
           "default": "",
@@ -311,9 +306,6 @@
                 "type": "string"
               },
               "profile": {
-                "type": "string"
-              },
-              "cwd": {
                 "type": "string"
               }
             },

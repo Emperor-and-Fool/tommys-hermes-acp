@@ -693,7 +693,7 @@ export class App implements vscode.WebviewViewProvider {
             this._profiles.forgetDiscovered();
             this._profiles.postList();
         }
-        const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
+        const reconnectKeys = [setting('path'), setting('profile')];
         if (e.affectsConfiguration(setting('profile'))) {
             // Another profile means another approvals.mode.
             this._approvalModeControl.clear();

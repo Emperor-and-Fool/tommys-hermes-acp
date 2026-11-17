@@ -206,7 +206,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <ul>
                 <li><code>tommys.path</code> — path to the Hermes executable (empty = auto-detect)</li>
                 <li><code>tommys.profile</code> — maps to <code>--profile</code></li>
-                <li><code>tommys.cwd</code> — agent working directory (defaults to workspace root)</li>
             </ul>
             <p>Open <strong>More → Settings</strong> from the view title bar; connection-related changes <strong>take effect immediately</strong> (reconnects automatically).</p>
 

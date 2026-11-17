@@ -10,7 +10,6 @@ export interface HermesAgentConfig {
     name: string;
     path?: string;
     profile?: string;
-    cwd?: string;
 }
 
 export interface ProfileListEntry {
@@ -24,7 +23,6 @@ export interface ConnectionTarget {
     displayName: string;
     cliProfile: string;
     configPath?: string;
-    configCwd?: string;
 }
 
 /** What the profile selector needs from the provider. */
@@ -39,9 +37,9 @@ export interface ProfilesHost {
 /**
  * Which Hermes profile/agent we connect to, and which ones the picker offers.
  *
- * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.cwd`,
- * `tommys.profile`, `tommys.agents`), the agent list, discovery of profiles on disk, and the
- * selection that survives a window.
+ * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`,
+ * `tommys.agents`), the agent list, discovery of profiles on disk, and the selection that survives a
+ * window. The working folder is not a profile question: the cwd owner answers that.
  */
 export class Profiles {
     /** Agent name or CLI profile id used for reconnect / switch. */
@@ -76,7 +74,6 @@ export class Profiles {
     resolveTarget(selectionId?: string): ConnectionTarget {
         const config = vscode.workspace.getConfiguration(settingsSection());
         const configPath = config.get<string>('path') || undefined;
-        const configCwd = config.get<string>('cwd') || undefined;
         const configProfile = config.get<string>('profile') || undefined;
         const agents = this.readAgentConfigs();
 
@@ -89,7 +86,6 @@ export class Profiles {
                 displayName: agent.name,
                 cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
                 configPath: agent.path || configPath,
-                configCwd: agent.cwd || configCwd,
             };
         }
 
@@ -101,7 +97,6 @@ export class Profiles {
             displayName: this.labelFor(cliProfile),
             cliProfile,
             configPath,
-            configCwd,
         };
     }
 

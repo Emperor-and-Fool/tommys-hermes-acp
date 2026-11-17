@@ -206,7 +206,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <ul>
                 <li><code>tommys.path</code> — Hermes 可执行文件路径（留空则自动检测）</li>
                 <li><code>tommys.profile</code> — 对应 <code>--profile</code> 参数</li>
-                <li><code>tommys.cwd</code> — Agent 工作目录（默认工作区根目录）</li>
             </ul>
             <p>点击视图标题栏 <strong>更多 → 配置</strong> 可打开 Settings，修改后<strong>实时生效</strong>（连接相关项会自动重连）。</p>
 

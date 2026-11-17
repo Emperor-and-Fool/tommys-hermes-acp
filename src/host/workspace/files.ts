@@ -1,20 +1,15 @@
 /**
- * The workspace, as the pane and the agent may touch it.
+ * The workspace as the pane may touch it: the file picker behind '@', previews, opening a file,
+ * inserting into the editor.
  *
- * Everything here was the provider's: resolving the working directory, deciding whether a path
- * is reachable at all, the file picker behind '@', previews, opening a file, inserting into the
- * editor, and the two ACP callbacks that let Hermes read or write a file in the workspace.
- * Moved unchanged.
- *
- * One rule governs the lot: nothing outside the workspace folders (or, with no workspace, the
- * configured cwd) is readable. That is why the read and write callbacks live here rather than
- * next to the connection: they are this rule, not the protocol.
+ * One rule governs the lot: nothing outside the folders this window opened is readable, and a
+ * window with no folder has no readable root at all. Where the cwd comes from is not a question
+ * for this file — the cwd owner answers that.
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { t } from '../i18n';
-import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 
 /** What the host supplies: the pane and the log. Nothing else is needed. */
@@ -30,26 +25,9 @@ export { pathWithin };
 export class WorkspaceFiles {
     constructor(private _host: WorkspaceHost) {}
 
-    resolveCwd(configCwd?: string): string {
-        if (configCwd) return configCwd;
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-            if (folder) return folder.uri.fsPath;
-        }
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) return folders[0].uri.fsPath;
-        return process.cwd();
-    }
-
-    /** Every directory the agent may reach: the workspace folders, or the configured cwd. */
+    /** Every directory the agent may reach: the folders this window opened, and nothing else. */
     private allowedRoots(): string[] {
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) {
-            return folders.map(folder => folder.uri.fsPath);
-        }
-        const config = vscode.workspace.getConfiguration(settingsSection());
-        return [config.get<string>('cwd') || process.cwd()];
+        return (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath);
     }
 
     /** A path as the filesystem will see it: symlinks followed, missing tails resolved by parent. */
