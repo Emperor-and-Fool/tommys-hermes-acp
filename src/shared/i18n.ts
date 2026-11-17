@@ -343,7 +343,11 @@ export interface LocaleStrings {
     approvalModeSmart: string;
     approvalModeOff: string;
 
-    approvalModeTooltip: string;
+    /** What each mode does to commands and edits. Replaces one false sentence. */
+    approvalModeManualTip: string;
+    approvalModeSmartTip: string;
+    approvalModeNoneTip: string;
+    approvalModeSensitiveTip: string;
     approvalModeFailed: string;
 
     // Steer

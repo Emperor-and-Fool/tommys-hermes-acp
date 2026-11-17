@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The permission buttons now govern edits as well as commands.** Manual asks for both; Smart and
+  None run commands as before and free file edits inside the permission root, asking outside it;
+  DANGER frees edits everywhere and clears the deny rules. Sensitive files — `.git`, `.ssh`, `.env`,
+  keys, instruction files — always ask, and no button changes that. A change made while a run is in
+  flight applies when that run ends instead of being lost, and each button's tooltip now says what
+  it does to commands and edits separately, replacing the one sentence that claimed None only
+  asked about Hermes itself.
+- **Permissions has a feature of its own.** Nine methods and six file-writing helpers left the
+  composition root for `host/permissions/` (its record and deny backups behind one store), mounted
+  on the router as one member instead of four. `app.ts` is 224 lines shorter for it.
 - **One cwd per workspace, decided by the folder VS Code opened.** The folder a session runs in
   had three answers — the active editor's folder, the workspace file, a stored path compared by
   prefix — and they disagreed on everything except a single folder. It is now one rule: the folder

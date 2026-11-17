@@ -38,7 +38,8 @@ export const en: LocaleStrings = {
     permissionModeBtnTooltip: 'To allow session permissions mode must be manual',
     permissionModeTitle: 'Permission mode',
     permissionModeClose: 'Close',
-    permissionOpenTooltip: 'DANGER! (only critical actions blocked)',
+    permissionOpenTooltip: 'DANGER! Everything runs, deny rules cleared. Edits: free everywhere. '
+        + 'Sensitive files always ask.',
     permissionRootLabel: 'Permission root',
     permissionRootTitle: 'Permission root',
     permissionRootBody: 'This workspace opens {folders} folders side by side. Hermes can work in one of them. '
@@ -400,7 +401,13 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeSmart: 'Smart',
     approvalModeOff: 'None',
 
-    approvalModeTooltip: "Choosing 'None' will only ask permission for Hermes manipulation",
+    approvalModeManualTip: 'Commands and edits ask first.',
+    approvalModeSmartTip: 'Commands: Hermes judges, risky ones ask. Edits: free inside the permission '
+        + 'root, ask outside.',
+    approvalModeNoneTip: 'Commands run, except your deny rules. Edits: free inside the permission '
+        + 'root, ask outside.',
+    approvalModeSensitiveTip: 'Sensitive files (.git, .ssh, .env, keys, agent instruction files) '
+        + 'always ask.',
     approvalModeFailed: 'Could not change the approval mode.',
     steer: 'Steer',
     steerHint: 'Send this as guidance into the running turn',

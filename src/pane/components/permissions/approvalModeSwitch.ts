@@ -93,11 +93,29 @@ function modeLabel(mode: ApprovalMode): string {
     return locale.approvalModeOff || 'None';
 }
 
+/**
+ * What each button actually does, in one sentence, plus the sentence that is true of all of them.
+ *
+ * The old single tooltip said None "will only ask permission for Hermes manipulation", which was
+ * false: edits asked every time whatever the button said. These name commands and edits apart.
+ */
+function modeTip(mode: ApprovalMode): string {
+    const perMode = mode === 'manual'
+        ? locale.approvalModeManualTip
+        : mode === 'smart'
+            ? locale.approvalModeSmartTip
+            : mode === 'off'
+                ? locale.approvalModeNoneTip
+                : '';
+    const sensitive = locale.approvalModeSensitiveTip || '';
+    return [perMode, sensitive].filter(Boolean).join(' ');
+}
+
 /** Build one switch. It renders from `state.approvalMode`; nothing is local to the element. */
 export function createApprovalModeBlock(): HTMLElement {
     const block = document.createElement('div');
     block.className = 'permission-approval-block';
-    const tip = locale.approvalModeTooltip || '';
+    const tip = locale.approvalModeSensitiveTip || '';
     const row = document.createElement('div');
     row.className = 'permission-approval';
     row.setAttribute('role', 'group');
@@ -112,7 +130,7 @@ export function createApprovalModeBlock(): HTMLElement {
         btn.dataset.approvalMode = mode;
         btn.textContent = modeLabel(mode);
         btn.setAttribute('aria-pressed', 'false');
-        btn.title = tip;
+        btn.title = modeTip(mode);
         btn.disabled = true;
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -254,7 +272,7 @@ export function syncAllApprovalModeBlocks(): void {
 
 /** A locale change: the switch's words are ours, so they move with the rest. */
 export function refreshApprovalModeLabels(): void {
-    const tip = locale.approvalModeTooltip || '';
+    const tip = locale.approvalModeSensitiveTip || '';
     document.querySelectorAll('.permission-approval-block').forEach(function(block) {
         const row = block.querySelector('.permission-approval');
         if (row) {
@@ -267,8 +285,10 @@ export function refreshApprovalModeLabels(): void {
             const mode = (btn as HTMLElement).dataset.approvalMode as ApprovalMode | undefined;
             if (mode) {
                 btn.textContent = modeLabel(mode);
+                btn.title = modeTip(mode);
+            } else {
+                btn.title = tip;
             }
-            btn.title = tip;
         });
     });
 }

@@ -38,7 +38,7 @@ export const zhCn: LocaleStrings = {
     permissionModeBtnTooltip: '如需本会话允许，模式必须为手动',
     permissionModeTitle: '权限模式',
     permissionModeClose: '关闭',
-    permissionOpenTooltip: '危险！（仅拦截关键操作）',
+    permissionOpenTooltip: '危险！一切都会执行，拒绝规则已清空。编辑：处处自由。敏感文件始终询问。',
     permissionRootLabel: '权限根目录',
     permissionRootTitle: '权限根目录',
     permissionRootBody: '此工作区同时打开 {folders} 个文件夹，Hermes 只能在其中之一工作。'
@@ -400,7 +400,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeSmart: '智能',
     approvalModeOff: '无',
 
-    approvalModeTooltip: '选择“无”时，仅在 Hermes 自身被操作时请求许可',
+    approvalModeManualTip: '命令与编辑都会先询问。',
+    approvalModeSmartTip: '命令：由 Hermes 判断，有风险时询问。编辑：权限根目录内自由，目录外需询问。',
+    approvalModeNoneTip: '命令一律执行，除你的拒绝规则外。编辑：权限根目录内自由，目录外需询问。',
+    approvalModeSensitiveTip: '敏感文件（.git、.ssh、.env、密钥、代理指令文件）始终询问。',
     approvalModeFailed: '无法更改审批模式。',
     steer: '引导',
     steerHint: '作为引导发送到正在运行的一轮中',
