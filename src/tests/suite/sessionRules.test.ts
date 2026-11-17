@@ -6,7 +6,7 @@ import {
     registerSession,
     reorderSessions,
 } from '../../host/workspace/sessionTab';
-import { moveTabToWorkspace, tabsInWorkspace, workspaceOwnsCwd } from '../../host/workspace/workSpace';
+import { moveTabToWorkspace, tabsInWorkspace } from '../../host/workspace/workSpace';
 import { moveTabIntoProject, moveTabToProject, projectsInWorkspace } from '../../host/workspace/projectGrouped';
 import type { SessionInfo } from '../../shared/chat';
 
@@ -144,24 +144,6 @@ describe('moveTabIntoProject', () => {
         assert.strictEqual(moved[0].workspaceId, '/w2');
         assert.strictEqual(tabs[0].workspaceId, '/w1', 'the input array is untouched');
         assert.strictEqual(tabs[0].project, undefined);
-    });
-});
-
-describe('workspaceOwnsCwd', () => {
-    it('claims a cwd inside a workspace root', () => {
-        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/a'), true);
-        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/a/sub/'), true);
-    });
-
-    it('does not claim a sibling or a parent', () => {
-        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos/ab'), false);
-        assert.strictEqual(workspaceOwnsCwd('/repos/a', '/repos'), false);
-        assert.strictEqual(workspaceOwnsCwd('/repos/a', undefined), false);
-    });
-
-    it('reads a .code-workspace file as the folder that holds it', () => {
-        assert.strictEqual(workspaceOwnsCwd('/repos/a/a.code-workspace', '/repos/a'), true);
-        assert.strictEqual(workspaceOwnsCwd('/repos/a/a.code-workspace', '/repos/b'), false);
     });
 });
 

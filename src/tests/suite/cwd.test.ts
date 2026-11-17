@@ -22,6 +22,19 @@ describe('cwd locator', () => {
         assert.strictEqual(new WorkspaceCwd(source([])).forWindow(), '');
     });
 
+    it('owns a cwd under any folder of a workspace whose file sits elsewhere', () => {
+        // The old rule compared against the .code-workspace file's own directory, which holds none
+        // of the roots, so every cwd looked foreign.
+        const cwd = new WorkspaceCwd(source(['/repos/a', '/repos/b'], '/config/tools.code-workspace'));
+        assert.strictEqual(cwd.ownsCwd('/repos/b'), true);
+        assert.strictEqual(cwd.ownsCwd('/repos/b/sub'), true);
+        assert.strictEqual(cwd.ownsCwd('/repos'), false);
+    });
+
+    it('owns nothing when the window opened no folder', () => {
+        assert.strictEqual(new WorkspaceCwd(source([])).ownsCwd('/repos/a'), false);
+    });
+
     it('owns a cwd inside any of its folders, and not a sibling that shares the prefix', () => {
         const cwd = new WorkspaceCwd(source(['/work/a', '/work/b']));
         assert.strictEqual(cwd.ownsCwd('/work/a'), true);

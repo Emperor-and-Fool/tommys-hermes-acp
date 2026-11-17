@@ -310,6 +310,7 @@ export class App implements vscode.WebviewViewProvider {
                 void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
             },
             currentWorkspacePath: () => this._workspacePathFromEditor(),
+            ownsCwd: (cwd) => this._cwd.ownsCwd(cwd),
             onDidChangeWorkspaceFolders: (handler) =>
                 vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
         });

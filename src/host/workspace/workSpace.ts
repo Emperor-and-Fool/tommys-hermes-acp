@@ -63,24 +63,6 @@ export function tabsInWorkspace(tabs: SessionInfo[], workspaceId: string): Sessi
 }
 
 /**
- * Whether a window may claim a tab written before the tag existed.
- *
- * The tab's `cwd` is where Hermes ran the session, and a workspace is either that folder or the
- * directory holding its `.code-workspace`. Without this check the first window to reload would
- * adopt every untagged tab in the index, including the other window's.
- */
-export function workspaceOwnsCwd(workspace: string, cwd: string | undefined): boolean {
-    if (!workspace || !cwd) {
-        return false;
-    }
-    const root = workspace.toLowerCase().endsWith('.code-workspace')
-        ? workspace.slice(0, workspace.lastIndexOf(workspace.includes('\\') ? '\\' : '/'))
-        : workspace;
-    const trimmed = cwd.replace(/[\\/]+$/, '');
-    return trimmed === root || trimmed.startsWith(root + '/') || trimmed.startsWith(root + '\\');
-}
-
-/**
  * The tree: this window's workspace seen whole — the projects, their tabs in order, the plane
  * underneath and the active session named.
  *
