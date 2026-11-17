@@ -9,7 +9,7 @@ import * as markdown from './components/messages/markdown';
 import * as messageActions from './components/messages/messageActions';
 import * as messageList from './components/messages/messageList';
 import * as permissionCard from './components/permissions/permissionCard';
-import * as permissionRootBar from './components/permissions/permissionRootBar';
+import * as permissionRootBar from './components/workspace/permissionRootBar';
 import * as approvalModeSwitch from './components/permissions/approvalModeSwitch';
 import * as permissionModeBar from './components/permissions/permissionModeBar';
 import * as streaming from './components/messages/streaming';

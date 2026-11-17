@@ -18,7 +18,7 @@ import * as closedSessions from './components/pickers/closedSessions';
 import * as permissionModeBar from './components/permissions/permissionModeBar';
 // Component styles are bundled into media/pane.css by `npm run build:pane`.
 import './components/permissions/permissionCard.css';
-import { initPermissionRoot } from './components/permissions/permissionRootBar';
+import { initPermissionRoot } from './components/workspace/permissionRootBar';
 import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';

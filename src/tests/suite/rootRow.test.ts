@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { shouldShowRow } from '../../pane/components/permissions/rootRow';
+import { shouldShowRow } from '../../pane/components/workspace/rootRow';
 
 /** The row shows because the reader opened it, or because the host has something to say. */
 describe('the permission-root row: when it is on screen', () => {
