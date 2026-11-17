@@ -166,6 +166,25 @@ export class Surfaces {
         void surface.webview.postMessage(msg);
     }
 
+    /**
+     * Send to the renderers of one role, and to nobody else.
+     *
+     * A message that opens something must not fan out: the surface the user is looking at would
+     * open it behind their back. When no surface of that role is live, the message is dropped —
+     * `republish()` is how a surface that appears later hears it.
+     */
+    postToRole(role: SurfaceRole, msg: HostToPane): boolean {
+        let sent = false;
+        for (const surface of this._list) {
+            if (surface.role !== role) {
+                continue;
+            }
+            void surface.webview.postMessage(msg);
+            sent = true;
+        }
+        return sent;
+    }
+
     /** Fan out to every renderer: the side bar view and/or the chat panel. */
     post(msg: HostToPane): void {
         if (this._list.length === 0) {

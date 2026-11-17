@@ -16,6 +16,11 @@ export interface RootPickerHost {
     profileLabel(): string;
     /** Told when a run ends: a pick refused while it ran applies then. */
     onRunEnded(handler: () => void): () => void;
+    /**
+     * Say something to the rail surfaces only. False when none is live: an automatic open is then
+     * dropped, and the surface hears it on its next `republish()`.
+     */
+    postToRail(msg: HostToPane): boolean;
 }
 
 /**
@@ -81,15 +86,23 @@ export class RootPicker {
         const folders = this._host.cwd.folders();
         const root = this._host.cwd.forWindow();
         const offered = offeredRoots(folders);
-        this._host.post({
-            type: 'permissionRootState',
+        const state = {
+            type: 'permissionRootState' as const,
             root,
             folders,
             offered,
-            open: (options?.open ?? false) && offered.length > 0,
             profile: this._host.profileLabel(),
             ...(options?.notice ? { notice: options.notice } : {}),
-        });
+        };
+        // The facts go everywhere: both surfaces draw the button from them.
+        this._host.post({ ...state, open: false });
+        // The automatic open goes to the rail only, and is dropped when no rail is live.
+        if ((options?.open ?? false) && offered.length > 0) {
+            const sent = this._host.postToRail({ ...state, open: true });
+            if (!sent) {
+                this._host.log('Permission root: no rail surface to open the dialog in');
+            }
+        }
         this._host.log(`Permission root: ${root || '(none)'} of ${folders.length} folder(s)`);
     }
 

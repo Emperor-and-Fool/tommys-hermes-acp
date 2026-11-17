@@ -29,6 +29,8 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
     const posts: HostToPane[] = [];
     const reloads: string[] = [];
     const ended: Array<() => void> = [];
+    const rail: HostToPane[] = [];
+    let railLive = true;
     let busy = false;
     const host: RootPickerHost = {
         post: (msg: HostToPane) => {
@@ -45,6 +47,10 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
             ended.push(handler);
             return () => undefined;
         },
+        postToRail: (msg: HostToPane) => {
+            rail.push(msg);
+            return railLive;
+        },
     };
     const picker = new RootPicker(host);
     picker.start();
@@ -57,6 +63,11 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
             busy = value;
         },
         endRun: () => ended.forEach(handler => handler()),
+        setRailLive: (value: boolean) => {
+            railLive = value;
+        },
+        rail: () => rail,
+        lastOpen: () => rail[rail.length - 1] as Extract<HostToPane, { type: 'permissionRootState' }>,
         changeFolders: (next: string[]) => {
             list = next.slice();
             handlers.forEach(handler => handler());
@@ -69,8 +80,8 @@ describe('permission root: the picker', () => {
     it('opens the dialog by itself when a folder change leaves two or more folders', () => {
         const h = harness(['/w/a']);
         h.changeFolders(['/w/a', '/w/b']);
-        assert.strictEqual(h.last().type, 'permissionRootState');
-        assert.strictEqual(h.last().open, true);
+        assert.strictEqual(h.lastOpen().type, 'permissionRootState');
+        assert.strictEqual(h.lastOpen().open, true);
         assert.deepStrictEqual(h.last().offered, ['/w/a', '/w/b']);
         assert.strictEqual(h.last().root, '/w/a');
     });
@@ -133,16 +144,16 @@ describe('permission root: the picker', () => {
 describe('permission root: the start-up post', () => {
     it('opens the dialog with the active root marked when the window shows several folders', () => {
         const h = harness(['/w/a', '/w/b']);
-        assert.strictEqual(h.last().type, 'permissionRootState');
-        assert.strictEqual(h.last().open, true);
-        assert.strictEqual(h.last().root, '/w/a', 'the first time, the active root is the primary');
+        assert.strictEqual(h.lastOpen().type, 'permissionRootState');
+        assert.strictEqual(h.lastOpen().open, true);
+        assert.strictEqual(h.lastOpen().root, '/w/a', 'the first time, the active root is the primary');
         assert.deepStrictEqual(h.last().offered, ['/w/a', '/w/b']);
     });
 
     it('a stored choice is the one marked, not the primary', () => {
         const h = harness(['/w/a', '/w/b'], { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-        assert.strictEqual(h.last().root, '/w/b');
-        assert.strictEqual(h.last().open, true);
+        assert.strictEqual(h.lastOpen().root, '/w/b');
+        assert.strictEqual(h.lastOpen().open, true);
     });
 
     it('one folder posts the state without a dialog, and offers nothing', () => {
@@ -162,7 +173,24 @@ describe('permission root: the start-up post', () => {
         const h = harness(['/w/a', '/w/b']);
         const before = h.posts.length;
         h.picker.republish();
-        assert.strictEqual(h.posts.length, before + 1);
-        assert.strictEqual(h.last().open, true, 'the dialog it owed is still owed');
+        assert.strictEqual(h.posts.length, before + 1, 'the facts are said again');
+        assert.strictEqual(h.lastOpen().open, true, 'and the rail is asked once more');
+    });
+
+    it('the automatic open is addressed to the rail, never fanned out', () => {
+        const h = harness(['/w/a', '/w/b']);
+        const facts = h.posts.filter(msg => msg.type === 'permissionRootState');
+        assert.ok(facts.every(msg => (msg as { open: boolean }).open === false),
+            'every surface hears the facts, none of them is told to open');
+        const opened = h.rail().filter(msg => msg.type === 'permissionRootState');
+        assert.strictEqual(opened.length, 1, 'the rail is told once');
+        assert.strictEqual((opened[0] as { open: boolean }).open, true);
+    });
+
+    it('with no rail live the open is dropped, not sent somewhere else', () => {
+        const h = harness(['/w/a', '/w/b']);
+        h.setRailLive(false);
+        h.picker.state({ open: true });
+        assert.strictEqual(h.posts.filter(msg => (msg as { open?: boolean }).open === true).length, 0);
     });
 });

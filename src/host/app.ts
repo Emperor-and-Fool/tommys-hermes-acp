@@ -324,6 +324,7 @@ export class App implements vscode.WebviewViewProvider {
             reloadActiveSession: () => this._lifecycle.resumeTabHermesSession(this._session.activeId).then(() => undefined),
             profileLabel: () => this._profiles.resolveTarget().displayName,
             onRunEnded: (handler) => this._connection.runEnded.on(handler),
+            postToRail: (msg) => this._surfaces.postToRole('rail', msg),
         });
         const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
         const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
