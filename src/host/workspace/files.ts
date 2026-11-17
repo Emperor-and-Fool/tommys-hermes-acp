@@ -23,14 +23,9 @@ export interface WorkspaceHost {
     log(line: string): void;
 }
 
-/**
- * Containment by directory, not by string prefix: `/work/repo-secrets` is not inside `/work/repo`,
- * and neither is `/work/repo/../elsewhere`. Both passed when this was `startsWith()`.
- */
-export function pathWithin(root: string, target: string): boolean {
-    const rel = path.relative(path.resolve(root), path.resolve(target));
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
+import { pathWithin } from './cwd';
+
+export { pathWithin };
 
 export class WorkspaceFiles {
     constructor(private _host: WorkspaceHost) {}

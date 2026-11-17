@@ -26,6 +26,7 @@ import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { WorkspaceFiles } from './workspace/files';
+import { WorkspaceCwd } from './workspace/cwd';
 import type { ChatSurface } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
@@ -130,7 +131,7 @@ export class App implements vscode.WebviewViewProvider {
         sessionId: () => this._session.activeId,
         messages: () => this._session.messages,
         tabs: () => this._session.tabs,
-        resolveCwd: () => this._files.resolveCwd(),
+        resolveCwd: () => this._cwd.forWindow(),
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -245,6 +246,20 @@ export class App implements vscode.WebviewViewProvider {
         log: (line) => this._log(line),
     });
 
+    /**
+     * Which folder this window works in — one answer for every caller that needs one.
+     *
+     * The editor is asked here and nowhere else (F6): `vscode` stays in the composition root, and
+     * the locator itself holds only the rule.
+     */
+    private readonly _cwd: WorkspaceCwd = new WorkspaceCwd({
+        workspaceFile: () => {
+            const file = vscode.workspace.workspaceFile;
+            return file && file.scheme === 'file' ? file.fsPath : '';
+        },
+        folders: () => (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath),
+    });
+
     /** The two panes trade drafts through one shared file; this is this side of the trade. */
     private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
 
@@ -325,7 +340,7 @@ export class App implements vscode.WebviewViewProvider {
             post: (msg) => this._postMessage(msg),
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
-            resolveCwd: () => this._files.resolveCwd(),
+            resolveCwd: () => this._cwd.forWindow(),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
             profile: () => this._profiles.resolveTarget().cliProfile,

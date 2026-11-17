@@ -1,7 +1,7 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
 import * as path from 'path';
-import { pathWithin } from '../../host/workspace/files';
+import { pathWithin } from '../../host/workspace/cwd';
 
 /**
  * The workspace rule, stated as a pure function so it can be tested without an editor: a path is
