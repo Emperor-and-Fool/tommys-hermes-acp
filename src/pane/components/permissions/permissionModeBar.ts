@@ -10,7 +10,7 @@
  */
 import { byId } from '../../dom';
 import { post } from '../../post';
-import { state } from '../../state';
+import { permissionsState } from './permissionsState';
 import {
     beginApprovalModePending,
     createApprovalModeBlock,
@@ -32,7 +32,7 @@ export function setPermissionModeRow(next: boolean): void {
         return;
     }
     open = next;
-    bar.hidden = !(open || !!state.approvalModeNotice);
+    bar.hidden = !(open || !!permissionsState.approvalModeNotice);
     if (btn) {
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
@@ -54,7 +54,7 @@ export function setPermissionModeRow(next: boolean): void {
 export function syncPermissionModeNotice(): void {
     const bar = byId('permissionModeBar');
     const notice = byId('permissionModeNotice');
-    const waiting = state.approvalModeNotice === 'appliesNextRun';
+    const waiting = permissionsState.approvalModeNotice === 'appliesNextRun';
     if (notice) {
         notice.textContent = waiting ? (locale.appliesNextRun || 'Applies from the next run.') : '';
         notice.hidden = !waiting;
@@ -78,7 +78,7 @@ export function applyPermissionModeLabels(): void {
 
 export function initPermissionModeBtnClick(): void {
     applyPermissionModeLabels();
-    // One switch, mounted once: everything it renders comes from `state.approvalMode`.
+    // One switch, mounted once: everything it renders comes from `permissionsState.approvalMode`.
     const host = byId('permissionModeOptions');
     if (host && !host.querySelector('.permission-approval-block')) {
         const block = createApprovalModeBlock();

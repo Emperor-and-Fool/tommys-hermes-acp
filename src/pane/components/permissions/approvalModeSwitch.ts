@@ -10,7 +10,7 @@
  */
 import type { ApprovalMode } from '../../../shared/webview';
 import { post } from '../../post';
-import { state } from '../../state';
+import { permissionsState } from './permissionsState';
 
 /** The positions the switch offers, in the order it shows them. */
 const MODE_CHOICES: Array<'manual' | 'smart' | 'off'> = ['manual', 'smart', 'off'];
@@ -26,13 +26,13 @@ const PENDING_GUARD_MS = 4000;
 let pendingGuard: ReturnType<typeof setTimeout> | null = null;
 
 export function beginApprovalModePending(): void {
-    state.approvalModePending = true;
+    permissionsState.approvalModePending = true;
     if (pendingGuard) {
         clearTimeout(pendingGuard);
     }
     pendingGuard = setTimeout(function() {
         pendingGuard = null;
-        state.approvalModePending = false;
+        permissionsState.approvalModePending = false;
         syncAllApprovalModeBlocks();
     }, PENDING_GUARD_MS);
     syncAllApprovalModeBlocks();
@@ -43,7 +43,7 @@ export function endApprovalModePending(): void {
         clearTimeout(pendingGuard);
         pendingGuard = null;
     }
-    state.approvalModePending = false;
+    permissionsState.approvalModePending = false;
 }
 
 /** What the rail button says: the short name of the state that is actually in force. */
@@ -51,13 +51,13 @@ function permissionModeValue(): string {
     if (isAllOn()) {
         return locale.permissionModeAll || 'ALL';
     }
-    if (state.approvalMode === 'manual') {
+    if (permissionsState.approvalMode === 'manual') {
         return locale.permissionModeMan || 'Man';
     }
-    if (state.approvalMode === 'smart') {
+    if (permissionsState.approvalMode === 'smart') {
         return locale.permissionModeSmart || 'Smart';
     }
-    if (state.approvalMode === 'off') {
+    if (permissionsState.approvalMode === 'off') {
         return locale.permissionModeNone || 'None';
     }
     return '\u2014';
@@ -68,20 +68,20 @@ function permissionModeValue(): string {
  * with an empty deny list is still None — rules default-block, they are just not written down.
  */
 function isAllOn(): boolean {
-    return state.approvalOpenAccess && state.approvalMode === 'off';
+    return permissionsState.approvalOpenAccess && permissionsState.approvalMode === 'off';
 }
 
 function accentClass(): string {
     if (isAllOn()) {
         return 'accent-all';
     }
-    if (state.approvalMode === 'manual') {
+    if (permissionsState.approvalMode === 'manual') {
         return 'accent-manual';
     }
-    if (state.approvalMode === 'smart') {
+    if (permissionsState.approvalMode === 'smart') {
         return 'accent-smart';
     }
-    if (state.approvalMode === 'off') {
+    if (permissionsState.approvalMode === 'off') {
         return 'accent-none';
     }
     return '';
@@ -111,7 +111,7 @@ function modeTip(mode: ApprovalMode): string {
     return [perMode, sensitive].filter(Boolean).join(' ');
 }
 
-/** Build one switch. It renders from `state.approvalMode`; nothing is local to the element. */
+/** Build one switch. It renders from `permissionsState.approvalMode`; nothing is local to the element. */
 export function createApprovalModeBlock(): HTMLElement {
     const block = document.createElement('div');
     block.className = 'permission-approval-block';
@@ -156,23 +156,23 @@ export function createApprovalModeBlock(): HTMLElement {
             return;
         }
         const engaged = isAllOn();
-        if (engaged || state.approvalModePending) {
+        if (engaged || permissionsState.approvalModePending) {
             // Second press stops it — even while the request is still in flight. The mode we left
             // is resumed; smart is the fallback when nothing was recorded.
-            const resume = state.approvalModeBeforeOpen || 'smart';
-            state.approvalModeBeforeOpen = null;
+            const resume = permissionsState.approvalModeBeforeOpen || 'smart';
+            permissionsState.approvalModeBeforeOpen = null;
             openAccessArmed = false;
             beginApprovalModePending();
             post({ type: 'setApprovalMode', mode: resume });
             return;
         }
-        if (state.approvalDenyCount > 0 && !openAccessArmed) {
+        if (permissionsState.approvalDenyCount > 0 && !openAccessArmed) {
             openAccessArmed = true;
             syncAllApprovalModeBlocks();
             return;
         }
         openAccessArmed = false;
-        state.approvalModeBeforeOpen = state.approvalMode === 'unknown' ? null : state.approvalMode;
+        permissionsState.approvalModeBeforeOpen = permissionsState.approvalMode === 'unknown' ? null : permissionsState.approvalMode;
         beginApprovalModePending();
         post({ type: 'setOpenAccess' });
     });
@@ -198,8 +198,8 @@ export function createApprovalModeBlock(): HTMLElement {
 
 /** Point one block at the shared state. `withError` is false while a card is being mounted. */
 export function syncApprovalModeBlock(block: HTMLElement, withError = true): void {
-    const mode = state.approvalMode;
-    const pending = state.approvalModePending;
+    const mode = permissionsState.approvalMode;
+    const pending = permissionsState.approvalModePending;
     const row = block.querySelector('.permission-approval');
     // Anything the host could not read arrives as `unknown`: nothing is pressed then.
     const known = mode !== 'unknown';
@@ -215,13 +215,13 @@ export function syncApprovalModeBlock(block: HTMLElement, withError = true): voi
     }
     const error = block.querySelector('.permission-approval-error');
     if (error) {
-        error.hidden = !(withError && state.approvalModeError);
-        error.textContent = state.approvalModeError;
+        error.hidden = !(withError && permissionsState.approvalModeError);
+        error.textContent = permissionsState.approvalModeError;
     }
     const openBtn = block.querySelector('.permission-open-btn') as HTMLButtonElement | null;
     if (openBtn) {
         // On means both halves are in place: approvals off, and nothing of the user's own blocking.
-        const on = state.approvalMode === 'off' && state.approvalDenyCount === 0;
+        const on = permissionsState.approvalMode === 'off' && permissionsState.approvalDenyCount === 0;
         openBtn.classList.toggle('is-on', on);
         openBtn.classList.toggle('is-armed', openAccessArmed);
         openBtn.classList.toggle('is-pending', pending && !on);
@@ -230,10 +230,10 @@ export function syncApprovalModeBlock(block: HTMLElement, withError = true): voi
         openBtn.disabled = false;
         const restoreBtn = block.querySelector('.permission-restore-btn') as HTMLButtonElement | null;
         if (restoreBtn) {
-            restoreBtn.hidden = !state.approvalDenyBackup || state.approvalDenyCount > 0;
+            restoreBtn.hidden = !permissionsState.approvalDenyBackup || permissionsState.approvalDenyCount > 0;
             restoreBtn.disabled = pending;
             restoreBtn.textContent = locale.permissionRestoreLabel || 'Restore deny rules';
-            restoreBtn.title = state.approvalDenyBackup || '';
+            restoreBtn.title = permissionsState.approvalDenyBackup || '';
         }
         openBtn.title = openAccessArmed
             ? (locale.permissionOpenConfirm || 'Press again: approvals off and approvals.deny cleared')
@@ -282,17 +282,17 @@ export function applyApprovalMode(
     openAccess?: boolean,
     notice?: 'appliesNextRun',
 ): void {
-    state.approvalMode = mode || 'unknown';
-    state.approvalModeNotice = notice === 'appliesNextRun' ? 'appliesNextRun' : '';
-    state.approvalModeError = error || '';
+    permissionsState.approvalMode = mode || 'unknown';
+    permissionsState.approvalModeNotice = notice === 'appliesNextRun' ? 'appliesNextRun' : '';
+    permissionsState.approvalModeError = error || '';
     if (typeof denyCount === 'number') {
-        state.approvalDenyCount = denyCount;
+        permissionsState.approvalDenyCount = denyCount;
     }
     if (typeof denyBackup === 'string') {
-        state.approvalDenyBackup = denyBackup;
+        permissionsState.approvalDenyBackup = denyBackup;
     }
     if (typeof openAccess === 'boolean') {
-        state.approvalOpenAccess = openAccess;
+        permissionsState.approvalOpenAccess = openAccess;
     }
     endApprovalModePending();
     syncAllApprovalModeBlocks();
