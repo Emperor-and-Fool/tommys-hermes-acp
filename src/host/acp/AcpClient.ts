@@ -317,7 +317,13 @@ export class AcpClient {
         return this._status;
     }
 
-    async start(cwd: string = process.cwd(), hermesPath?: string, hermesProfile?: string): Promise<void> {
+    /**
+     * Start Hermes for one cwd.
+     *
+     * The cwd is required: a session belongs to a folder of the window, and defaulting to the
+     * process's own directory started agents in a place the user never chose.
+     */
+    async start(cwd: string, hermesPath?: string, hermesProfile?: string): Promise<void> {
         this._traceProfile = hermesProfile || '';
         if (!this._transitionTo('connecting', 'Loading profile & session...')) {
             return;
