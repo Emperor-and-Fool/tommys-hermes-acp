@@ -143,19 +143,23 @@ export interface TreePaths {
 }
 
 /**
- * The block that names the two files, for the first turn of a session in a workspace.
+ * The block that names the two files, for the first turn of a session in a clientworkspace.
  *
  * It rides in front of the user's own text as a separate prompt block, so the transcript shows
  * only what the user typed. Pure: the store that owns the files hands it the paths.
+ *
+ * It says *clientworkspace*, never *workspace*: Hermes uses that word for the folder it works in,
+ * and this block describes the editor window — its projects and tabs — which is a different thing
+ * and one the agent must not mistake for its cwd.
  */
 export function treeNoticeBlock(paths: TreePaths): string {
     return [
-        '<workspace-tree>',
+        '<clientworkspace-tree>',
         'The editor extension keeps this window\'s session tree on disk. Read it before asking which',
         'session lives where, and to see the projects, their tabs and the active session:',
-        `current (this workspace): ${paths.current}`,
-        `previous workspace: ${paths.passive}`,
-        '</workspace-tree>',
+        `current (this clientworkspace: projects and tabs, not your working folder): ${paths.current}`,
+        `previous clientworkspace: ${paths.passive}`,
+        '</clientworkspace-tree>',
     ].join('\n');
 }
 
