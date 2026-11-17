@@ -15,14 +15,7 @@ import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
 import type { ProjectCommands } from '../workspace/projectGrouped';
-
-/** What the pane may ask of the permission root. */
-export interface PermissionRootCommands {
-    /** Pick a folder, or '' to fall back to the primary. */
-    set(root: string): Promise<void>;
-    /** Open the dialog: answered by a `permissionRootState` with `open`. */
-    open(): void;
-}
+import type { PermissionRootCommands } from '../workspace/rootPicker';
 
 export interface RouterHost {
     log(line: string): void;

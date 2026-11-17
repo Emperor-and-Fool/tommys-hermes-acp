@@ -2,6 +2,14 @@ import { offeredRoots } from './cwd';
 import type { WorkspaceCwd } from './cwd';
 import type { HostToPane } from '../../shared/webview';
 
+/** What the pane may ask of the permission root: one member on RouterHost, not two (R2). */
+export interface PermissionRootCommands {
+    /** Pick a folder, or '' to fall back to the primary. */
+    set(root: string): Promise<void>;
+    /** Open the dialog: answered by a `permissionRootState` with `open`. */
+    open(): void;
+}
+
 /** What the picker needs from the rest of the extension. */
 export interface RootPickerHost {
     post(msg: HostToPane): void;
@@ -33,6 +41,16 @@ export interface RootPickerHost {
 export class RootPicker {
     /** What was last said, so a pane that was not there hears it when it appears. */
     private _last?: { open?: boolean; notice?: 'lastRootRemoved' | 'appliesNextRun' };
+
+    /**
+     * The pane's two commands, as the router reaches them.
+     *
+     * The surface has already opened its own row when it asks, so `open` only needs the facts.
+     */
+    readonly commands: PermissionRootCommands = {
+        set: (root) => this.setRoot(root),
+        open: () => this.state(),
+    };
 
     constructor(private readonly _host: RootPickerHost) {}
 
