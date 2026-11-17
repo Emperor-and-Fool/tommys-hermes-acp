@@ -1,7 +1,8 @@
 import { setConfigureEnvDetectDetailsTitle, updateConfigureEnvPathClearVisibility, updateConfigureEnvSystemHint } from './components/environment/configureModal';
 import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnvDetailsTitle } from './components/environment/detectPanel';
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
-import { pendingPermissions, refreshApprovalModeLabels, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/permissions/permissionCard';
+import { refreshApprovalModeLabels, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/permissions/permissionCard';
+import { permissionCards } from './components/permissions/permissionCard';
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
 import { applyPermissionModeLabels } from './components/permissions/permissionModeBar';
 import { buildFaqAccordion } from './components/modals/info';
@@ -178,7 +179,7 @@ export function applyLocale() {
             : (locale.detectEnvironmentViewDetails || '');
     }
     if (statusText) statusText.textContent = locale.statusDisconnected;
-    pendingPermissions.forEach(function(group) {
+    permissionCards.eachPending(function(group) {
         const labelEl = group.querySelector('.permission-label');
         if (labelEl) labelEl.textContent = locale.permissionTitle || 'Permission required';
         refreshPermissionOptionLabels(group);

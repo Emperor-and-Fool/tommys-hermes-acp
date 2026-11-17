@@ -17,6 +17,7 @@ interface PermissionCardOptions {
 }
 import { post } from '../../post';
 import { state } from '../../state';
+import { CardState } from './cardState';
 import { createGroup, maybeScrollToBottom } from '../messages/messageList';
 import {
     createApprovalModeBlock,
@@ -27,8 +28,8 @@ import {
 } from './approvalModeSwitch';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from '../messages/streaming';
 
-/* Permission cards awaiting a decision. Mutated, never reassigned: not state. */
-export const pendingPermissions = new Map<string, any>();
+/** One instance for the pane: the card feature's slice, kept beside the card that fills it. */
+export const permissionCards = new CardState<HTMLElement>();
 
 
 const PERM_COLLAPSED_LINES = 3;
@@ -429,31 +430,32 @@ export function showPermissionRequest(msg: PermissionCardInput) {
     if (!id) {
         return;
     }
-    if (pendingPermissions.has(id)) {
-        updatePermissionContent(pendingPermissions.get(id), msg.title, msg.detail);
+    const existing = permissionCards.isPending(id) ? permissionCards.group(id) : undefined;
+    if (existing) {
+        updatePermissionContent(existing, msg.title, msg.detail);
         return;
     }
     const group = mountPermissionCard(id, msg);
     messagesEl.appendChild(group);
-    pendingPermissions.set(id, group);
+    permissionCards.open(id, group);
     maybeScrollToBottom();
 }
 
 function resolvePermission(id: string, optionId: string, selectedLabel?: string) {
-    const group = pendingPermissions.get(id);
+    const group = permissionCards.group(id);
     if (!group) {
         return;
     }
-    pendingPermissions.delete(id);
+    permissionCards.close(id);
     applyPermissionResolvedUI(group, localeText('permissionSelected', selectedLabel || optionId));
     post({ type: 'permissionResponse', id: id, optionId: optionId });
 }
 
 export function dismissPermissionRequest(id: string, statusText: string) {
-    const group = pendingPermissions.get(id);
+    const group = permissionCards.group(id);
     if (!group) {
         return;
     }
-    pendingPermissions.delete(id);
+    permissionCards.close(id);
     applyPermissionResolvedUI(group, statusText || locale.permissionCancelled || 'Cancelled');
 }

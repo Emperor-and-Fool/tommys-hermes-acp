@@ -39,7 +39,8 @@ import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
 import { cancelSessionMarkdownRender, chatSearchState, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
-import { pendingPermissions, restorePermissionMessage } from '../permissions/permissionCard';
+import { restorePermissionMessage } from '../permissions/permissionCard';
+import { permissionCards } from '../permissions/permissionCard';
 import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';
@@ -674,7 +675,7 @@ function resetChatView() {
     state.toolCallMap = {};
     state.sessionMsgCounter = 0;
     resetToolAggregation();
-    pendingPermissions.clear();
+    permissionCards.clear();
     window._hermesRendered = false;
     updateQuickActionBtns();
     updateTokenUsage(0, 0);
@@ -695,7 +696,7 @@ export function restoreHistory(messages: ChatMessage[], localHistoryOnly: boolea
     state.toolCallMap = {};
     state.sessionMsgCounter = 0;
     resetToolAggregation();
-    pendingPermissions.clear();
+    permissionCards.clear();
     window._hermesRendered = false;
     exitMultiSelectMode();
     if (!messages || messages.length === 0) {
