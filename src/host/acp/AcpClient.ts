@@ -23,6 +23,7 @@ import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
 import { shouldReportReplay } from './replayProgress';
+import { sessionModeFrom } from './sessionMode';
 import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 import {
@@ -180,6 +181,8 @@ export class AcpClient {
     private _modelListState: ModelListState | null = null;
     /** Model id last applied to the live ACP session (not UI preference alone). */
     private _runtimeModelId: string = '';
+    /** The edit mode Hermes reports for the active session: `` until it says. */
+    private _sessionMode: string = '';
     /** Raw Hermes ``models`` payload; preserved across empty config_option updates. */
     private _hermesModelsRaw: unknown = null;
     private _onModelsChanged: ModelsChangedHandler;
@@ -610,6 +613,44 @@ export class AcpClient {
         await promptPromise.catch(() => {});
     }
 
+    /** What Hermes last reported as this session's edit mode. */
+    get currentSessionMode(): string {
+        return this._sessionMode;
+    }
+
+    /**
+     * Ask Hermes to switch this session's edit mode (`session/set_mode`).
+     *
+     * Idle only: the owner fences a change while a run is in flight and answers `session_busy`,
+     * which the caller turns into "applies from the next run". The mode is remembered from what
+     * Hermes reports back, never from what we asked for.
+     */
+    async setSessionMode(modeId: string): Promise<void> {
+        if (!this._conn || !this._activeSessionId) {
+            throw new Error('Not connected');
+        }
+        if (this._status === 'prompting') {
+            throw new Error('Cannot change the edit mode while Hermes is responding');
+        }
+        this._onLog(`session/set_mode → ${modeId}`);
+        await this._conn.agent.request('session/set_mode', {
+            sessionId: this._activeSessionId,
+            modeId,
+        } as any);
+    }
+
+    /** Take the mode Hermes reported, and say it out loud when it is news. */
+    private _syncSessionMode(source: unknown): void {
+        const mode = sessionModeFrom(source);
+        if (!mode) {
+            return;
+        }
+        if (mode !== this._sessionMode) {
+            this._sessionMode = mode;
+            this._onLog(`session mode → ${mode}`);
+        }
+    }
+
     async setModel(configId: string, valueId: string): Promise<void> {
         if (!this._conn || !this._activeSessionId) {
             throw new Error('Not connected');
@@ -827,6 +868,9 @@ export class AcpClient {
         try {
             this._syncSessionModels(response as any);
         } catch { /* load responses may omit the model block */ }
+        try {
+            this._syncSessionMode(response);
+        } catch { /* a load response may omit the modes block too */ }
         this._transitionTo('ready');
         if (replay.length > 0) {
             this._onLog(`Replayed ${replay.length} history update(s) for session ${sessionId}`);
@@ -876,6 +920,9 @@ export class AcpClient {
             this._activeSessionId = this._session.sessionId;
             this._loadedSessionId = '';
             this._syncSessionModels(this._session.newSessionResponse);
+            try {
+                this._syncSessionMode(this._session.newSessionResponse);
+            } catch { /* a session that reports no modes is on the default */ }
             this._transitionTo('ready');
         } catch (err) {
             // A failed session/new says nothing about the connection: Hermes is still there, and
@@ -931,6 +978,11 @@ export class AcpClient {
         }
         const update = notification.update;
         const kind = update.sessionUpdate;
+
+        // Hermes reports the edit mode whenever it changes it — including when it refuses ours.
+        if (kind === 'current_mode_update') {
+            this._syncSessionMode(update);
+        }
 
         // An update that is not replay is the agent answering the prompt we sent: that is the
         // receipt. One call per prompt, so the guard file for the turn can be released at once.

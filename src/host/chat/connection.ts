@@ -299,6 +299,9 @@ export class Connection {
         );
         this.acp!.onPromptAccepted = () => this._host.session.settlePendingTurn();
         this.acp!.onLog = (line: string) => {
+            // The output channel is where a live check reads this: every ACP line goes there, and
+            // the ones that are errors or warnings also reach the pane's log viewer.
+            this._host.log(line);
             const level = classifyLogLevel(line);
             if (level) {
                 this._host.postWebviewLog(line, level);
