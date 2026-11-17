@@ -60,7 +60,8 @@ const timeout = setTimeout(() => {
 try {
     await conn.agent.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+        // Nothing advertised, as the extension's own client does.
+        clientCapabilities: {},
     });
     let session = await conn.agent.buildSession({ cwd, mcpServers }).start();
     console.log('[session1]', session.sessionId);
