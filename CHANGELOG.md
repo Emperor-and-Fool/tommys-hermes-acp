@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes over, when the primary goes away the most recently added folder does, and when the last
   folder goes the window says plainly that the projects are no longer reachable from it.
 
+### Fixed
+
+- **A session is no longer claimed for a window because its folder happens to be inside one.** Once
+  ownership was decided by containment, an untagged session — written before tags existed, or made
+  by the TUI, the CLI or Desktop — was tagged to whichever window had that folder, and opening it
+  then moved it to that window's permission root. Nothing claims a session now: it reaches a window
+  only by being opened from Closed Sessions, which is also where such sessions are now listed,
+  beside the ones Hermes was told to hide.
+
 ### Changed
 
 - **The permission card shows only what Hermes offers, and says why when it is about an edit.** The
