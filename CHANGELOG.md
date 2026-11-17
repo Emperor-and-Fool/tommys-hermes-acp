@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A permission press made during a run now says what it did.** Commands follow the button at once,
+  but Hermes freezes the session's edit mode for the run in flight, so the edit half waited in
+  silence. The pane says "Applies from the next run." beside the buttons — the same words the
+  permission root uses, from one string — and clears it when the run ends and the mode lands.
+- **Hermes is no longer told that this window is "the workspace".** The tree notice now says
+  *clientworkspace* throughout, including its tag, and states that the trees describe projects and
+  tabs rather than the folder Hermes works in — the word it uses for that.
+- **A log line that could never be right is gone.** "Replay carried N rows against the catalog's M"
+  compared a transcript row count with `sessions.message_count`, which is a maintained counter reset
+  to the compressed history's length at every compaction (2230 rows against 128 in the live profile).
+  The comparison and its two helpers are removed; the loading state's own throttle stays.
 - **The permission-root button fits the rail, and an open belongs to one surface.** In the sidebar the
   folder name was cut off ("emperorandfo…"), so the rail now shows a symbol in the house style and
   keeps the balloon; the editor panel keeps the name, where there is room. Clicking either button
