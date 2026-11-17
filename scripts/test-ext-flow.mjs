@@ -1,6 +1,5 @@
 import { spawn } from 'child_process';
 import { client, ndJsonStream, methods, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
-import { resolveMcpServersForSession } from '../out/host/acp/mcpConfig.js';
 
 function makeStream(proc) {
     const childInput = new WritableStream({
@@ -17,8 +16,9 @@ function makeStream(proc) {
 }
 
 const cwd = process.cwd();
-const mcpServers = resolveMcpServersForSession(cwd);
-console.log('[mcp]', mcpServers.map(s => s.name).join(', ') || '(none)');
+// mcpServers is always empty now: the resolver was removed with mcpConfig.ts.
+const mcpServers = [];
+console.log('[mcp]', '(none)');
 
 const proc = spawn('hermes', ['acp', '--profile', 'default'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
 proc.stderr.on('data', (d) => process.stderr.write('[stderr] ' + d.toString()));

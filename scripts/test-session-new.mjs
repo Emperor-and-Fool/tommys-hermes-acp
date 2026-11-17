@@ -1,6 +1,5 @@
 import { spawn } from 'child_process';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
-import { resolveMcpServersForSession } from '../out/host/acp/mcpConfig.js';
 
 function makeStream(proc) {
     const childInput = new WritableStream({
@@ -30,7 +29,9 @@ async function run(label, mcpServers) {
     try {
         await conn.agent.request('initialize', {
             protocolVersion: PROTOCOL_VERSION,
-            clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+            // The extension advertises nothing: no filesystem, no terminal (both removed with the
+            // same change that took the fs/terminal client capability out of the client).
+            clientCapabilities: {},
         });
         const session = await conn.agent
             .buildSession({ cwd: process.cwd(), mcpServers })
@@ -45,7 +46,6 @@ async function run(label, mcpServers) {
     }
 }
 
-const cwd = process.cwd();
-const resolved = resolveMcpServersForSession(cwd);
-console.log('Resolved MCP servers:', resolved.map(s => s.name).join(', ') || '(none)');
-await run('editor mcp.json', resolved);
+// No MCP servers are resolved for a session any more — mcpConfig.ts is gone and the client sends
+// an empty list. The script proves that path, which is the one the extension now takes.
+await run('empty mcpServers', []);
