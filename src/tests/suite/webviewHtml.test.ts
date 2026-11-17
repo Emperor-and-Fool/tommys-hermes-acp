@@ -21,7 +21,7 @@ describe('webviewHtml', () => {
 
     it('fills every resource slot when a webview is available', () => {
         const html = buildWebviewHtml({ htmlPath, resourceUri: uri, themeKind: 2, locale: en });
-        for (const slot of ['MARKED_URI', 'HIGHLIGHT_URI', 'HIGHLIGHT_CSS_URI', 'PURIFY_URI', 'CHAT_CSS_URI', 'CHAT_JS_URI', 'LOADING_ICON_URI', 'LOCALE_JSON', 'LOCALE_HELPER']) {
+        for (const slot of ['MARKED_URI', 'HIGHLIGHT_URI', 'HIGHLIGHT_CSS_URI', 'PURIFY_URI', 'CHAT_CSS_URI', 'PANE_CSS_URI', 'CHAT_JS_URI', 'LOADING_ICON_URI', 'LOCALE_JSON', 'LOCALE_HELPER']) {
             assert.strictEqual(html.includes('{{' + slot + '}}'), false, slot + ' was not replaced');
         }
         assert.ok(html.includes('file:///media/vendor/highlight.min.js'));

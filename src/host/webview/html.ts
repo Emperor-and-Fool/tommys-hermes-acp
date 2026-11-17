@@ -107,6 +107,7 @@ export function buildWebviewHtml(input: WebviewHtmlInput): string {
         ['{{HIGHLIGHT_CSS_URI}}', versioned('vendor/' + highlightSheetFor(input.themeKind))],
         ['{{PURIFY_URI}}', versioned('vendor/purify.min.js')],
         ['{{CHAT_CSS_URI}}', versioned('chat.css')],
+        ['{{PANE_CSS_URI}}', versioned('pane.css')],
         ['{{CHAT_JS_URI}}', versioned('pane.js')],
         ['{{SECONDANT_ICON_URI}}', versioned('icon_orange.svg')],
         ['{{LOADING_ICON_URI}}', versioned(identityArtwork(identity().role))],
