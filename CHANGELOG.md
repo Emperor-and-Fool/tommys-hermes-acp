@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The permission-root button fits the rail, and an open belongs to one surface.** In the sidebar the
+  folder name was cut off ("emperorandfo…"), so the rail now shows a symbol in the house style and
+  keeps the balloon; the editor panel keeps the name, where there is room. Clicking either button
+  opens that surface's own list — it used to open both, because every message was fanned out — and
+  the automatic dialog at start or on a folder change is addressed to the rail alone. When no sidebar
+  is open at that moment the dialog is dropped rather than shown somewhere else, and appears there
+  the next time the surface is shown.
 - **The permission root is shown at start, and asks once per start when there is a choice.** After a
   plain reload the rail's button was blank and the dialog never appeared, because the state was only
   posted when a folder changed. A window showing two or more folders now opens the dialog on every
