@@ -69,6 +69,8 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
         },
         onSessionMode: () => () => undefined,
         respondToPermission: () => {},
+        storedPermissionOption: () => undefined,
+        locale: () => ({}) as never,
     };
     const approvals = new Approvals(host, store as never, control as never);
     approvals.start();

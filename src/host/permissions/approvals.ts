@@ -1,8 +1,10 @@
 import { t } from '../i18n';
 import { isSettableApprovalMode } from './approvalModeRules';
+import { resolvePermissionOptionLabel } from './permissionOptions';
 import { ApprovalModeControl } from './approvalModeControl';
 import type { PermissionsStore } from './store';
 import type { ApprovalMode, HostToPane } from '../../shared/webview';
+import type { LocaleStrings } from '../../shared/i18n';
 import type { AcpClient } from '../acp/AcpClient';
 
 /**
@@ -45,6 +47,10 @@ export interface ApprovalsHost {
      * The answer belongs to the request, which the turn holds; the card is only where it was given.
      */
     respondToPermission(id: string, optionId: string | null): void;
+    /** The option the pane showed for an answer, as the stored permission message kept it. */
+    storedPermissionOption(id: string, optionId: string): { optionId: string; name?: string; kind?: string } | undefined;
+    /** The strings the pane is showing: the label is the one it drew, not a second translation. */
+    locale(): LocaleStrings;
 }
 
 /** What the router reaches: one member for the whole feature (R2). */
@@ -117,6 +123,17 @@ export class Approvals {
             unRun();
             unMode();
         };
+    }
+
+    /**
+     * What an answer was called when the user pressed it.
+     *
+     * Read from the stored permission message and resolved through the pane's own strings, so the
+     * transcript says the same words the card did.
+     */
+    optionLabel(id: string, optionId: string): string | undefined {
+        const option = this._host.storedPermissionOption(id, optionId);
+        return option ? resolvePermissionOptionLabel(this._host.locale(), option) : undefined;
     }
 
     /**

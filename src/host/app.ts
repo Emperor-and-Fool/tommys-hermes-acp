@@ -11,7 +11,6 @@ import { EnvironmentDetection } from './environment/detection';
 import { migrateLegacySessionStorage } from './workspace/profileStorage';
 import { dataHomeFor } from './store/connection';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
-import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
 import { setting, settingsSection } from '../shared/extensionId';
 import type { ExtensionIdentity } from '../shared/extensionId';
@@ -148,11 +147,7 @@ export class App implements vscode.WebviewViewProvider {
         saveMessage: (role, text) => this._session.saveMessage(role, text),
         savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
         resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
-        permissionOptionLabel: (id, optionId) => {
-            const stored = this._session.messages.find(m => m.permissionId === id && m.role === 'permission');
-            const opt = stored?.options?.find(o => o.optionId === optionId);
-            return opt ? resolvePermissionOptionLabel(getWebviewLocale(), opt) : undefined;
-        },
+        permissionOptionLabel: (id, optionId) => this._approvals.optionLabel(id, optionId),
     });
 
     /** Hermes: process, link, events, teardown. */
@@ -310,6 +305,11 @@ export class App implements vscode.WebviewViewProvider {
                 onRunEnded: (handler) => this._connection.runEnded.on(handler),
                 onSessionMode: (handler) => this._connection.onSessionMode(handler),
                 respondToPermission: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
+                storedPermissionOption: (id, optionId) => {
+                    const stored = this._session.messages.find(m => m.permissionId === id && m.role === 'permission');
+                    return stored?.options?.find(o => o.optionId === optionId);
+                },
+                locale: () => getWebviewLocale(),
             },
             new PermissionsStore(this._historyDir, () => this._session.scopeKey),
         );
