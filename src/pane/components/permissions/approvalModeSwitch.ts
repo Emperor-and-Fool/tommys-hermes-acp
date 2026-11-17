@@ -270,6 +270,32 @@ export function syncAllApprovalModeBlocks(): void {
     }
 }
 
+/**
+ * An `approvalMode` message: the state the rail's switch draws, and the answer that ends a pending
+ * indicator. The card no longer carries a switch of its own, so this belongs with the switch.
+ */
+export function applyApprovalMode(
+    mode: ApprovalMode,
+    error?: string,
+    denyCount?: number,
+    denyBackup?: string,
+    openAccess?: boolean,
+): void {
+    state.approvalMode = mode || 'unknown';
+    state.approvalModeError = error || '';
+    if (typeof denyCount === 'number') {
+        state.approvalDenyCount = denyCount;
+    }
+    if (typeof denyBackup === 'string') {
+        state.approvalDenyBackup = denyBackup;
+    }
+    if (typeof openAccess === 'boolean') {
+        state.approvalOpenAccess = openAccess;
+    }
+    endApprovalModePending();
+    syncAllApprovalModeBlocks();
+}
+
 /** A locale change: the switch's words are ours, so they move with the rest. */
 export function refreshApprovalModeLabels(): void {
     const tip = locale.approvalModeSensitiveTip || '';

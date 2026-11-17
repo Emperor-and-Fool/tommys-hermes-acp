@@ -10,6 +10,7 @@ import * as messageActions from './components/messages/messageActions';
 import * as messageList from './components/messages/messageList';
 import * as permissionCard from './components/permissions/permissionCard';
 import * as permissionRootBar from './components/permissions/permissionRootBar';
+import * as approvalModeSwitch from './components/permissions/approvalModeSwitch';
 import * as streaming from './components/messages/streaming';
 import * as toolCards from './components/messages/toolCards';
 import * as info from './components/modals/info';
@@ -409,7 +410,7 @@ export function init(): void {
                 break;
 
             case 'approvalMode':
-                permissionCard.applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup, msg.openAccess);
+                approvalModeSwitch.applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup, msg.openAccess);
                 break;
 
             case 'historyStaged':

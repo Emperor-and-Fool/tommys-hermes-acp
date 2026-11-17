@@ -1,7 +1,8 @@
 import { setConfigureEnvDetectDetailsTitle, updateConfigureEnvPathClearVisibility, updateConfigureEnvSystemHint } from './components/environment/configureModal';
 import { DETECT_STEP_IDS, detectStepLabel, refreshDetectStepLabels, setDetectEnvDetailsTitle } from './components/environment/detectPanel';
 import { SESSION_RENDER_BANNER_ID } from './components/messages/markdown';
-import { refreshApprovalModeLabels, refreshPermissionOptionLabels, syncPermissionDetailView } from './components/permissions/permissionCard';
+import { refreshPermissionOptionLabels, syncPermissionDetailView } from './components/permissions/permissionCard';
+import { refreshApprovalModeLabels } from './components/permissions/approvalModeSwitch';
 import { permissionCards } from './components/permissions/permissionCard';
 import { auxiliaryRoleLabel, syncAuxiliaryDetailView } from './components/messages/toolCards';
 import { applyPermissionModeLabels } from './components/permissions/permissionModeBar';

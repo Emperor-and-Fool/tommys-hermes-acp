@@ -1,5 +1,4 @@
 import { messagesEl } from '../../dom';
-import type { ApprovalMode } from '../../../shared/webview';
 import type { PermissionOption } from '../../../shared/acp';
 import type { ChatMessage } from '../../../shared/chat';
 
@@ -19,13 +18,6 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { CardState } from './cardState';
 import { createGroup, maybeScrollToBottom } from '../messages/messageList';
-import {
-    createApprovalModeBlock,
-    endApprovalModePending,
-    refreshApprovalModeLabels as refreshApprovalModeSwitchLabels,
-    syncAllApprovalModeBlocks,
-    syncApprovalModeBlock,
-} from './approvalModeSwitch';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from '../messages/streaming';
 
 /** One instance for the pane: the card feature's slice, kept beside the card that fills it. */
@@ -248,45 +240,6 @@ function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
     status.textContent = statusText;
 }
 
-/**
- * One card's switch follows the shared state. `withError` is false for a card that is being
- * mounted: a failure that happened before it existed is not its error to show.
- */
-function syncApprovalRow(group: HTMLElement, withError = true): void {
-    const block = group.querySelector('.permission-approval-block');
-    if (block) {
-        syncApprovalModeBlock(block as HTMLElement, withError);
-    }
-}
-
-/** A locale change: the switch's words are ours, so they move with the rest. */
-export function refreshApprovalModeLabels(): void {
-    refreshApprovalModeSwitchLabels();
-}
-
-/** An `approvalMode` message: the rail's switch and every pending card follow it. */
-export function applyApprovalMode(
-    mode: ApprovalMode,
-    error?: string,
-    denyCount?: number,
-    denyBackup?: string,
-    openAccess?: boolean,
-): void {
-    state.approvalMode = mode || 'unknown';
-    state.approvalModeError = error || '';
-    if (typeof denyCount === 'number') {
-        state.approvalDenyCount = denyCount;
-    }
-    if (typeof denyBackup === 'string') {
-        state.approvalDenyBackup = denyBackup;
-    }
-    if (typeof openAccess === 'boolean') {
-        state.approvalOpenAccess = openAccess;
-    }
-    endApprovalModePending();
-    syncAllApprovalModeBlocks();
-}
-
 function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?: PermissionCardOptions) {
     const readOnly = !!(cardOptions && cardOptions.readOnly);
 
@@ -333,10 +286,6 @@ function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?:
     controls.appendChild(lessBtn);
     wrap.appendChild(controls);
     div.appendChild(wrap);
-
-    if (!readOnly && !msg.resolved) {
-        div.appendChild(createApprovalModeBlock());
-    }
 
     const options = msg.options || [];
     div.appendChild(buildPermissionActions(id, options, readOnly));
@@ -395,7 +344,6 @@ function mountPermissionCard(id: string, msg: PermissionCardInput, cardOptions?:
     container.appendChild(stack);
     group.appendChild(container);
     updatePermissionContent(group, msg.title, msg.detail);
-    syncApprovalRow(group, false);
     if (readOnly || msg.resolved) {
         let statusText = locale.permissionCancelled || 'Cancelled';
         if (msg.outcome === 'selected' && (msg.selectedLabel || msg.selectedOptionId)) {
