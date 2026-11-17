@@ -9,6 +9,7 @@ import * as markdown from './components/messages/markdown';
 import * as messageActions from './components/messages/messageActions';
 import * as messageList from './components/messages/messageList';
 import * as permissionCard from './components/messages/permissionCard';
+import * as permissionRootBar from './components/permissions/permissionRootBar';
 import * as streaming from './components/messages/streaming';
 import * as toolCards from './components/messages/toolCards';
 import * as info from './components/modals/info';
@@ -188,6 +189,10 @@ export function init(): void {
 
             case 'insertInput':
                 messageActions.insertIntoInput(msg.text || '');
+                break;
+
+            case 'permissionRootState':
+                permissionRootBar.applyPermissionRootState(msg);
                 break;
 
             case 'restoreHistory':

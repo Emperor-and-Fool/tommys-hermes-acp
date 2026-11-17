@@ -39,6 +39,13 @@ export const en: LocaleStrings = {
     permissionModeTitle: 'Permission mode',
     permissionModeClose: 'Close',
     permissionOpenTooltip: 'DANGER! (only critical actions blocked)',
+    permissionRootLabel: 'Permission root',
+    permissionRootTitle: 'Permission root',
+    permissionRootBody: 'This workspace opens {folders} folders side by side. Hermes can work in one of them. '
+        + 'Choose the folder {profile} works in; outside it, edits ask for permission.',
+    permissionRootLastRemoved: 'Last root removed: projects are no longer reachable from this window. '
+        + 'Their sessions stay untagged, available only through the Hermes TUI or by reopening the folder.',
+    permissionRootNextRun: 'Applies from the next run.',
     noFolderOpen: 'Open a folder or workspace to start',
     permissionOpenConfirm: 'Press again: approvals off and approvals.deny cleared. The deny patterns are kept in a JSON backup.',
     permissionRestoreLabel: 'Restore deny rules',

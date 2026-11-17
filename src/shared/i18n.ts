@@ -38,6 +38,12 @@ export interface LocaleStrings {
     permissionOpenTooltip: string;
     /** Nothing to work in: Hermes is not started until a folder or workspace is open. */
     noFolderOpen: string;
+    /** The permission root: which folder Hermes works in when a workspace shows several. */
+    permissionRootLabel: string;
+    permissionRootTitle: string;
+    permissionRootBody: string;
+    permissionRootLastRemoved: string;
+    permissionRootNextRun: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */
     permissionRestoreLabel: string;

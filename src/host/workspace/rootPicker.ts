@@ -24,7 +24,22 @@ export interface RootPickerHost {
  * moment the boundary moved under the user's feet. The choice is per workspace, never per tab.
  */
 export class RootPicker {
+    /** What was last said, so a pane that was not there hears it when it appears. */
+    private _last?: { open?: boolean; notice?: 'lastRootRemoved' | 'appliesNextRun' };
+
     constructor(private readonly _host: RootPickerHost) {}
+
+    /**
+     * Say it again for a pane that has just been shown.
+     *
+     * The host posts to whichever surface exists; a dialog due while the view was hidden would
+     * otherwise be lost, and the window's boundary would have moved without a word.
+     */
+    republish(): void {
+        if (this._last) {
+            this.state(this._last);
+        }
+    }
 
     /** Start watching: the window's folders decide when the dialog opens. */
     start(): () => void {
@@ -33,6 +48,7 @@ export class RootPicker {
 
     /** The current state, as the pane draws it. */
     state(options?: { open?: boolean; notice?: 'lastRootRemoved' | 'appliesNextRun' }): void {
+        this._last = options;
         const folders = this._host.cwd.folders();
         const root = this._host.cwd.forWindow();
         const offered = offeredRoots(folders);

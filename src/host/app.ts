@@ -889,6 +889,8 @@ export class App implements vscode.WebviewViewProvider {
         // The tree is its own message and nothing else re-sends it: a fresh pane that never
         // hears it draws every tab on the plane.
         this._projects.postList();
+        // A dialog that came due while this pane was hidden is said again now.
+        this._rootPicker.republish();
         this._profiles.postList();
         this._session.postHidden();
         this._postConfig();

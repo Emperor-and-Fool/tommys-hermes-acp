@@ -52,6 +52,10 @@
         <button class="picker-btn menu__trigger" id="permissionModeBtn" aria-expanded="false">
             <span id="permissionModeBtnLabel"></span>
         </button>
+        <!-- Rail only: which folder Hermes works in when the workspace shows several. -->
+        <button class="picker-btn menu__trigger" id="permissionRootBtn" hidden>
+            <span id="permissionRootBtnLabel"></span>
+        </button>
         <div class="picker is-empty menu" id="closedPicker" data-open="false">
             <button class="picker-btn menu__trigger" id="closedPickerBtn" aria-haspopup="true">
                 <span class="picker-label" id="closedPickerLabel"></span><span class="picker-caret" aria-hidden="true">▾</span>
@@ -68,6 +72,17 @@
     <div class="permission-mode-inner">
         <div class="permission-mode-options" id="permissionModeOptions"></div>
         <button type="button" class="permission-mode-close" id="permissionModeClose" aria-label="✕">✕</button>
+    </div>
+</div>
+<div id="permissionRootBar" class="permission-mode-bar permission-root-bar" hidden>
+    <div class="permission-mode-inner permission-root-inner">
+        <div class="permission-root-copy">
+            <div class="permission-root-title" id="permissionRootTitle"></div>
+            <div class="permission-root-body" id="permissionRootBody"></div>
+            <div class="permission-root-notice" id="permissionRootNotice" hidden></div>
+            <div class="permission-root-options" id="permissionRootOptions"></div>
+        </div>
+        <button type="button" class="permission-mode-close" id="permissionRootClose" aria-label="✕">✕</button>
     </div>
 </div>
     <!-- Second agent marker: no text, no handler. Shown by CSS when body was told
