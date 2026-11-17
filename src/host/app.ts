@@ -309,6 +309,7 @@ export class App implements vscode.WebviewViewProvider {
                 activeSessionBusy: () => this._connection.acp?.status === 'prompting',
                 onRunEnded: (handler) => this._connection.runEnded.on(handler),
                 onSessionMode: (handler) => this._connection.onSessionMode(handler),
+                respondToPermission: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             },
             new PermissionsStore(this._historyDir, () => this._session.scopeKey),
         );
@@ -991,7 +992,6 @@ export class App implements vscode.WebviewViewProvider {
             deliverAllPeers: () => this.deliverAllPeers(),
             dismissAllPeers: () => this.dismissAllPeers(),
             retry: () => this._connection.retry(),
-            handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
             permissions: this._approvals.commands,
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),

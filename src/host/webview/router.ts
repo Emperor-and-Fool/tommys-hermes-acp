@@ -54,7 +54,6 @@ export interface RouterHost {
     dismissAllPeers(): void;
 
     retry(): Promise<void>;
-    handlePermissionResponse(id: string, optionId: string | null): void;
     /** Permissions: the profile's approval mode, and the red action on its deny list. */
     permissions: PermissionCommands;
     /** The permission root: the folder Hermes works in when a workspace shows several. */
@@ -182,7 +181,7 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.detection().closeConfigure();
             break;
         case 'permissionResponse':
-            host.handlePermissionResponse(message.id, message.optionId ?? null);
+            host.permissions.respond(message.id, message.optionId ?? null);
             break;
         case 'forwardMessage':
             host.forwardMessage(message.text, message.sourceMessageId, message.history);

@@ -39,6 +39,12 @@ export interface ApprovalsHost {
     onRunEnded(handler: () => void): () => void;
     /** Told whenever Hermes reports a session's mode, including on a session just opened. */
     onSessionMode(handler: (mode: string) => void): () => void;
+    /**
+     * Hand an answer to the turn that asked for it.
+     *
+     * The answer belongs to the request, which the turn holds; the card is only where it was given.
+     */
+    respondToPermission(id: string, optionId: string | null): void;
 }
 
 /** What the router reaches: one member for the whole feature (R2). */
@@ -50,6 +56,8 @@ export interface PermissionCommands {
     openAccess(): Promise<void>;
     /** Put the saved deny list back. */
     restoreDeny(): Promise<void>;
+    /** The answer to a permission card: the turn that asked for it takes it. */
+    respond(id: string, optionId: string | null): void;
 }
 
 /**
@@ -86,6 +94,7 @@ export class Approvals {
             request: () => this.post(true),
             openAccess: () => this.openAccess(),
             restoreDeny: () => this.restoreDeny(),
+            respond: (id, optionId) => this._host.respondToPermission(id, optionId),
         };
     }
 
