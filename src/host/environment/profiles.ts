@@ -4,7 +4,7 @@ import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
-import { sanitizeProfileScopeKey } from '../cache/profileStorage';
+import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
 
 export interface HermesAgentConfig {
     name: string;

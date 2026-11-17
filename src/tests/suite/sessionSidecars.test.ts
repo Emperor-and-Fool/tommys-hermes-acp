@@ -3,7 +3,7 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { Sessions } from '../../host/cache/sessions';
+import { Sessions } from '../../host/workspace/sessions';
 import { PendingUserStore } from '../../host/cache/pendingUsers';
 import { TabStore } from '../../host/workspace/store';
 

@@ -14,7 +14,7 @@ import type { AcpClient, CatalogSession, ReplayMessage } from '../acp/AcpClient'
 import type { AttachmentStore } from '../cache/attachments';
 import { renameSession } from '../cache/catalog';
 import { buildReplayMessages } from '../cache/replay';
-import type { Sessions } from '../cache/sessions';
+import type { Sessions } from './sessions';
 
 import { t } from '../i18n';
 import { hermesSessionIdFor } from './sessionTab';

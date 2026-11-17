@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
-import { activeSessionPathFor, profileDir, sessionsPathFor } from '../cache/profileStorage';
+import { activeSessionPathFor, profileDir, sessionsPathFor } from './profileStorage';
 import { writeAtomic, writeAtomicText } from '../store/connection';
 import type { RootState } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';

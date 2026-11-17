@@ -1,17 +1,17 @@
 import type { ChatMessage, HistoryRef, PeerState, SessionInfo, StoredImageRef } from '../../shared/chat';
 import type { HostToPane } from '../../shared/webview';
 import type { CatalogSession, PermissionRequest } from '../acp/AcpClient';
-import { TabStore } from '../workspace/store';
-import { applyCatalogRows } from './catalog';
-import { PendingUserStore } from './pendingUsers';
+import { TabStore } from './store';
+import { applyCatalogRows } from '../cache/catalog';
+import { PendingUserStore } from '../cache/pendingUsers';
 import {
     normalizeStickyOrder,
     stickSession,
     registerSession,
     reorderSessions,
-} from '../workspace/sessionTab';
-import { tabsInWorkspace } from '../workspace/workSpace';
-import { mintId } from '../workspace/workSpace';
+} from './sessionTab';
+import { tabsInWorkspace } from './workSpace';
+import { mintId } from './workSpace';
 import { canAggregateToolTexts, rebuildAggregatedToolText } from '../../shared/toolAggregate';
 import { buildSessionExportPayload } from '../chat/sessionExport';
 import { t } from '../i18n';

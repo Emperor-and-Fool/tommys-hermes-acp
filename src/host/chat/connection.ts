@@ -8,7 +8,7 @@ import { classifyLogLevel, LogLevel } from '../logLevel';
 import type { HostToPane } from '../../shared/webview';
 import type { Profiles } from '../environment/profiles';
 import type { EnvironmentDetection } from '../environment/detection';
-import type { Sessions } from '../cache/sessions';
+import type { Sessions } from '../workspace/sessions';
 import type { ModelState } from '../models/modelState';
 import type { PromptRunner } from './promptRunner';
 import type { TabLifecycle } from '../workspace/lifecycle';

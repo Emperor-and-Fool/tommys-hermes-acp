@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import { t } from '../i18n';
 import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
-import { loadProfileState, saveProfileState } from '../cache/profileStorage';
+import { loadProfileState, saveProfileState } from '../workspace/profileStorage';
 import { resolveModelCatalog } from './acpModelCatalog';
 import { buildFallbackModelListState, buildModelListStateFromCatalog, isRuntimeModelSource } from './modelConfig';
 import type { ModelListState } from './modelConfig';
