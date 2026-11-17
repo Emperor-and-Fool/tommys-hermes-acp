@@ -39,7 +39,7 @@ import { emptyStateText } from '../status/statusBar';
 import { updateTokenUsage } from '../status/tokenMeter';
 import { cancelSessionMarkdownRender, chatSearchState, scheduleSessionMarkdownRender } from './markdown';
 import { attachMessageActions } from './messageActions';
-import { pendingPermissions, restorePermissionMessage } from './permissionCard';
+import { pendingPermissions, restorePermissionMessage } from '../permissions/permissionCard';
 import { enableStopAfterAgentOutput } from './streaming';
 import { auxiliaryRoleLabel, buildAuxiliaryMessage, clearAllToolLive, resetToolAggregation, wireAuxiliaryMessage } from './toolCards';
 import { buildHistoryCard } from './historyCard';

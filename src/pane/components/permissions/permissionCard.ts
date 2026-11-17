@@ -17,15 +17,15 @@ interface PermissionCardOptions {
 }
 import { post } from '../../post';
 import { state } from '../../state';
-import { createGroup, maybeScrollToBottom } from './messageList';
+import { createGroup, maybeScrollToBottom } from '../messages/messageList';
 import {
     createApprovalModeBlock,
     endApprovalModePending,
     refreshApprovalModeLabels as refreshApprovalModeSwitchLabels,
     syncAllApprovalModeBlocks,
     syncApprovalModeBlock,
-} from '../permissions/approvalModeSwitch';
-import { enableStopAfterAgentOutput, finalizeAssistantBubble } from './streaming';
+} from './approvalModeSwitch';
+import { enableStopAfterAgentOutput, finalizeAssistantBubble } from '../messages/streaming';
 
 /* Permission cards awaiting a decision. Mutated, never reassigned: not state. */
 export const pendingPermissions = new Map<string, any>();

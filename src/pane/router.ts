@@ -8,7 +8,7 @@ import * as detectPanel from './components/environment/detectPanel';
 import * as markdown from './components/messages/markdown';
 import * as messageActions from './components/messages/messageActions';
 import * as messageList from './components/messages/messageList';
-import * as permissionCard from './components/messages/permissionCard';
+import * as permissionCard from './components/permissions/permissionCard';
 import * as permissionRootBar from './components/permissions/permissionRootBar';
 import * as streaming from './components/messages/streaming';
 import * as toolCards from './components/messages/toolCards';
