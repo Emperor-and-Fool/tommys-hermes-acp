@@ -33,6 +33,22 @@ export interface KeyValueState {
     update(key: string, value: unknown): PromiseLike<void>;
 }
 
+/** The tab commands the pane may ask for, as one member on RouterHost (R2, F4). */
+export interface TabCommands {
+    /** The hidden list, as the picker draws it. */
+    postHiddenSessions(): void;
+    /** Open a session in this window: a tab, or the active one. */
+    openTab(sessionId?: string): Promise<void>;
+    /** The order the user dragged the tabs into. */
+    reorderSessions(ids: unknown): void;
+    /** Close one tab, or a run of them, in the mode the pane named. */
+    closeSessions(sessionId: string, mode: unknown): Promise<void>;
+    renameSession(sessionId: unknown, title: unknown): Promise<void>;
+    toggleStickySession(sessionId: string): void;
+    /** Switch the pane to a tab, opening the surface it lives in. */
+    switchSession(sessionId: string, interrupt: boolean): void;
+}
+
 /** What a tab's lifecycle needs from the panel: the connection, the tab records, and the posts. */
 export interface TabLifecycleHost {
     acp(): AcpClient | undefined;
@@ -61,6 +77,10 @@ export interface TabLifecycleHost {
     /** Draw the undecided forwarded cards again: reloads and tab switches rebuild the transcript. */
     reinjectOpenPeers?: () => void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
+    /** Serialise a chat operation: a switch queues behind the turn in flight, like a send. */
+    enqueueChatOp(op: () => Promise<void>): void;
+    /** The pane that shows this session: opened when the editor has none yet. */
+    openSessionSurface(): void;
     workspaceState: KeyValueState;
     /** `tommys.debugTabSwitch`: four lines per switch, nothing else, off by default. */
     debugTabSwitch(): boolean;
@@ -77,6 +97,28 @@ export class TabLifecycle {
 
     constructor(private readonly _host: TabLifecycleHost) {
         this._persistedHermesSessionId = this._host.workspaceState.get<string>('hermesSessionId') || '';
+    }
+
+    /**
+     * The tab commands, as the router reaches them: one member, not seven.
+     *
+     * Three of them are the tab records' own (the catalog, the order, the sticky flag) and go
+     * through the session store this file was handed; the rest are the lifecycle's.
+     */
+    readonly commands: TabCommands = {
+        postHiddenSessions: () => this._host.session.postHidden(),
+        openTab: (sessionId) => this.openTab(sessionId),
+        reorderSessions: (ids) => this._host.session.handleReorderSessions(ids),
+        closeSessions: (sessionId, mode) => this.closeSessions(sessionId, mode),
+        renameSession: (sessionId, title) => this.renameTab(sessionId, title),
+        toggleStickySession: (sessionId) => this._host.session.handleToggleStickySession(sessionId),
+        switchSession: (sessionId, interrupt) => this._switchSession(sessionId, interrupt),
+    };
+
+    /** Make the pane show a session: its surface first, then the switch, queued behind a turn. */
+    private _switchSession(sessionId: string, interrupt: boolean): void {
+        this._host.openSessionSurface();
+        this._host.enqueueChatOp(() => this.switchTo(sessionId, { interrupt }));
     }
 
     async readCatalog(): Promise<CatalogSession[] | null> {

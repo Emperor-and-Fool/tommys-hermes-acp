@@ -14,6 +14,7 @@ import type { PaneToHost } from '../../shared/webview';
 import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
+import type { TabCommands } from '../workspace/lifecycle';
 import type { ProjectCommands } from '../workspace/projectGrouped';
 import type { PermissionRootCommands } from '../workspace/rootPicker';
 
@@ -33,17 +34,12 @@ export interface RouterHost {
     handleListFiles(query: string, requestId: string): Promise<void>;
     handlePreviewFile(path: string, requestId: string): Promise<void>;
 
-    postHiddenSessions(): void;
-    handleOpenTab(sessionId?: string): Promise<void>;
-    handleReorderSessions(ids: unknown): void;
-    handleCloseSessions(sessionId: string, mode: unknown): Promise<void>;
-    handleRenameSession(sessionId: unknown, title: unknown): Promise<void>;
-    handleToggleStickySession(sessionId: string): void;
+    /** The tab commands: one member, not one per message. */
+    tabs: TabCommands;
     /** The project group's commands: one member, not one per message. */
     projects: ProjectCommands;
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void;
     handleSwitchAgent(name: string): void;
-    handleSwitchSession(sessionId: string, interrupt: boolean): void;
 
     switchModel(configId: string, valueId: string): Promise<void>;
     syncModels(): Promise<void>;
@@ -100,22 +96,22 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.ready();
             break;
         case 'getHiddenSessions':
-            host.postHiddenSessions();
+            host.tabs.postHiddenSessions();
             break;
         case 'openTab':
-            host.enqueueChatOp(() => host.handleOpenTab(message.sessionId));
+            host.enqueueChatOp(() => host.tabs.openTab(message.sessionId));
             break;
         case 'reorderSessions':
-            host.handleReorderSessions(message.sessionIds);
+            host.tabs.reorderSessions(message.sessionIds);
             break;
         case 'closeSessions':
-            void host.handleCloseSessions(message.sessionId, message.mode);
+            void host.tabs.closeSessions(message.sessionId, message.mode);
             break;
         case 'renameSession':
-            void host.handleRenameSession(message.sessionId, message.title);
+            void host.tabs.renameSession(message.sessionId, message.title);
             break;
         case 'toggleStickySession':
-            host.handleToggleStickySession(message.sessionId);
+            host.tabs.toggleStickySession(message.sessionId);
             break;
         case 'moveToWorkspace':
             host.projects.moveTabToWorkspace(message.sessionId, message.workspace);
@@ -139,7 +135,7 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.handleSwitchAgent(message.agentName);
             break;
         case 'switchSession':
-            host.handleSwitchSession(message.sessionId, message.interrupt === true);
+            host.tabs.switchSession(message.sessionId, message.interrupt === true);
             break;
         case 'switchModel':
             void host.switchModel(message.configId, message.valueId);

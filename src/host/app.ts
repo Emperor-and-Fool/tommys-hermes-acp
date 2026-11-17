@@ -384,6 +384,12 @@ export class App implements vscode.WebviewViewProvider {
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             activate: (id, options) => this._session.activate(id, options),
             reinjectOpenPeers: () => this._mail?.inbox.reinjectOpen(),
+            enqueueChatOp: (op) => this._enqueueChatOp(op),
+            openSessionSurface: () => {
+                if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
+                    this._surfaces.openPanel();
+                }
+            },
             workspaceState: context.workspaceState,
             debugTabSwitch: () => {
                 try {
@@ -972,23 +978,12 @@ export class App implements vscode.WebviewViewProvider {
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),
-            postHiddenSessions: () => this._session.postHidden(),
-            handleOpenTab: (sessionId) => this._lifecycle.openTab(sessionId),
-            handleReorderSessions: (ids) => this._session.handleReorderSessions(ids),
-            handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
-            handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
-            handleToggleStickySession: (sessionId) => this._session.handleToggleStickySession(sessionId),
+            tabs: this._lifecycle.commands,
             projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
                 this._approvalModeControl.clear();
                 this._connection.switchProfile(name);
-            },
-            handleSwitchSession: (sessionId, interrupt) => {
-                if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
-                    this._surfaces.openPanel();
-                }
-                this._enqueueChatOp(() => this._lifecycle.switchTo(sessionId, { interrupt }));
             },
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
