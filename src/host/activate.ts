@@ -45,7 +45,15 @@ export function activateExtension(
     initI18n();
     console.log(`Tommys Hermes (${id.role}) activating...`);
 
-    const app = new App(id, context.extensionUri, context, primary);
+    // The editor, behind the cwd owner's port: asked here, once, where `vscode` is already in reach.
+    const cwdSource = {
+        workspaceFile: () => {
+            const file = vscode.workspace.workspaceFile;
+            return file && file.scheme === 'file' ? file.fsPath : '';
+        },
+        folders: () => (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath),
+    };
+    const app = new App(id, context.extensionUri, context, cwdSource, primary);
 
     const bind = (command: string, run: (app: App) => void | Promise<void>): void => {
         context.subscriptions.push(

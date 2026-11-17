@@ -22,6 +22,13 @@ describe('cwd locator', () => {
         assert.strictEqual(new WorkspaceCwd(source([])).forWindow(), '');
     });
 
+    it('names the window by its workspace file, else its first folder, else nothing', () => {
+        assert.strictEqual(new WorkspaceCwd(source(['/work/a'], '/work/x.code-workspace')).workspaceIdentity(),
+            '/work/x.code-workspace');
+        assert.strictEqual(new WorkspaceCwd(source(['/work/a', '/work/b'])).workspaceIdentity(), '/work/a');
+        assert.strictEqual(new WorkspaceCwd(source([])).workspaceIdentity(), '');
+    });
+
     it('owns a cwd under any folder of a workspace whose file sits elsewhere', () => {
         // The old rule compared against the .code-workspace file's own directory, which holds none
         // of the roots, so every cwd looked foreign.

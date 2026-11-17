@@ -41,6 +41,17 @@ export class WorkspaceCwd {
         return folders.length > 0 ? folders[0] : '';
     }
 
+    /**
+     * Which window this is, as one path: a saved workspace file, else the first folder, else '' for a
+     * window that opened nothing — a place of its own.
+     *
+     * The same source as the cwd, and deliberately so: the workspace a tab is filed under and the
+     * folder Hermes runs in are two answers about one window.
+     */
+    workspaceIdentity(): string {
+        return this._source.workspaceFile() || this._source.folders()[0] || '';
+    }
+
     /** Whether a cwd lies within one of this window's folders. */
     ownsCwd(cwd: string | undefined): boolean {
         if (!cwd) {

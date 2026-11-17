@@ -25,8 +25,10 @@ import { buildWebviewHtml, identityArtwork } from './webview/html';
 import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
-import { WorkspaceFiles } from './workspace/files';
+import { ChatFiles } from './chat/files';
+import { createEditorFiles } from './environment/editor';
 import { WorkspaceCwd } from './workspace/cwd';
+import type { CwdSource } from './workspace/cwd';
 import type { ChatSurface } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
@@ -240,25 +242,15 @@ export class App implements vscode.WebviewViewProvider {
 
     private readonly _extensionId: string;
 
-    /** The workspace as the pane and the agent may touch it: paths, picker, previews, fs. */
-    private readonly _files: WorkspaceFiles = new WorkspaceFiles({
+    /** The pane's file actions: the '@' picker, previews, opening a file, inserting text. */
+    private readonly _files: ChatFiles = new ChatFiles({
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
+        editor: createEditorFiles(),
     });
 
-    /**
-     * Which folder this window works in — one answer for every caller that needs one.
-     *
-     * The editor is asked here and nowhere else (F6): `vscode` stays in the composition root, and
-     * the locator itself holds only the rule.
-     */
-    private readonly _cwd: WorkspaceCwd = new WorkspaceCwd({
-        workspaceFile: () => {
-            const file = vscode.workspace.workspaceFile;
-            return file && file.scheme === 'file' ? file.fsPath : '';
-        },
-        folders: () => (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath),
-    });
+    /** Which folder this window works in, and which window it is: one owner, one answer. */
+    private readonly _cwd: WorkspaceCwd;
 
     /** The two panes trade drafts through one shared file; this is this side of the trade. */
     private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
@@ -272,9 +264,12 @@ export class App implements vscode.WebviewViewProvider {
         private readonly _id: ExtensionIdentity,
         private readonly _extensionUri: vscode.Uri,
         private readonly _context: vscode.ExtensionContext,
+        /** The editor behind the cwd owner's port: folders and workspace file, nothing else. */
+        cwdSource: CwdSource,
         /** The primary's API, when this is the secondant: it answers which profile is taken. */
         private readonly _primary?: PrimaryProfileSource
     ) {
+        this._cwd = new WorkspaceCwd(cwdSource);
         const context = this._context;
         this._extensionId = this._id.extensionId;
         this._profiles = new Profiles({
@@ -309,7 +304,7 @@ export class App implements vscode.WebviewViewProvider {
             openWorkspace: (path) => {
                 void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
             },
-            currentWorkspacePath: () => this._workspacePathFromEditor(),
+            currentWorkspacePath: () => this._cwd.workspaceIdentity(),
             ownsCwd: (cwd) => this._cwd.ownsCwd(cwd),
             onDidChangeWorkspaceFolders: (handler) =>
                 vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
@@ -422,25 +417,6 @@ export class App implements vscode.WebviewViewProvider {
 
 
 
-
-    /**
-     * Which window this is, as one path: a saved workspace file, else the first root folder.
-     *
-     * VS Code is the authority for that, so the answer is produced here and handed to the
-     * workspace feature as part of its port; the feature itself never imports `vscode` (F6).
-     * Empty means a window with no folder and no workspace file: a place of its own.
-     */
-    private _workspacePathFromEditor(): string {
-        const file = vscode.workspace.workspaceFile;
-        if (file && file.scheme === 'file') {
-            return file.fsPath;
-        }
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) {
-            return folders[0].uri.fsPath;
-        }
-        return '';
-    }
 
     private _isViewingPromptSession(): boolean {
         return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
