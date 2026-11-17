@@ -40,6 +40,8 @@ export const en: LocaleStrings = {
     permissionModeClose: 'Close',
     permissionOpenTooltip: 'DANGER! Everything runs, deny rules cleared. Edits: free everywhere. '
         + 'Sensitive files always ask.',
+    permissionEditHint: 'Edits ask here because of the button, the permission root or a protected file. '
+        + 'Change the button or the root; it applies from the next run.',
     permissionRootLabel: 'Permission root',
     permissionRootTitle: 'Permission root',
     permissionRootBody: 'This workspace opens {folders} folders side by side. Hermes can work in one of them. '

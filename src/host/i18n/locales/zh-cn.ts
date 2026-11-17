@@ -39,6 +39,8 @@ export const zhCn: LocaleStrings = {
     permissionModeTitle: '权限模式',
     permissionModeClose: '关闭',
     permissionOpenTooltip: '危险！一切都会执行，拒绝规则已清空。编辑：处处自由。敏感文件始终询问。',
+    permissionEditHint: '此处的编辑需要授权，原因可能是按钮模式、权限根目录或受保护的文件。'
+        + '请修改按钮或根目录；改动将在下一轮运行时生效。',
     permissionRootLabel: '权限根目录',
     permissionRootTitle: '权限根目录',
     permissionRootBody: '此工作区同时打开 {folders} 个文件夹，Hermes 只能在其中之一工作。'

@@ -39,6 +39,8 @@ export interface LocaleStrings {
     /** Nothing to work in: Hermes is not started until a folder or workspace is open. */
     noFolderOpen: string;
     /** The permission root: which folder Hermes works in when a workspace shows several. */
+    /** Edit cards only: why this asks, and what to change. */
+    permissionEditHint: string;
     permissionRootLabel: string;
     permissionRootTitle: string;
     permissionRootBody: string;

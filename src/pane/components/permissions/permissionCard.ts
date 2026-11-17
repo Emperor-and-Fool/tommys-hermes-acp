@@ -17,6 +17,7 @@ interface PermissionCardOptions {
 import { post } from '../../post';
 import { state } from '../../state';
 import { CardState } from './cardState';
+import { isEditCard } from './cardKind';
 import { createGroup, maybeScrollToBottom } from '../messages/messageList';
 import { enableStopAfterAgentOutput, finalizeAssistantBubble } from '../messages/streaming';
 
@@ -289,6 +290,14 @@ function buildPermissionCard(id: string, msg: PermissionCardInput, cardOptions?:
 
     const options = msg.options || [];
     div.appendChild(buildPermissionActions(id, options, readOnly));
+    // Edit cards only: this is where the button and the permission root decide, and a reader who
+    // sees the card deserves to know which of the two to change.
+    if (!readOnly && !msg.resolved && isEditCard(options)) {
+        const hint = document.createElement('div');
+        hint.className = 'permission-edit-hint';
+        hint.textContent = locale.permissionEditHint || '';
+        div.appendChild(hint);
+    }
 
     const state = {
         text: permissionBodyText(msg.title, msg.detail),
