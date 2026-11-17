@@ -9,7 +9,8 @@
  * Typing the contract is its own piece of work — this file is where that type will land.
  */
 import type { EnvironmentDetection } from '../environment/detection';
-import type { PaneToHost, ApprovalMode } from '../../shared/webview';
+import type { PermissionCommands } from '../permissions/approvals';
+import type { PaneToHost } from '../../shared/webview';
 import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
@@ -65,14 +66,8 @@ export interface RouterHost {
 
     retry(): Promise<void>;
     handlePermissionResponse(id: string, optionId: string | null): void;
-    /** Write Hermes' approvals.mode for the active profile. */
-    setApprovalMode(mode: ApprovalMode): Promise<void>;
-    /** Re-read approvals.mode and post it, even when it did not change. */
-    requestApprovalMode(): void;
-    /** Save the deny list, clear it, and turn approvals off. */
-    setOpenAccess(): Promise<void>;
-    /** Write the last saved deny list back. */
-    restoreDeny(): Promise<void>;
+    /** Permissions: the profile's approval mode, and the red action on its deny list. */
+    permissions: PermissionCommands;
     /** The permission root: the folder Hermes works in when a workspace shows several. */
     permissionRoot: PermissionRootCommands;
     handleInsertEditor(text: string): Promise<void>;
@@ -216,16 +211,16 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.dismissAllPeers();
             break;
         case 'setApprovalMode':
-            void host.setApprovalMode(message.mode);
+            void host.permissions.setMode(message.mode);
             break;
         case 'requestApprovalMode':
-            host.requestApprovalMode();
+            host.permissions.request();
             break;
         case 'setOpenAccess':
-            void host.setOpenAccess();
+            void host.permissions.openAccess();
             break;
         case 'restoreDeny':
-            void host.restoreDeny();
+            void host.permissions.restoreDeny();
             break;
         case 'setPermissionRoot':
             void host.permissionRoot.set(String(message.root || ''));
