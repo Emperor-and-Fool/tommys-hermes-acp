@@ -128,3 +128,41 @@ describe('permission root: the picker', () => {
         assert.deepStrictEqual(h.reloads, []);
     });
 });
+
+/** At start the picker says where the window stands — and with 2+ folders it opens the dialog. */
+describe('permission root: the start-up post', () => {
+    it('opens the dialog with the active root marked when the window shows several folders', () => {
+        const h = harness(['/w/a', '/w/b']);
+        assert.strictEqual(h.last().type, 'permissionRootState');
+        assert.strictEqual(h.last().open, true);
+        assert.strictEqual(h.last().root, '/w/a', 'the first time, the active root is the primary');
+        assert.deepStrictEqual(h.last().offered, ['/w/a', '/w/b']);
+    });
+
+    it('a stored choice is the one marked, not the primary', () => {
+        const h = harness(['/w/a', '/w/b'], { primaryRoot: '/w/a', permissionRoot: '/w/b' });
+        assert.strictEqual(h.last().root, '/w/b');
+        assert.strictEqual(h.last().open, true);
+    });
+
+    it('one folder posts the state without a dialog, and offers nothing', () => {
+        const h = harness(['/w/a']);
+        assert.strictEqual(h.last().open, false);
+        assert.strictEqual(h.last().root, '/w/a');
+        assert.deepStrictEqual(h.last().offered, []);
+    });
+
+    it('no folder posts no root at all', () => {
+        const h = harness([]);
+        assert.strictEqual(h.last().root, '');
+        assert.strictEqual(h.last().open, false);
+    });
+
+    it('a surface that appears later hears the same thing again', () => {
+        const h = harness(['/w/a', '/w/b']);
+        const before = h.posts.length;
+        h.picker.republish();
+        assert.strictEqual(h.posts.length, before + 1);
+        assert.strictEqual(h.last().open, true, 'the dialog it owed is still owed');
+    });
+});

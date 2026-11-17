@@ -46,10 +46,19 @@ export class RootPicker {
     /** A pick that arrived while a run was busy: it applies when that run ends. */
     private _appliesAfterRun = false;
 
-    /** Start watching: the window's folders decide when the dialog opens. */
+    /**
+     * Start watching, and say the state once so the window begins where it left off.
+     *
+     * A workspace showing two or more folders opens the dialog every time, with the active root
+     * marked — the first time that is the primary, afterwards the stored choice. Reconciling the
+     * stored roots already happens on every read, so this asks the owner and reports; it does not
+     * compare anything itself. With one folder there is nothing to choose and only the state is
+     * posted. A surface that is not up yet hears the same thing through `republish()`.
+     */
     start(): () => void {
         const unwatch = this._host.cwd.watch(() => this.onFoldersChanged());
         const unlisten = this._host.onRunEnded(() => this.afterRun());
+        this.state({ open: offeredRoots(this._host.cwd.folders()).length > 0 });
         return () => {
             unwatch();
             unlisten();
