@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A permission root: which folder Hermes works in, when a workspace shows several.** Hermes takes
+  one folder as its boundary, and a `.code-workspace` can show many, so the window now remembers a
+  primary — the first folder — and the folder you picked. The rail shows the current root beside the
+  permission mode; the dialog offers the folders and opens by itself whenever the folder list
+  changes while two or more remain. A pick moves the session with it: an idle session is re-loaded
+  at once, a busy one is told it applies from the next run. When a chosen root goes away the primary
+  takes over, when the primary goes away the most recently added folder does, and when the last
+  folder goes the window says plainly that the projects are no longer reachable from it.
+
 ### Changed
 
 - **One cwd per workspace, decided by the folder VS Code opened.** The folder a session runs in
