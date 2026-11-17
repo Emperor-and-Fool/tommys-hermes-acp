@@ -228,10 +228,6 @@ function applyPermissionResolvedUI(group: HTMLElement, statusText: string) {
     if (actions) {
         actions.style.display = 'none';
     }
-    const approval = div.querySelector('.permission-approval-block');
-    if (approval) {
-        approval.style.display = 'none';
-    }
     let status = div.querySelector('.permission-status');
     if (!status) {
         status = document.createElement('div');
