@@ -15,6 +15,14 @@ import type { HistoryRef } from '../../shared/chat';
 /** What the router may call. One function per capability the pane can ask for. */
 import type { ProjectCommands } from '../workspace/projectGrouped';
 
+/** What the pane may ask of the permission root. */
+export interface PermissionRootCommands {
+    /** Pick a folder, or '' to fall back to the primary. */
+    set(root: string): Promise<void>;
+    /** Open the dialog: answered by a `permissionRootState` with `open`. */
+    open(): void;
+}
+
 export interface RouterHost {
     log(line: string): void;
     openExternal(url: string): void;
@@ -65,6 +73,8 @@ export interface RouterHost {
     setOpenAccess(): Promise<void>;
     /** Write the last saved deny list back. */
     restoreDeny(): Promise<void>;
+    /** The permission root: the folder Hermes works in when a workspace shows several. */
+    permissionRoot: PermissionRootCommands;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
     /** The session-memory dropdown: the viewer tab, and the chip's X. */
@@ -216,6 +226,12 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             break;
         case 'restoreDeny':
             void host.restoreDeny();
+            break;
+        case 'setPermissionRoot':
+            void host.permissionRoot.set(String(message.root || ''));
+            break;
+        case 'openPermissionRoot':
+            host.permissionRoot.open();
             break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');

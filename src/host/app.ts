@@ -28,6 +28,7 @@ import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
 import { createEditorFiles } from './environment/editor';
 import { WorkspaceCwd } from './workspace/cwd';
+import { RootPicker } from './workspace/rootPicker';
 import type { CwdSource } from './workspace/cwd';
 import type { ChatSurface } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
@@ -252,6 +253,9 @@ export class App implements vscode.WebviewViewProvider {
     /** Which folder this window works in, and which window it is: one owner, one answer. */
     private readonly _cwd: WorkspaceCwd;
 
+    /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
+    private readonly _rootPicker: RootPicker;
+
     /** The two panes trade drafts through one shared file; this is this side of the trade. */
     private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
 
@@ -295,6 +299,15 @@ export class App implements vscode.WebviewViewProvider {
         // The roots live with the workspace record, so the locator reads and writes them there;
         // the store only exists from here on, which is why the locator is built at this point.
         this._cwd = new WorkspaceCwd(cwdSource, workspaces);
+        this._rootPicker = new RootPicker({
+            post: (msg) => this._postMessage(msg),
+            log: (line) => this._log(line),
+            cwd: this._cwd,
+            activeSessionBusy: () => this._connection.acp?.status === 'prompting',
+            // Hermes moves an idle session on load, so the reload is the move.
+            reloadActiveSession: () => this._lifecycle.resumeTabHermesSession(this._session.activeId).then(() => undefined),
+            profileLabel: () => this._profiles.resolveTarget().displayName,
+        });
         const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
         const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
         this._projects = new Projects(workspaces, agentProjects, {
@@ -383,6 +396,7 @@ export class App implements vscode.WebviewViewProvider {
 
         context.subscriptions.push(
             this._projects.start(),
+            { dispose: this._rootPicker.start() },
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(settingsSection())) {
                     void this._onConfigurationChanged(e);
@@ -928,6 +942,10 @@ export class App implements vscode.WebviewViewProvider {
             ),
             handleCancel: () => this._turn.cancel(),
             handleSteer: (text) => this._handleSteer(text),
+            permissionRoot: {
+                set: (root) => this._rootPicker.setRoot(root),
+                open: () => this._rootPicker.state({ open: true }),
+            },
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),

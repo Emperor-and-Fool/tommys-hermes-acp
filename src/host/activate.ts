@@ -52,6 +52,10 @@ export function activateExtension(
             return file && file.scheme === 'file' ? file.fsPath : '';
         },
         folders: () => (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath),
+        onFoldersChanged: (handler: () => void) => {
+            const subscription = vscode.workspace.onDidChangeWorkspaceFolders(() => handler());
+            return () => subscription.dispose();
+        },
     };
     const app = new App(id, context.extensionUri, context, cwdSource, primary);
 

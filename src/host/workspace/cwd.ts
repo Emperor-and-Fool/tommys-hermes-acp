@@ -76,6 +76,8 @@ export interface CwdSource {
     workspaceFile(): string;
     /** The folders the window opened, in the editor's order. */
     folders(): string[];
+    /** Told when that list changes; returns the unsubscribe. Absent in tests that never move. */
+    onFoldersChanged?(handler: () => void): () => void;
 }
 
 /**
@@ -139,6 +141,30 @@ export class WorkspaceCwd {
      */
     workspaceIdentity(): string {
         return this._source.workspaceFile() || this._source.folders()[0] || '';
+    }
+
+    /** The folders this window shows, in the editor's order. */
+    folders(): string[] {
+        return this._source.folders();
+    }
+
+    /** Record the folder the user picked. A folder this window does not show is refused. */
+    setPermissionRoot(folder: string): boolean {
+        if (folder && !this._source.folders().includes(folder)) {
+            return false;
+        }
+        const workspacePath = this.workspaceIdentity();
+        if (!this._roots || !workspacePath) {
+            return false;
+        }
+        const current = this.roots();
+        this._roots.setRoots(workspacePath, { primaryRoot: current.primaryRoot, permissionRoot: folder });
+        return true;
+    }
+
+    /** Watch the window's folders; returns the unsubscribe, or a no-op when the port cannot. */
+    watch(handler: () => void): () => void {
+        return this._source.onFoldersChanged ? this._source.onFoldersChanged(handler) : () => {};
     }
 
     /** Whether a cwd lies within one of this window's folders. */

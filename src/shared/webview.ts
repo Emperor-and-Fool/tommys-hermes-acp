@@ -38,6 +38,20 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /**
+     * The permission root: the folder Hermes works in, the folders the window shows, and which of
+     * them the picker offers. `open` asks the pane to show the dialog; `notice` says what just
+     * happened to the boundary (the last root went, or a pick that applies to the next run).
+     */
+    | {
+        type: 'permissionRootState';
+        root: string;
+        folders: string[];
+        offered: string[];
+        open: boolean;
+        profile: string;
+        notice?: 'lastRootRemoved' | 'appliesNextRun';
+    }
     /** The create path's answer: why nothing was made, or an empty message to clear it. */
     | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
     /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
@@ -182,6 +196,10 @@ export type PaneToHost =
     | { type: 'setOpenAccess' }
     /** Put the last saved deny list back. */
     | { type: 'restoreDeny' }
+    /** The pane picked a folder: Hermes works there, and the session moves if it is idle. */
+    | { type: 'setPermissionRoot'; root: string }
+    /** The pane wants the dialog: the answer is a `permissionRootState` with `open`. */
+    | { type: 'openPermissionRoot' }
 
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.
