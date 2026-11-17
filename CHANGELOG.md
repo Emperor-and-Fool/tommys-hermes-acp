@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **One cwd per workspace, decided by the folder VS Code opened.** The folder a session runs in
+  had three answers — the active editor's folder, the workspace file, a stored path compared by
+  prefix — and they disagreed on everything except a single folder. It is now one rule: the folder
+  the window opened (a plain folder is itself the workspace; a `.code-workspace` gives its first
+  folder), one cwd per workspace rather than per tab, and a tab moved to another workspace loads
+  there so Hermes moves the session with it. Focus no longer decides, and `tommys.cwd` and the
+  per-agent `cwd` are gone with it. A window with no folder is not a working area: Hermes is not
+  started, and the pane says why. A cwd is claimed by the window that contains it, so the
+  "workspace file elsewhere" and "second root" cases now belong to the window they run in.
+
 ### Removed
 
 - **Four pieces of extension-side code that decided permissions nobody saw, and two ACP
