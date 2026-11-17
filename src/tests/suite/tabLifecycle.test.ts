@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Sessions } from '../../host/cache/sessions';
 import { TabStore } from '../../host/workspace/store';
-import { TabLifecycle, TabLifecycleHost } from '../../host/tabs/lifecycle';
+import { TabLifecycle, TabLifecycleHost } from '../../host/workspace/lifecycle';
 import { t } from '../../host/i18n';
 import type { HostToPane } from '../../shared/webview';
 

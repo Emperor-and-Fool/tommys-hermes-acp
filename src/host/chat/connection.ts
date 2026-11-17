@@ -11,7 +11,7 @@ import type { EnvironmentDetection } from '../environment/detection';
 import type { Sessions } from '../cache/sessions';
 import type { ModelState } from '../models/modelState';
 import type { PromptRunner } from './promptRunner';
-import type { TabLifecycle } from '../tabs/lifecycle';
+import type { TabLifecycle } from '../workspace/lifecycle';
 
 /**
  * What the connection needs from the provider. Module instances where the moved code calls an

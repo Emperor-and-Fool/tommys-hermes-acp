@@ -37,7 +37,7 @@ import type { RouterHost } from './webview/router';
 import { Sessions } from './cache/sessions';
 import { Profiles } from './environment/profiles';
 import { Connection } from './chat/connection';
-import { TabLifecycle } from './tabs/lifecycle';
+import { TabLifecycle } from './workspace/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -385,6 +385,13 @@ export class App implements vscode.WebviewViewProvider {
             activate: (id, options) => this._session.activate(id, options),
             reinjectOpenPeers: () => this._mail?.inbox.reinjectOpen(),
             workspaceState: context.workspaceState,
+            debugTabSwitch: () => {
+                try {
+                    return vscode.workspace.getConfiguration('tommys').get<boolean>('debugTabSwitch', false) === true;
+                } catch {
+                    return false;
+                }
+            },
         });
         this._connection = new Connection({
             profiles: this._profiles,

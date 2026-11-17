@@ -10,7 +10,6 @@
  * The flag guards one thing the whole file shares — a load the user asked for must not repaint
  * over a pending turn.
  */
-import * as vscode from 'vscode';
 import type { AcpClient, CatalogSession, ReplayMessage } from '../acp/AcpClient';
 import type { AttachmentStore } from '../cache/attachments';
 import { renameSession } from '../cache/catalog';
@@ -18,10 +17,21 @@ import { buildReplayMessages } from '../cache/replay';
 import type { Sessions } from '../cache/sessions';
 
 import { t } from '../i18n';
-import { hermesSessionIdFor } from '../workspace/sessionTab';
-import { mintId } from '../workspace/workSpace';
+import { hermesSessionIdFor } from './sessionTab';
+import { mintId } from './workSpace';
 import type { ChatSurface } from '../webview/surfaces';
 import type { HostToPane } from '../../shared/webview';
+
+/**
+ * What the lifecycle needs from the editor's per-workspace store: read one key, write one key.
+ *
+ * Declared here rather than importing `vscode.Memento` so this file stays editor-free (F6); the
+ * composition root hands it `context.workspaceState`, which fits without a cast.
+ */
+export interface KeyValueState {
+    get<T>(key: string): T | undefined;
+    update(key: string, value: unknown): PromiseLike<void>;
+}
 
 /** What a tab's lifecycle needs from the panel: the connection, the tab records, and the posts. */
 export interface TabLifecycleHost {
@@ -51,7 +61,9 @@ export interface TabLifecycleHost {
     /** Draw the undecided forwarded cards again: reloads and tab switches rebuild the transcript. */
     reinjectOpenPeers?: () => void;
     activate(id: string, options?: { skipSaveCurrent?: boolean; interrupt?: boolean }): void;
-    workspaceState: vscode.Memento;
+    workspaceState: KeyValueState;
+    /** `tommys.debugTabSwitch`: four lines per switch, nothing else, off by default. */
+    debugTabSwitch(): boolean;
 }
 
 export class TabLifecycle {
@@ -346,7 +358,7 @@ export class TabLifecycle {
     /** `tommys.debugTabSwitch`: four lines per switch, nothing else, off by default. */
     private _tabSwitchDebug(): boolean {
         try {
-            return vscode.workspace.getConfiguration('tommys').get<boolean>('debugTabSwitch', false) === true;
+            return this._host.debugTabSwitch();
         } catch {
             return false;
         }
