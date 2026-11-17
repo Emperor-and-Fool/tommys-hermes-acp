@@ -166,10 +166,44 @@ export class Sessions {
         });
     }
 
+    /**
+     * Sessions this window cannot show because no window owns them: written before tags existed, or
+     * created by the TUI, the CLI or Desktop. They reach a window only through Closed Sessions.
+     */
+    unownedSessions(): CatalogSession[] {
+        const known = new Set(this.host.knownWorkspaceIds());
+        return this.tabs
+            .filter(tab => !tab.workspaceId || !known.has(tab.workspaceId))
+            .map(tab => ({
+                sessionId: tab.hermesSessionId || tab.id,
+                title: tab.title,
+                cwd: tab.cwd,
+                hidden: false,
+                messageCount: 0,
+                updatedAt: tab.updatedAt,
+            }));
+    }
+
+    /**
+     * What Closed Sessions offers: Hermes' hidden rows, and every session no window owns.
+     *
+     * The two are one list because the pane asks one question — "what can I open that I cannot
+     * see?" — and a session that is hidden in Hermes and one that never had a window are the same
+     * answer to it.
+     */
     postHidden(): void {
+        const seen = new Set<string>();
+        const rows: CatalogSession[] = [];
+        for (const row of [...this.hiddenSessions, ...this.unownedSessions()]) {
+            if (!row.sessionId || seen.has(row.sessionId)) {
+                continue;
+            }
+            seen.add(row.sessionId);
+            rows.push(row);
+        }
         this.host.post({
             type: 'hiddenSessions',
-            sessions: this.hiddenSessions,
+            sessions: rows,
         });
     }
 
