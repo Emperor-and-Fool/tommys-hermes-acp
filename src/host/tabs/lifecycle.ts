@@ -514,6 +514,8 @@ export class TabLifecycle {
             this._host.log(`Opened closed session ${sessionId}`);
             await this.refreshFromHermes();
         }
+        // Deliberate, from Closed Sessions: this is the one act that gives a session a window.
+        this._host.session.claim(sessionId);
         await this.switchTo(sessionId);
     }
 

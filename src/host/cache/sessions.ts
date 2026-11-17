@@ -167,6 +167,30 @@ export class Sessions {
     }
 
     /**
+     * Give a session to this window — the one act that does.
+     *
+     * Opening it from Closed Sessions is deliberate, so it is the only caller: a session is never
+     * claimed because its cwd happens to sit here. False when it already belongs to a window (a
+     * known tag) or there is nothing to claim.
+     */
+    claim(sessionId: string): boolean {
+        const workspaceId = this.host.currentWorkspaceId();
+        if (!workspaceId) {
+            return false;
+        }
+        const known = new Set(this.host.knownWorkspaceIds());
+        const tab = this.tabs.find(rec => rec.id === sessionId || rec.hermesSessionId === sessionId);
+        if (!tab || (tab.workspaceId && known.has(tab.workspaceId))) {
+            return false;
+        }
+        tab.workspaceId = workspaceId;
+        this.saveCatalog();
+        this.postList();
+        this.host.log(`Claimed session ${sessionId} for this window`);
+        return true;
+    }
+
+    /**
      * Sessions this window cannot show because no window owns them: written before tags existed, or
      * created by the TUI, the CLI or Desktop. They reach a window only through Closed Sessions.
      */

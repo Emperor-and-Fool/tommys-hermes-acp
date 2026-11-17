@@ -82,3 +82,45 @@ describe('sessions: what Closed Sessions lists', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+/** The other half of the rule: an untagged session is claimed only by opening it here. */
+describe('sessions: opening one from Closed Sessions claims it', () => {
+    const harness = () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-claim-open-'));
+        const store = new TabStore(dir, 'scope');
+        store.writeCatalog([
+            { id: 'tab-untagged', title: 'From the TUI', createdAt: 0, updatedAt: 4,
+              hermesSessionId: 'hermes-untagged', cwd: '/w/elsewhere' } as never,
+        ]);
+        const session = new Sessions(dir, 'scope', {
+            post: () => {},
+            log: () => {},
+            updatePanelTitle: () => {},
+            modelLabel: () => undefined,
+            currentWorkspaceId: () => 'current-window',
+            knownWorkspaceIds: () => ['current-window'],
+        }, store);
+        session.init();
+        return { dir, session };
+    };
+
+    it('tags it to this window and writes the index', () => {
+        const { dir, session } = harness();
+        assert.strictEqual(session.claim('tab-untagged'), true);
+        assert.strictEqual(session.tabs[0].workspaceId, 'current-window');
+        assert.strictEqual(session.tabsInWindow().length, 1, 'and it now appears here');
+        const written = new TabStore(dir, 'scope').readCatalog();
+        assert.strictEqual(written.find(tab => tab.id === 'tab-untagged')?.workspaceId, 'current-window');
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('does nothing for a session that already belongs to a window', () => {
+        const { dir, session } = harness();
+        session.claim('tab-untagged');
+        assert.strictEqual(session.claim('tab-untagged'), false, 'a second open changes nothing');
+        assert.strictEqual(session.claim('nothing-here'), false);
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+});
