@@ -37,6 +37,75 @@ export function backupStamp(now = new Date()): string {
     return `${now.getFullYear()}${month}${day}`;
 }
 
+
+/** The lock both extensions take before migrating one data home. */
+const LOCK_NAME = '.migrating';
+
+/** A lock older than this is a host that died mid-migration, not one still working. */
+const LOCK_STALE_MS = 10 * 60_000;
+
+function lockPath(home: string): string {
+    return path.join(home, LOCK_NAME);
+}
+
+/** Create the lock file only if it does not exist (`wx`), and say whether that worked. */
+function tryLock(lock: string): boolean {
+    try {
+        const fd = fs.openSync(lock, 'wx');
+        try {
+            fs.writeSync(fd, `${process.pid} ${new Date().toISOString()}\n`);
+        } finally {
+            fs.closeSync(fd);
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Take the migration lock, or say why not.
+ *
+ * Both extensions activate on their own schedule — the secondant when its view or panel opens — so
+ * two hosts can reach this home at the same moment. One file, created exclusively, is the whole
+ * protocol; whoever gets it migrates, the other skips this activation and will find the work done.
+ *
+ * A lock older than ten minutes belongs to a host that died mid-migration: it is logged, removed and
+ * taken again.
+ */
+function acquireLock(home: string, log: MigrationsLog): boolean {
+    const lock = lockPath(home);
+    if (tryLock(lock)) {
+        return true;
+    }
+    let heldFor = LOCK_STALE_MS;
+    try {
+        heldFor = Date.now() - fs.statSync(lock).mtimeMs;
+    } catch {
+        // Gone between the two calls: the other host finished. One more try.
+        return tryLock(lock);
+    }
+    if (heldFor < LOCK_STALE_MS) {
+        log('Migration: another window is migrating this data home; skipped this activation');
+        return false;
+    }
+    log(`Migration: clearing a stale migration lock (held ${Math.round(heldFor / 60_000)} min)`);
+    try {
+        fs.rmSync(lock, { force: true });
+    } catch { /* the next attempt says what is left */ }
+    if (tryLock(lock)) {
+        return true;
+    }
+    log('Migration: another window took the lock; skipped this activation');
+    return false;
+}
+
+function releaseLock(home: string): void {
+    try {
+        fs.rmSync(lockPath(home), { force: true });
+    } catch { /* nothing left to remove */ }
+}
+
 /**
  * Copy the whole data home to `<home>.backup-<yyyymmdd>`, once.
  *
@@ -54,7 +123,13 @@ export function backupDataHome(home: string, log: MigrationsLog, now = new Date(
         return undefined;
     }
     try {
-        fs.cpSync(home, target, { recursive: true, force: false, errorOnExist: true });
+        fs.cpSync(home, target, {
+            recursive: true,
+            force: false,
+            errorOnExist: true,
+            // The lock is ours, not data: a copy of it would be a lock in every restored backup.
+            filter: source => path.basename(source) !== LOCK_NAME,
+        });
         log(`Backup: ${path.basename(target)} written`);
         return target;
     } catch (error) {
@@ -469,19 +544,26 @@ export function runMigrations(
         // No data home is no data to migrate, and nowhere to put a lock.
         return;
     }
-    const backup = backupDataHome(home, log);
-    if (!backup) {
-        // The copy failed. Every step below renames, merges or re-keys what is there, and without
-        // that copy this home is the only state there is: no backup, no migration.
-        log('Migration: no backup was made, so nothing was migrated');
+    if (!acquireLock(home, log)) {
         return;
     }
-    migrateLegacySessionLayout(home, log);
-    const store = new ProfilesStore(home);
-    migrateProfileFolders(home, store, agentForScope, log);
-    migrateWorkspaceRoots(home, store, log);
-    if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
-        mergeSecondantHome(home, store, agentForScope, log, secondantHome);
+    try {
+        const backup = backupDataHome(home, log);
+        if (!backup) {
+            // The copy failed. Every step below renames, merges or re-keys what is there, and without
+            // that copy this home is the only state there is: no backup, no migration.
+            log('Migration: no backup was made, so nothing was migrated');
+            return;
+        }
+        migrateLegacySessionLayout(home, log);
+        const store = new ProfilesStore(home);
+        migrateProfileFolders(home, store, agentForScope, log);
+        migrateWorkspaceRoots(home, store, log);
+        if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
+            mergeSecondantHome(home, store, agentForScope, log, secondantHome);
+        }
+        migrateAttachmentsIndex(home, store, log);
+    } finally {
+        releaseLock(home);
     }
-    migrateAttachmentsIndex(home, store, log);
 }

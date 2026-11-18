@@ -443,4 +443,59 @@ describe('data home migrations', () => {
             fs.rmSync(parent, { recursive: true, force: true });
         }
     });
+    it('skips the migrations while another window holds the lock', () => {
+        const home = tempHome();
+        try {
+            writeProfileFolder(home, 'kitt', [tab({ id: 't1', hermesSessionId: 'h1' })]);
+            const lock = path.join(home, '.migrating');
+            fs.writeFileSync(lock, 'some other host');
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, '');
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'kitt')), true);
+            assert.strictEqual(fs.existsSync(`${home}.backup-${backupStamp()}`), false, 'nothing was copied');
+            assert.deepStrictEqual(lines, ['Migration: another window is migrating this data home; skipped this activation']);
+            // The other host's lock is left alone: it owns it.
+            assert.strictEqual(fs.readFileSync(lock, 'utf-8'), 'some other host');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('clears a stale lock and migrates', () => {
+        const home = tempHome();
+        try {
+            writeProfileFolder(home, 'kitt', [tab({ id: 't1', hermesSessionId: 'h1' })]);
+            const lock = path.join(home, '.migrating');
+            fs.writeFileSync(lock, 'a host that died');
+            const old = new Date(Date.now() - 11 * 60_000);
+            fs.utimesSync(lock, old, old);
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, '');
+            assert.strictEqual(fs.existsSync(lock), false, 'the lock is released after the run');
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'kitt')), false);
+            assert.deepStrictEqual(lines, [
+                'Migration: clearing a stale migration lock (held 11 min)',
+                `Backup: ${path.basename(home)}.backup-${backupStamp()} written`,
+                "Migration: profiles/kitt moved to kitt's id folder",
+            ]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('leaves the lock out of the backup it makes', () => {
+        const home = tempHome();
+        try {
+            writeProfileFolder(home, 'kitt', [tab({ id: 't1', hermesSessionId: 'h1' })]);
+            runMigrations(home, () => 'kitt', logger().log, '');
+            const backup = `${home}.backup-${backupStamp()}`;
+            assert.strictEqual(fs.existsSync(path.join(backup, '.migrating')), false);
+            assert.strictEqual(fs.existsSync(path.join(home, '.migrating')), false);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
 });
