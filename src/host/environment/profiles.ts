@@ -1,6 +1,4 @@
-import * as vscode from 'vscode';
 import { t } from '../i18n';
-import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
@@ -25,11 +23,28 @@ export interface ConnectionTarget {
     configPath?: string;
 }
 
+/**
+ * What the editor's per-window store offers this feature: read one key, write one key.
+ *
+ * Declared here rather than importing `vscode.Memento`, so this file stays editor-free (F6). The
+ * composition root hands it `context.globalState`, which fits without a cast.
+ */
+export interface KeyValueState {
+    get<T>(key: string): T | undefined;
+    update(key: string, value: unknown): PromiseLike<void>;
+}
+
+/** The settings this feature reads, behind the same rule: the editor is not imported here (F6). */
+export interface SettingsReader {
+    get<T>(key: string): T | undefined;
+}
+
 /** What the profile selector needs from the provider. */
 export interface ProfilesHost {
     log(line: string): void;
     post(msg: HostToPane): void;
-    globalState: vscode.Memento;
+    globalState: KeyValueState;
+    settings: SettingsReader;
     /** The profile the picker must not offer: the primary's, when this is the secondant. */
     excludedProfile?: () => string | undefined;
 }
@@ -72,9 +87,8 @@ export class Profiles {
     }
 
     resolveTarget(selectionId?: string): ConnectionTarget {
-        const config = vscode.workspace.getConfiguration(settingsSection());
-        const configPath = config.get<string>('path') || undefined;
-        const configProfile = config.get<string>('profile') || undefined;
+        const configPath = this._host.settings.get<string>('path') || undefined;
+        const configProfile = this._host.settings.get<string>('profile') || undefined;
         const agents = this.readAgentConfigs();
 
         if (agents.length > 0) {
@@ -119,8 +133,7 @@ export class Profiles {
             return;
         }
         this.discovery = (async () => {
-            const config = vscode.workspace.getConfiguration(settingsSection());
-            const hermesPath = config.get<string>('path') || undefined;
+            const hermesPath = this._host.settings.get<string>('path') || undefined;
             try {
                 this.discovered = await discoverHermesProfiles(hermesPath);
             } catch (err) {
@@ -154,8 +167,7 @@ export class Profiles {
     }
 
     readAgentConfigs(): HermesAgentConfig[] {
-        const config = vscode.workspace.getConfiguration(settingsSection());
-        const raw = config.get<unknown>('agents');
+        const raw = this._host.settings.get<unknown>('agents');
         if (!Array.isArray(raw)) {
             return [];
         }

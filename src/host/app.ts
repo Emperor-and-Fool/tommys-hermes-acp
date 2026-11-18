@@ -272,6 +272,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
+            settings: { get: <T>(key: string) => vscode.workspace.getConfiguration(settingsSection()).get<T>(key) },
             excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
         });
         this._output = vscode.window.createOutputChannel(
@@ -431,10 +432,6 @@ export class App implements vscode.WebviewViewProvider {
         );
     }
 
-
-
-
-
     private _resolvePermissionHistory(
         id: string,
         outcome: 'selected' | 'cancelled',
@@ -443,22 +440,6 @@ export class App implements vscode.WebviewViewProvider {
     ): void {
         this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     private _isViewingPromptSession(): boolean {
         return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
