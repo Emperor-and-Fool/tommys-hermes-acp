@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    isHermesProfile,
+    hasProfileMeta,
+    hasProfileState,
     parsePreviousNames,
     profileNameFromPreviousNames,
     profileNameHoldingSessions,
@@ -83,11 +84,32 @@ describe('profile fallback', () => {
     it('tells a profile from a folder that only looks like one', () => {
         const hermesHome = tempHome();
         try {
+            const profiles = path.join(hermesHome, 'profiles');
             writeProfile(hermesHome, 'kitt', []);
-            fs.mkdirSync(path.join(hermesHome, 'profiles', 'dev'), { recursive: true });
-            fs.writeFileSync(path.join(hermesHome, 'profiles', 'dev', 'chatter.txt'), 'left behind');
-            assert.strictEqual(isHermesProfile(path.join(hermesHome, 'profiles', 'kitt')), true);
-            assert.strictEqual(isHermesProfile(path.join(hermesHome, 'profiles', 'dev')), false);
+            // A profile created without --description has no profile.yaml (Hermes writes it only
+            // for one), and a folder that never ran has no state.db. Each search needs its own file.
+            fs.mkdirSync(path.join(profiles, 'no-meta'), { recursive: true });
+            createStateDb(path.join(profiles, 'no-meta', 'state.db'), []);
+            fs.mkdirSync(path.join(profiles, 'no-state'), { recursive: true });
+            fs.writeFileSync(path.join(profiles, 'no-state', 'profile.yaml'), 'description: never ran\n');
+            fs.mkdirSync(path.join(profiles, 'dev'), { recursive: true });
+            fs.writeFileSync(path.join(profiles, 'dev', 'chatter.txt'), 'left behind');
+            assert.deepStrictEqual(
+                [hasProfileMeta(path.join(profiles, 'kitt')), hasProfileState(path.join(profiles, 'kitt'))],
+                [true, true]
+            );
+            assert.deepStrictEqual(
+                [hasProfileMeta(path.join(profiles, 'no-meta')), hasProfileState(path.join(profiles, 'no-meta'))],
+                [false, true]
+            );
+            assert.deepStrictEqual(
+                [hasProfileMeta(path.join(profiles, 'no-state')), hasProfileState(path.join(profiles, 'no-state'))],
+                [true, false]
+            );
+            assert.deepStrictEqual(
+                [hasProfileMeta(path.join(profiles, 'dev')), hasProfileState(path.join(profiles, 'dev'))],
+                [false, false]
+            );
         } finally {
             fs.rmSync(hermesHome, { recursive: true, force: true });
         }
@@ -107,13 +129,40 @@ describe('profile fallback', () => {
         }
     });
 
-    it('skips a folder without profile.yaml and state.db when the old name names it', () => {
+    it('finds a profile that has profile.yaml but no state.db by its old name, and never by its sessions', () => {
+        const hermesHome = tempHome();
+        try {
+            const dir = path.join(hermesHome, 'profiles', 'pa');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'profile.yaml'), 'previous_names:\n  - old-pa\n');
+            assert.strictEqual(profileNameFromPreviousNames('old-pa', hermesHome), 'pa');
+            assert.strictEqual(profileNameHoldingSessions(['local-a'], hermesHome), undefined);
+        } finally {
+            fs.rmSync(hermesHome, { recursive: true, force: true });
+        }
+    });
+
+    it('reaches a profile that has state.db and no profile.yaml by its sessions', () => {
+        const hermesHome = tempHome();
+        try {
+            // What `hermes profile create` without --description leaves: no profile.yaml at all.
+            const dir = path.join(hermesHome, 'profiles', 'kitt');
+            fs.mkdirSync(dir, { recursive: true });
+            createStateDb(path.join(dir, 'state.db'), ['local-a']);
+            assert.strictEqual(profileNameHoldingSessions(['local-a'], hermesHome), 'kitt');
+            assert.strictEqual(profileNameFromPreviousNames('kitt', hermesHome), undefined);
+        } finally {
+            fs.rmSync(hermesHome, { recursive: true, force: true });
+        }
+    });
+
+    it('skips a folder with neither file, even when its name is supposed to be an old one', () => {
         const hermesHome = tempHome();
         try {
             // The leftover of the dev -> dev-vsc rename: nothing but its name.
             fs.mkdirSync(path.join(hermesHome, 'profiles', 'dev'), { recursive: true });
-            fs.writeFileSync(path.join(hermesHome, 'profiles', 'dev', 'profile.yaml'), 'previous_names:\n  - pa\n');
             assert.strictEqual(profileNameFromPreviousNames('pa', hermesHome), undefined);
+            assert.strictEqual(profileNameHoldingSessions(['local-a'], hermesHome), undefined);
         } finally {
             fs.rmSync(hermesHome, { recursive: true, force: true });
         }

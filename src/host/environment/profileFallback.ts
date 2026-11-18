@@ -16,11 +16,25 @@ import { resolveHermesRoot } from './hermesPaths';
  *
  * Hermes' files are read here and never written (H2), and this is the folder allowed to touch them
  * (H1). Nothing calls either search yet: connect still resolves by name.
+ *
+ * Each search asks for the one file its own question needs, because `profile.yaml` is optional
+ * metadata in Hermes and not part of what makes a profile: `read_profile_meta` returns empty
+ * defaults when it is missing (hermes_cli/profiles.py:860-887), `hermes profile create` writes it
+ * only when a `--description` is given (hermes_cli/profiles_initialization.py:66-70), and a folder
+ * under `profiles/` is identified as a profile by any one of `config.yaml`, `.env`, `SOUL.md`,
+ * `profile.yaml`, `auth.json` or `state.db` (hermes_constants.py:399). A profile can therefore have
+ * a state.db and no profile.yaml — fallback 2 must still reach its sessions. A folder with neither
+ * file (the leftover of the dev -> dev-vsc rename) is skipped by both.
  */
 
-/** A Hermes profile is both of these: what it is, and what it did. */
-export function isHermesProfile(dir: string): boolean {
-    return fs.existsSync(path.join(dir, 'profile.yaml')) && fs.existsSync(path.join(dir, 'state.db'));
+/** Fallback 1 knows a profile by its names, so it needs the file the names live in. */
+export function hasProfileMeta(dir: string): boolean {
+    return fs.existsSync(path.join(dir, 'profile.yaml'));
+}
+
+/** Fallback 2 knows a profile by its sessions, so it needs the database the sessions live in. */
+export function hasProfileState(dir: string): boolean {
+    return fs.existsSync(path.join(dir, 'state.db'));
 }
 
 /**
@@ -75,8 +89,11 @@ function pushName(names: string[], raw: string): void {
 /**
  * Fallback 1: the profile whose `previous_names` holds this name.
  *
- * `dir` is `~/.hermes` unless a caller says otherwise, which is what makes this testable against
- * temp folders instead of his home.
+ * Only a folder with a profile.yaml can answer: that is where the names live. A profile without one
+ * is simply not a candidate here, which is not a miss — fallback 2 asks a different question.
+ *
+ * `hermesHome` is `~/.hermes` unless a caller says otherwise, which is what makes this testable
+ * against temp folders instead of his home.
  */
 export function profileNameFromPreviousNames(staleName: string, hermesHome = resolveHermesRoot()): string | undefined {
     const wanted = (staleName || '').trim();
@@ -86,7 +103,7 @@ export function profileNameFromPreviousNames(staleName: string, hermesHome = res
     const root = path.join(hermesHome, 'profiles');
     for (const name of profileFolders(root)) {
         const dir = path.join(root, name);
-        if (!isHermesProfile(dir)) {
+        if (!hasProfileMeta(dir)) {
             continue;
         }
         if (parsePreviousNames(readText(path.join(dir, 'profile.yaml'))).includes(wanted)) {
@@ -99,9 +116,11 @@ export function profileNameFromPreviousNames(staleName: string, hermesHome = res
 /**
  * Fallback 2: the profile whose state.db holds these session ids.
  *
- * Named profiles keep their state in `profiles/<name>/state.db`; the default profile keeps it at the
- * root, `~/.hermes/state.db`, and is the answer when no named profile holds one. A named profile
- * that holds one wins over the default, which is also the order the folders are read in.
+ * A state.db is enough: profile.yaml is optional metadata, so requiring it would skip a real profile
+ * whose sessions are exactly what we came for. Named profiles keep their state in
+ * `profiles/<name>/state.db`; the default profile keeps it at the root, `~/.hermes/state.db`, and is
+ * the answer when no named profile holds one. A named profile that holds one wins over the default,
+ * which is also the order the folders are read in.
  */
 export function profileNameHoldingSessions(sessionIds: string[], hermesHome = resolveHermesRoot()): string | undefined {
     const wanted = sessionIds.map(id => (id || '').trim()).filter(Boolean);
@@ -111,7 +130,7 @@ export function profileNameHoldingSessions(sessionIds: string[], hermesHome = re
     const root = path.join(hermesHome, 'profiles');
     for (const name of profileFolders(root)) {
         const dir = path.join(root, name);
-        if (!isHermesProfile(dir)) {
+        if (!hasProfileState(dir)) {
             continue;
         }
         if (holdsAny(path.join(dir, 'state.db'), wanted)) {
