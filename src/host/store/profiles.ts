@@ -36,6 +36,14 @@ export interface ProfileRow {
     [key: string]: unknown;
 }
 
+/** A folder name that is one of our ids: an agent folder, not a name. */
+const ID_FOLDER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Is this folder already keyed by an id of ours (so it is not a name to seed)? */
+export function isSessionProfileId(folderName: string): boolean {
+    return ID_FOLDER.test(folderName);
+}
+
 /** The table's file. */
 export function profilesPathFor(dataHome: string): string {
     return path.join(dataHome, 'profiles.json');
@@ -145,13 +153,15 @@ export class ProfilesStore {
     }
 
     /**
-     * The folders under `profiles/`: what our data home already holds, under whatever name it was
-     * written. These are scope keys, not Hermes names (`__default__` is the default profile).
+     * The folders under `profiles/` that are still named: what our data home holds under a name it
+     * was written with. These are scope keys, not Hermes names (`__default__` is the default
+     * profile). An id folder is skipped — it is already keyed by us, and reading it as a name would
+     * mint a row whose agent is a uuid.
      */
     localScopes(): string[] {
         try {
             return fs.readdirSync(profilesDirFor(this._dataHome), { withFileTypes: true })
-                .filter(entry => entry.isDirectory())
+                .filter(entry => entry.isDirectory() && !isSessionProfileId(entry.name))
                 .map(entry => entry.name)
                 .sort();
         } catch {

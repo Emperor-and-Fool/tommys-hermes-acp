@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import type { Project, SessionInfo } from '../../shared/chat';
 import { legacySecondantHome, writeAtomic } from './connection';
 import { activeSessionPathFor, profileDir, sessionsPathFor } from './paths';
-import { ProfilesStore } from './profiles';
+import { ProfilesStore, isSessionProfileId } from './profiles';
 
 /**
  * The one-time fixes to the data home, run at every activation and safe to re-run.
@@ -29,9 +29,6 @@ export type AgentResolver = (scopeKey: string, sessionIds: string[]) => string |
 
 /** A step says what it did, in the output log. Silence means there was nothing to do. */
 export type MigrationsLog = (line: string) => void;
-
-/** A `sessionProfileId` is a UUID; a folder named like one is already migrated. */
-const ID_FOLDER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Today as `yyyymmdd`, for the backup's folder name. */
 export function backupStamp(now = new Date()): string {
@@ -111,7 +108,7 @@ function migrateProfileFolders(
 ): void {
     const root = path.join(home, 'profiles');
     for (const name of folderNames(root)) {
-        if (ID_FOLDER.test(name)) {
+        if (isSessionProfileId(name)) {
             continue;
         }
         const source = path.join(root, name);
@@ -400,7 +397,7 @@ function lastWrittenProfileId(home: string): string | undefined {
     const root = path.join(home, 'profiles');
     let best: { id: string; at: number } | undefined;
     for (const name of folderNames(root)) {
-        if (!ID_FOLDER.test(name)) {
+        if (!isSessionProfileId(name)) {
             continue;
         }
         try {

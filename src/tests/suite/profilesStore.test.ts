@@ -111,14 +111,31 @@ describe('profiles store', () => {
         }
     });
 
-    it('reads the folders the data home already holds', () => {
+    it('reads the folders the data home already holds, and not the ones already keyed by id', () => {
         const home = tempHome();
         try {
+            const store = new ProfilesStore(home);
+            const id = store.idFor('kitt');
             fs.mkdirSync(path.join(home, 'profiles', 'dev'), { recursive: true });
             fs.mkdirSync(path.join(home, 'profiles', '__default__'), { recursive: true });
+            fs.mkdirSync(path.join(home, 'profiles', id), { recursive: true });
             fs.writeFileSync(path.join(home, 'profiles', 'notes.txt'), 'not a profile');
-            assert.deepStrictEqual(new ProfilesStore(home).localScopes(), ['__default__', 'dev']);
+            assert.deepStrictEqual(store.localScopes(), ['__default__', 'dev']);
             assert.deepStrictEqual(new ProfilesStore(path.join(home, 'nowhere')).localScopes(), []);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('mints no row for a folder that is already an id', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const id = store.idFor('kitt');
+            fs.mkdirSync(path.join(home, 'profiles', id), { recursive: true });
+            const rows = store.localScopes().map(scope => scope === '__default__' ? 'default' : scope);
+            assert.strictEqual(store.seed(rows), 0);
+            assert.deepStrictEqual(store.all(), [{ sessionProfileId: id, agentName: 'kitt' }]);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }
