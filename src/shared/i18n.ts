@@ -26,6 +26,7 @@ export interface LocaleStrings {
     sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
+    profileMissing: string;
     modelSwitchIncomplete: string;
     openTab: string;
     chooseChat: string;

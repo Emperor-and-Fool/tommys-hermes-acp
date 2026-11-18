@@ -25,6 +25,7 @@ export const en: LocaleStrings = {
     sessionReplayFailed: 'This conversation could not be loaded from Hermes. Reopen it from Open, or reload the window.',
     sessionNotWritable: 'This chat is not connected to a Hermes session, so nothing was sent. Reopen it from the closed chats.',
     profileExcluded: '"{0}" is the profile the primary agent is using. Pick another one for this pane.',
+    profileMissing: '"{0}" is not a profile Hermes has any more. Pick another one; nothing was moved or deleted.',
     modelSwitchIncomplete: 'The model did not change to {0}. The chat was left as it was.',
     openTab: 'Open',
     chooseChat: 'Closed Sessions',

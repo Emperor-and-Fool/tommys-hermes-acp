@@ -25,6 +25,7 @@ export const zhCn: LocaleStrings = {
     sessionReplayFailed: '无法从 Hermes 载入此对话。请从 Open 重新打开，或重新加载窗口。',
     sessionNotWritable: '此对话未连接到 Hermes 会话，因此未发送任何内容。请从已关闭的对话中重新打开。',
     profileExcluded: '“{0}”是主代理正在使用的配置档。请为此面板选择另一个。',
+    profileMissing: '“{0}”已不是 Hermes 现有的配置档。请另外选择一个；未移动或删除任何数据。',
     modelSwitchIncomplete: '模型未能切换到 {0}，对话保持原样。',
     openTab: '打开标签页',
     chooseChat: '选择对话',

@@ -154,6 +154,16 @@ export function isCurrentProfile(profileName: string, hermesHome = resolveHermes
     return hasProfileState(path.join(hermesHome, 'profiles', profileName));
 }
 
+/**
+ * Does this Hermes home hold a profiles folder at all?
+ *
+ * The question a caller asks before trusting an absence: on a machine Hermes has never run on, every
+ * name is missing, and that says nothing about the profile.
+ */
+export function hasProfilesRoot(hermesHome = resolveHermesRoot()): boolean {
+    return fs.existsSync(path.join(hermesHome, 'profiles'));
+}
+
 /** The folder names under `profiles/`, sorted, so the same home always answers the same first. */
 function profileFolders(root: string): string[] {
     try {

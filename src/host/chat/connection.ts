@@ -130,7 +130,19 @@ export class Connection {
     private async connectInner(selectionId?: string): Promise<void> {
         const generation = ++this._generation;
         const abandoned = (): boolean => generation !== this._generation;
-        const target = this._host.profiles.resolveTarget(selectionId);
+        // Tier 1: connect by the name the table holds, repaired through the fallbacks when Hermes
+        // renamed the profile outside this extension.
+        const resolved = this._host.profiles.connectTarget(
+            selectionId,
+            this._host.session.tabs.map(tab => tab.hermesSessionId || '').filter(Boolean),
+        );
+        const target = resolved.target;
+        if (resolved.missing) {
+            this._host.log(`Connect stopped: no profile answers for "${target.agentName}"`);
+            this._host.post({ type: 'status', status: 'error', message: t('profileMissing', target.displayName) });
+            this._host.post({ type: 'openProfilePicker' });
+            return;
+        }
         if (target.sessionProfileId !== this._host.session.sessionProfileId) {
             this._host.session.bindProfileScope(target.sessionProfileId);
             this._host.projects.bindProfileScope(target.sessionProfileId);

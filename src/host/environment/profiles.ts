@@ -2,8 +2,14 @@ import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
 import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
-import { isCurrentProfile, profileNameFromPreviousNames, profileNameHoldingSessions } from './profileFallback';
+import {
+    hasProfilesRoot,
+    isCurrentProfile,
+    profileNameFromPreviousNames,
+    profileNameHoldingSessions,
+} from './profileFallback';
 import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
+import { resolveHermesRoot } from './hermesPaths';
 import type { ProfilesStore } from '../store/profiles';
 
 export interface HermesAgentConfig {
@@ -54,6 +60,8 @@ export interface ProfilesHost {
     store: ProfilesStore;
     /** The profile the picker must not offer: the primary's, when this is the secondant. */
     excludedProfile?: () => string | undefined;
+    /** Where Hermes keeps its profiles. Absent means the real home; a test passes a temp one. */
+    hermesHome?: () => string;
 }
 
 /**
@@ -125,6 +133,36 @@ export class Profiles {
             return name;
         }
         return profileNameFromPreviousNames(name) || profileNameHoldingSessions(sessionIds);
+    }
+
+    /**
+     * The target to connect with, after repairing a name Hermes no longer has.
+     *
+     * Tier 1 is the name the table holds. When Hermes does not have that profile any more, the two
+     * fallbacks look for it — the profile.yaml whose `previous_names` holds the name, then the
+     * profile whose state.db holds the tabs we have open — and the row is renamed to what they
+     * found. The id stays; only the name it answers to moves, which is exactly what a Hermes rename
+     * is. Nothing found leaves the row and every folder untouched, and `missing` says so for the
+     * pane, but only where Hermes' own profiles folder exists: on a machine Hermes never ran on,
+     * every name is missing and that means nothing.
+     */
+    connectTarget(selectionId: string | undefined, sessionIds: string[]): { target: ConnectionTarget; missing: boolean } {
+        const target = this.resolveTarget(selectionId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : resolveHermesRoot();
+        // A configured agent's key is its display name, not one of our ids: there is nothing to repair.
+        const stored = this._host.store.nameFor(target.sessionProfileId);
+        if (!stored || isCurrentProfile(stored, hermesHome)) {
+            return { target, missing: false };
+        }
+        const found = profileNameFromPreviousNames(stored, hermesHome) || profileNameHoldingSessions(sessionIds, hermesHome);
+        if (!found) {
+            return { target, missing: hasProfilesRoot(hermesHome) };
+        }
+        if (found !== stored) {
+            this._host.store.rename(target.sessionProfileId, found);
+            this._host.log(`Profile renamed outside the extension: "${stored}" -> "${found}"`);
+        }
+        return { target: this.resolveTarget(found), missing: false };
     }
 
     resolveTarget(selectionId?: string): ConnectionTarget {
