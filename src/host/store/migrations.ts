@@ -224,23 +224,36 @@ export function mergeProfileFolder(source: string, target: string, log: Migratio
     const name = label || path.basename(source);
     fs.mkdirSync(target, { recursive: true });
 
+    // Whether this call changed anything at all. A conflict is news the first time and noise after
+    // it, and the only way to tell the two apart is whether there was a write.
+    let changed = false;
     const sourceProjects = readJson<Project[]>(path.join(source, 'projects.json'), []);
     const targetProjects = readJson<Project[]>(path.join(target, 'projects.json'), []);
     const { projects, bySourceId } = mergeProjects(sourceProjects, targetProjects, name, log);
     if (JSON.stringify(projects) !== JSON.stringify(targetProjects)) {
         writeAtomic(path.join(target, 'projects.json'), projects);
+        changed = true;
         const added = projects.length - targetProjects.length;
         log(`Migration: ${name} projects merged (${added > 0 ? added + ' added' : 'ids mapped'})`);
     }
 
     const sourceTabs = readJson<SessionInfo[]>(path.join(source, 'sessions.json'), []);
     const targetTabs = readJson<SessionInfo[]>(path.join(target, 'sessions.json'), []);
-    const { tabs: mergedTabs, conflicts } = mergeTabs(sourceTabs, targetTabs, bySourceId, name);
+    const { tabs: mergedTabs, conflicts, tagsFilled } = mergeTabs(sourceTabs, targetTabs, bySourceId, name);
     if (JSON.stringify(mergedTabs) !== JSON.stringify(targetTabs)) {
         writeAtomic(path.join(target, 'sessions.json'), mergedTabs);
-        log(`Migration: ${name} tabs merged (${mergedTabs.length - targetTabs.length} added)`);
-        // A conflict is only news when this run actually changed the file: a second run over the
-        // same folder would otherwise repeat it at every activation.
+        changed = true;
+        const added = mergedTabs.length - targetTabs.length;
+        if (added > 0) {
+            log(`Migration: ${name} tabs merged (${added} added)`);
+        }
+        if (tagsFilled > 0) {
+            log(`Migration: ${name} tags filled on ${tagsFilled} tab(s)`);
+        }
+    }
+    // Said once, in the run that changed something: a second run over the same folders would
+    // otherwise repeat the same conflict at every activation.
+    if (changed) {
         for (const line of conflicts) {
             log(line);
         }
@@ -309,9 +322,13 @@ function mergeTabs(
     target: SessionInfo[],
     bySourceProjectId: Map<string, string>,
     label: string,
-): { tabs: SessionInfo[]; conflicts: string[] } {
-    const tabs = target.slice();
+): { tabs: SessionInfo[]; conflicts: string[]; tagsFilled: number } {
+    // A copy per tab, not `target.slice()`. The caller decides whether to write by comparing the
+    // result with the target, and mutating the target's own objects makes every fill invisible to
+    // that comparison — in memory the tags were filled, on disk nothing changed.
+    const tabs = target.map(tab => ({ ...tab }));
     const conflicts: string[] = [];
+    let tagsFilled = 0;
     for (const incomingRaw of source) {
         if (!incomingRaw || typeof incomingRaw.id !== 'string') {
             continue;
@@ -326,11 +343,15 @@ function mergeTabs(
             tabs.push(incoming);
             continue;
         }
+        let tagFilled = false;
         for (const field of ['workspaceId', 'project', 'cwd', 'hermesSessionId', 'modelId', 'modelLabel'] as const) {
             const have = existing[field];
             const theirs = incoming[field];
             if ((have === undefined || have === '') && theirs) {
                 (existing as unknown as Record<string, unknown>)[field] = theirs;
+                if (field === 'workspaceId' || field === 'project') {
+                    tagFilled = true;
+                }
                 continue;
             }
             if (have && theirs && have !== theirs) {
@@ -340,8 +361,11 @@ function mergeTabs(
         if (incoming.sticky && !existing.sticky) {
             existing.sticky = true;
         }
+        if (tagFilled) {
+            tagsFilled += 1;
+        }
     }
-    return { tabs, conflicts };
+    return { tabs, conflicts, tagsFilled };
 }
 
 /** The folders under `profiles/`, sorted, so a run always visits them in the same order. */

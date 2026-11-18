@@ -186,6 +186,7 @@ describe('data home migrations', () => {
                 'Migration: profiles/kitt project "Docs" taken over',
                 'Migration: profiles/kitt projects merged (2 added)',
                 'Migration: profiles/kitt tabs merged (1 added)',
+                'Migration: profiles/kitt tags filled on 1 tab(s)',
                 'Migration: profiles/kitt tab t1 keeps its project ("p-centre" over "p-side")',
                 'Migration: profiles/kitt 1 file(s) copied in',
             ]);
@@ -495,6 +496,76 @@ describe('data home migrations', () => {
             assert.strictEqual(fs.existsSync(path.join(home, '.migrating')), false);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+    it('fills the tags of a tab both sides know, with the centre project it belongs to', () => {
+        const home = tempHome();
+        const secondant = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const centre = path.join(home, 'profiles', kittId);
+            // The real shape of the failure: the same 23 Hermes sessions in both places, tagged only
+            // in the secondant, and the centre holding the projects already.
+            const hermesIds = Array.from({ length: 3 }, (_v, index) => `h-${index + 1}`);
+            fs.mkdirSync(centre, { recursive: true });
+            writeProfileFolder(home, kittId, hermesIds.map((hermesSessionId, index) => tab({ id: `centre-${index}`, hermesSessionId })),
+                [{ id: 'p-centre', name: 'Projects', workspaceId: 'w1' }]);
+            writeProfileFolder(secondant, 'kitt', hermesIds.map((hermesSessionId, index) => tab({
+                id: `side-${index}`, hermesSessionId, workspaceId: 'w1', project: 'p-side',
+            })), [{ id: 'p-side', name: 'Projects', workspaceId: 'w1' }]);
+
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, secondant);
+
+            const merged = readTabs(centre);
+            assert.deepStrictEqual(merged.map(t => t.id), ['centre-0', 'centre-1', 'centre-2'], 'the centre tabs stay');
+            // The tag is the centre's project, not the secondant's id copied raw.
+            assert.deepStrictEqual(merged.map(t => t.project), ['p-centre', 'p-centre', 'p-centre']);
+            assert.deepStrictEqual(merged.map(t => t.workspaceId), ['w1', 'w1', 'w1']);
+            assert.deepStrictEqual(lines.filter(line => line.includes('tags filled')), [
+                'Migration: secondant profiles/kitt tags filled on 3 tab(s)',
+            ]);
+
+            const second = logger();
+            runMigrations(home, () => 'kitt', second.log, secondant);
+            assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(secondant, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps the centre tag when both sides tagged the tab differently, and logs it', () => {
+        const home = tempHome();
+        const secondant = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const centre = path.join(home, 'profiles', kittId);
+            fs.mkdirSync(centre, { recursive: true });
+            writeProfileFolder(home, kittId, [tab({ id: 'centre-1', hermesSessionId: 'h-1', workspaceId: 'w-centre', project: 'p-centre' })],
+                [{ id: 'p-centre', name: 'Mine', workspaceId: 'w-centre' }]);
+            writeProfileFolder(secondant, 'kitt', [tab({ id: 'side-1', hermesSessionId: 'h-1', workspaceId: 'w-side', project: 'p-side' })],
+                [{ id: 'p-side', name: 'Theirs', workspaceId: 'w-side' }]);
+
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, secondant);
+
+            const merged = readTabs(centre);
+            assert.strictEqual(merged.length, 1);
+            assert.strictEqual(merged[0].workspaceId, 'w-centre');
+            assert.strictEqual(merged[0].project, 'p-centre');
+            assert.deepStrictEqual(lines.filter(line => line.includes('keeps its')), [
+                'Migration: secondant profiles/kitt tab centre-1 keeps its workspaceId ("w-centre" over "w-side")',
+                'Migration: secondant profiles/kitt tab centre-1 keeps its project ("p-centre" over "p-side")',
+            ]);
+            assert.deepStrictEqual(lines.filter(line => line.includes('tags filled')), []);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(secondant, { recursive: true, force: true });
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
         }
     });
