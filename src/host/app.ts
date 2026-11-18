@@ -9,6 +9,7 @@ import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
 import { migrateLegacySessionStorage } from './workspace/profileStorage';
 import { ensureDataHome } from './store/connection';
+import { ProfilesStore } from './store/profiles';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
 import { setting, settingsSection } from '../shared/extensionId';
@@ -268,19 +269,23 @@ export class App implements vscode.WebviewViewProvider {
     ) {
         const context = this._context;
         this._extensionId = this._id.extensionId;
-        this._profiles = new Profiles({
-            log: (line) => this._log(line),
-            post: (msg) => this._postMessage(msg),
-            globalState: context.globalState,
-            settings: { get: <T>(key: string) => vscode.workspace.getConfiguration(settingsSection()).get<T>(key) },
-            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
-        });
         this._output = vscode.window.createOutputChannel(
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
             'hermes-chat'
         );
         const storagePath = ensureDataHome(this._extensionId);
         this._historyDir = storagePath;
+        // The profile table is built here, before the feature that resolves names to ids (C2): the
+        // seed is the first thing the window does with it.
+        this._profiles = new Profiles({
+            log: (line) => this._log(line),
+            post: (msg) => this._postMessage(msg),
+            globalState: context.globalState,
+            settings: { get: <T>(key: string) => vscode.workspace.getConfiguration(settingsSection()).get<T>(key) },
+            store: new ProfilesStore(storagePath),
+            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
+        });
+        this._profiles.seedStore();
         this._attachments = new AttachmentStore(this._historyDir);
         migrateLegacySessionStorage(this._historyDir, '__default__');
 

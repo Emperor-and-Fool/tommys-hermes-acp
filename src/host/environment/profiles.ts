@@ -1,8 +1,9 @@
 import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
-import { normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
+import { cliProfileForScopeKey, normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
 import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
+import type { ProfilesStore } from '../store/profiles';
 
 export interface HermesAgentConfig {
     name: string;
@@ -45,6 +46,8 @@ export interface ProfilesHost {
     post(msg: HostToPane): void;
     globalState: KeyValueState;
     settings: SettingsReader;
+    /** The profile table: names to the ids our records will hang off (host/store/profiles.ts). */
+    store: ProfilesStore;
     /** The profile the picker must not offer: the primary's, when this is the secondant. */
     excludedProfile?: () => string | undefined;
 }
@@ -84,6 +87,23 @@ export class Profiles {
         this.selectionId = target.selectionId;
         this.displayName = target.displayName;
         return target;
+    }
+
+    /**
+     * Give every profile we already know a row in the table, once per extension load.
+     *
+     * Two sources, and neither changes anything on disk: the folders our data home already holds
+     * (the names from before a rename included — nothing is renamed, moved or re-keyed) and the
+     * profiles Hermes lists. Discovery costs a CLI call and runs in the background, so the folder
+     * rows are written first and the discovery answer is seeded when it arrives; the default
+     * profile is `default`.
+     */
+    seedStore(): void {
+        const store = this._host.store;
+        store.seed(store.localScopes().map(cliProfileForScopeKey));
+        void this.ensureDiscovered().then(() => {
+            store.seed(this.discovered ?? []);
+        });
     }
 
     resolveTarget(selectionId?: string): ConnectionTarget {

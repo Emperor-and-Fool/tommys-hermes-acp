@@ -18,3 +18,13 @@ export function scopeKeyForCliProfile(profile?: string | null): string {
     }
     return normalized.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || '__default__';
 }
+
+/**
+ * The CLI profile a storage scope key stands for: the inverse of `scopeKeyForCliProfile`.
+ *
+ * Needed when a folder in our data home is the only trace of a profile — the seed gives each of
+ * them a row, and the row carries the name Hermes would use, not the folder.
+ */
+export function cliProfileForScopeKey(scopeKey: string): string {
+    return scopeKey === '__default__' ? HERMES_DEFAULT_PROFILE : scopeKey;
+}
