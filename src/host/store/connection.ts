@@ -47,6 +47,19 @@ export function dataHomeFor(extensionId: string): string {
 }
 
 /**
+ * The data home, created if it is not there yet.
+ *
+ * `dataHomeFor` answers where; this makes the folder exist, because every store that follows opens
+ * a file inside it. The `mkdir` used to sit in the composition root, which is a write to the data
+ * home from outside `host/store/` (ST1).
+ */
+export function ensureDataHome(extensionId: string): string {
+    const home = dataHomeFor(extensionId);
+    fs.mkdirSync(home, { recursive: true });
+    return home;
+}
+
+/**
  * Replace a target with a temp file and a rename, so a failed write cannot truncate it.
  *
  * `writeFileSync` straight onto the target leaves a truncated file if the write dies halfway, and
