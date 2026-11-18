@@ -373,7 +373,7 @@ export class App implements vscode.WebviewViewProvider {
             resolveCwd: () => this._cwd.forWindow(),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
-            profile: () => this._profiles.resolveTarget().cliProfile,
+            sessionProfileId: () => this._session.sessionProfileId,
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
@@ -553,7 +553,7 @@ export class App implements vscode.WebviewViewProvider {
             this._attachments.indexAttachments(
                 {
                     sessionId: record?.hermesSessionId || tabId,
-                    profile: this._profiles.resolveTarget().cliProfile,
+                    sessionProfileId: this._session.sessionProfileId,
                 },
                 imageRefs,
                 text,

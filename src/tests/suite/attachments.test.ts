@@ -10,7 +10,7 @@ const image = (seed: string) => ({
     data: Buffer.from(seed).toString('base64'),
 });
 
-const scope = (sessionId: string, profile = 'work') => ({ sessionId, profile });
+const scope = (sessionId: string, sessionProfileId = 'id-work') => ({ sessionId, sessionProfileId });
 
 describe('attachments belong to one conversation', () => {
     let dir: string;
@@ -48,10 +48,10 @@ describe('attachments belong to one conversation', () => {
         assert.deepStrictEqual(store.refsFromIndex(scope('s2'), 'different [image]', new Set(), true), []);
     });
 
-    it('keeps profiles apart as well as sessions', () => {
+    it('keeps agents apart as well as sessions', () => {
         const [first] = store.storeImages([image('one')]);
-        store.indexAttachments(scope('s1', 'work'), [first], 'look [image]');
+        store.indexAttachments(scope('s1', 'id-work'), [first], 'look [image]');
 
-        assert.deepStrictEqual(store.refsFromIndex(scope('s1', 'personal'), 'look [image]', new Set()), []);
+        assert.deepStrictEqual(store.refsFromIndex(scope('s1', 'id-personal'), 'look [image]', new Set()), []);
     });
 });

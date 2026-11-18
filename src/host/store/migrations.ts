@@ -349,6 +349,48 @@ function mergeSecondantHome(
 }
 
 /**
+ * The attachments index: a row names its agent by our id, not by Hermes' name.
+ *
+ * Entries written before the key moved carry `profile` (the name). A name that is in the table is
+ * converted here and dropped; a name nobody answers for is left exactly as it is — it matches no
+ * conversation now, which is the honest state of a row whose agent we cannot name.
+ */
+function migrateAttachmentsIndex(home: string, store: ProfilesStore, log: MigrationsLog): void {
+    const indexPath = path.join(home, 'attachments', 'index.json');
+    if (!fs.existsSync(indexPath)) {
+        return;
+    }
+    const entries = readJson<Array<Record<string, unknown>>>(indexPath, []);
+    const rows = store.all();
+    const unknown = new Set<string>();
+    let converted = 0;
+    const next = entries.map(entry => {
+        if (!entry || typeof entry !== 'object') {
+            return entry;
+        }
+        const name = typeof entry.profile === 'string' ? entry.profile : '';
+        if (!name || typeof entry.sessionProfileId === 'string') {
+            return entry;
+        }
+        const id = rows.find(row => row.agentName === name)?.sessionProfileId;
+        if (!id) {
+            unknown.add(name);
+            return entry;
+        }
+        const { profile: _legacyName, ...rest } = entry;
+        converted += 1;
+        return { ...rest, sessionProfileId: id };
+    });
+    if (converted > 0) {
+        writeAtomic(indexPath, next);
+        log(`Migration: ${converted} attachment row(s) re-keyed by the agent id`);
+    }
+    for (const name of unknown) {
+        log(`Migration: attachment rows for "${name}" name no agent, left as they are`);
+    }
+}
+
+/**
  * Run every step, in order, from the composition root at activation.
  *
  * Nothing here throws: a migration that cannot finish logs and leaves the file as it found it, so a
@@ -368,4 +410,5 @@ export function runMigrations(
     if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
         mergeSecondantHome(home, store, agentForScope, log, secondantHome);
     }
+    migrateAttachmentsIndex(home, store, log);
 }

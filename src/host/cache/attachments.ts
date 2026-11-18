@@ -22,10 +22,11 @@ export function markerCount(text: string): number {
     return (String(text || '').match(/\[(?:screenshot|image)\]/gi) || []).length;
 }
 
-/** The conversation an attachment belongs to: one Hermes session, in one profile. */
+/** The conversation an attachment belongs to: one Hermes session, in one agent. */
 export interface AttachmentScope {
     sessionId: string;
-    profile: string;
+    /** Our id for the agent (`sessionProfileId`): a rename never moves the row. */
+    sessionProfileId: string;
 }
 
 interface IndexEntry {
@@ -36,6 +37,9 @@ interface IndexEntry {
     added: number;
     /** Absent on entries written before the index was scoped: they match no conversation now. */
     sessionId?: string;
+    /** Our id for the agent. The migration converts it from the name an old entry carries. */
+    sessionProfileId?: string;
+    /** The agent's Hermes name, as entries were written before the key moved. */
     profile?: string;
 }
 
@@ -111,7 +115,7 @@ export class AttachmentStore {
             for (const ref of refs) {
                 const known = entries.some(e =>
                     e.hash === ref.hash && e.key === key &&
-                    e.sessionId === scope.sessionId && e.profile === scope.profile
+                    e.sessionId === scope.sessionId && e.sessionProfileId === scope.sessionProfileId
                 );
                 if (known) continue;
                 entries.push({
@@ -121,7 +125,7 @@ export class AttachmentStore {
                     markers,
                     added: Date.now(),
                     sessionId: scope.sessionId,
-                    profile: scope.profile,
+                    sessionProfileId: scope.sessionProfileId,
                 });
             }
             fs.writeFileSync(this._indexPath(), JSON.stringify(entries.slice(-400), null, 2));
@@ -132,7 +136,7 @@ export class AttachmentStore {
         const entries = this._loadIndex();
         if (!entries.length) return [];
         const inScope = (entry: IndexEntry): boolean =>
-            entry.sessionId === scope.sessionId && entry.profile === scope.profile;
+            entry.sessionId === scope.sessionId && entry.sessionProfileId === scope.sessionProfileId;
         const key = attachmentKey(text);
         const wanted = Math.max(1, markerCount(text));
         const taken: StoredImageRef[] = [];

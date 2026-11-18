@@ -332,4 +332,34 @@ describe('data home migrations', () => {
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
         }
     });
+    it('re-keys the attachments index from the agent name to its id', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            fs.mkdirSync(path.join(home, 'attachments'), { recursive: true });
+            fs.writeFileSync(
+                path.join(home, 'attachments', 'index.json'),
+                JSON.stringify([
+                    { hash: 'h1', mimeType: 'image/png', key: 'look', markers: 1, added: 1, sessionId: 's1', profile: 'kitt' },
+                    { hash: 'h2', mimeType: 'image/png', key: 'look', markers: 1, added: 1, sessionId: 's2', profile: 'gone-agent' },
+                    { hash: 'h3', mimeType: 'image/png', key: 'look', markers: 1, added: 1, sessionId: 's3', sessionProfileId: kittId },
+                ])
+            );
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, '');
+            const rows = JSON.parse(fs.readFileSync(path.join(home, 'attachments', 'index.json'), 'utf-8'));
+            assert.deepStrictEqual(rows[0], { hash: 'h1', mimeType: 'image/png', key: 'look', markers: 1, added: 1, sessionId: 's1', sessionProfileId: kittId });
+            // A name nobody answers for is left as it is, and said so.
+            assert.strictEqual(rows[1].profile, 'gone-agent');
+            assert.strictEqual(rows[1].sessionProfileId, undefined);
+            assert.deepStrictEqual(lines.filter(line => line.startsWith('Migration:')), [
+                'Migration: 1 attachment row(s) re-keyed by the agent id',
+                'Migration: attachment rows for "gone-agent" name no agent, left as they are',
+            ]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
 });

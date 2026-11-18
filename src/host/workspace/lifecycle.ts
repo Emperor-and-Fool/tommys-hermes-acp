@@ -57,8 +57,8 @@ export interface TabLifecycleHost {
     postTo(surface: ChatSurface, msg: HostToPane): void;
     log(line: string): void;
     resolveCwd(): string;
-    /** The CLI profile of the agent this pane is talking to: attachments are scoped by it. */
-    profile(): string;
+    /** Our id for the agent this pane is talking to: attachments are keyed by it. */
+    sessionProfileId(): string;
     attachments: AttachmentStore;
     promptSessionId(): string | undefined;
     detachActivePrompt(id: string, options?: { savePartial?: boolean }): Promise<void>;
@@ -332,9 +332,9 @@ export class TabLifecycle {
     }
 
     /** The conversation a tab's attachments belong to: its Hermes id once bound, else its own. */
-    private _attachmentScope(localId: string): { sessionId: string; profile: string } {
+    private _attachmentScope(localId: string): { sessionId: string; sessionProfileId: string } {
         const record = this._host.session.tabs.find(rec => rec.id === localId);
-        return { sessionId: record?.hermesSessionId || localId, profile: this._host.profile() };
+        return { sessionId: record?.hermesSessionId || localId, sessionProfileId: this._host.sessionProfileId() };
     }
 
     restoreMessages(target?: ChatSurface): void {
