@@ -7,8 +7,8 @@ import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { migrateLegacySessionStorage } from './workspace/profileStorage';
 import { ensureDataHome } from './store/connection';
+import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
@@ -287,7 +287,7 @@ export class App implements vscode.WebviewViewProvider {
         });
         this._profiles.seedStore();
         this._attachments = new AttachmentStore(this._historyDir);
-        migrateLegacySessionStorage(this._historyDir, '__default__');
+        runMigrations(this._historyDir, (line) => this._log(line));
 
         const initialTarget = this._profiles.seed();
         // The workspace feature's three stores: built once, here, and handed to the two

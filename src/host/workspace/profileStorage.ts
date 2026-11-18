@@ -1,6 +1,5 @@
 import * as fs from 'fs';
-import * as path from 'path';
-import { activeSessionPathFor, profileDir, profileStatePathFor, sessionsPathFor } from '../store/paths';
+import { profileStatePathFor } from '../store/paths';
 
 export interface ProfileState {
     modelId?: string;
@@ -30,22 +29,4 @@ export function saveProfileState(historyDir: string, scopeKey: string, state: Pr
     try {
         fs.writeFileSync(profileStatePathFor(historyDir, scopeKey), JSON.stringify(state, null, 2));
     } catch { /* ignore */ }
-}
-
-/** Move legacy global session files into the default profile scope once. */
-export function migrateLegacySessionStorage(historyDir: string, defaultScopeKey: string): void {
-    const legacySessions = path.join(historyDir, 'sessions.json');
-    if (!fs.existsSync(legacySessions)) {
-        return;
-    }
-    const targetSessions = sessionsPathFor(historyDir, defaultScopeKey);
-    if (fs.existsSync(targetSessions)) {
-        return;
-    }
-    profileDir(historyDir, defaultScopeKey);
-    fs.renameSync(legacySessions, targetSessions);
-    const legacyActive = path.join(historyDir, 'active-session.txt');
-    if (fs.existsSync(legacyActive)) {
-        fs.renameSync(legacyActive, activeSessionPathFor(historyDir, defaultScopeKey));
-    }
 }
