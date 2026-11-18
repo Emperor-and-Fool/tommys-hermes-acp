@@ -40,6 +40,7 @@ function roots(initial: { primaryRoot: string; permissionRoot: string } = { prim
     return {
         source: {
             roots: () => ({ ...state }),
+            record: () => undefined,
             setRoots: (_path: string, next: { primaryRoot: string; permissionRoot: string }) => {
                 writes.push(next);
                 state.primaryRoot = next.primaryRoot;

@@ -74,6 +74,8 @@ export function effectiveRoot(state: RootState): string {
 export interface RootsSource {
     roots(workspaceId: string): RootState;
     setRoots(workspaceId: string, roots: RootState): void;
+    /** What VS Code reports for a workspace: the folder tables behind every later root choice. */
+    record(workspaceId: string, paths: string[]): void;
 }
 
 /** What the locator needs from the editor. Declared here; the composition root fills it. */
@@ -173,9 +175,29 @@ export class WorkspaceCwd {
         return true;
     }
 
-    /** Watch the window's folders; returns the unsubscribe, or a no-op when the port cannot. */
+    /**
+     * Watch the window's folders; returns the unsubscribe, or a no-op when the port cannot.
+     *
+     * The current list is recorded on subscribing and again on every change: the folder tables are
+     * what every later root question is built on, so they are filled whenever the editor says.
+     */
     watch(handler: () => void): () => void {
-        return this._source.onFoldersChanged ? this._source.onFoldersChanged(handler) : () => {};
+        this.recordFolders();
+        if (!this._source.onFoldersChanged) {
+            return () => {};
+        }
+        return this._source.onFoldersChanged(() => {
+            this.recordFolders();
+            handler();
+        });
+    }
+
+    /** Record what the editor reports for this workspace (00.02 §2). */
+    recordFolders(): void {
+        const workspaceId = this.workspaceRootKey();
+        if (workspaceId) {
+            this._roots?.record(workspaceId, this._source.folders());
+        }
     }
 
 }

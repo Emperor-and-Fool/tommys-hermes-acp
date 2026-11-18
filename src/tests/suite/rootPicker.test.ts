@@ -20,6 +20,7 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
         },
         {
             roots: () => ({ ...state }),
+            record: () => undefined,
             setRoots: (_path: string, next: { primaryRoot: string; permissionRoot: string }) => {
                 state.primaryRoot = next.primaryRoot;
                 state.permissionRoot = next.permissionRoot;

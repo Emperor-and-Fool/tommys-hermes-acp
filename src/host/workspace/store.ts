@@ -4,6 +4,7 @@ import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic, writeAtomicText } from '../store/connection';
 import { NO_ROOTS } from './cwd';
+import { FoldersStore } from '../store/folders';
 import type { RootState, RootsSource } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
 import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './workSpace';
@@ -198,10 +199,20 @@ export function workspaceRootsPathFor(historyDir: string, sessionProfileId: stri
  * The key is a function: a profile switch changes which folder is meant, without rebuilding stores.
  */
 export class ProfileRootsStore implements RootsSource {
+    /** The folder tables: filled here, read by the cwd owner once the roots are ids (00.02). */
+    private readonly _folders: FoldersStore;
+
     constructor(
         private readonly _historyDir: string,
         private readonly _sessionProfileId: () => string,
-    ) {}
+    ) {
+        this._folders = new FoldersStore(_historyDir);
+    }
+
+    /** What the editor reports for a workspace: one folder row per path, one link per membership. */
+    record(workspaceId: string, paths: string[]): void {
+        this._folders.record(workspaceId, paths);
+    }
 
     get path(): string {
         return workspaceRootsPathFor(this._historyDir, this._sessionProfileId());
