@@ -203,8 +203,8 @@ export class WorkspaceStore {
     }
 }
 
-export function projectsPathFor(historyDir: string, scopeKey: string): string {
-    return path.join(profileDir(historyDir, scopeKey), 'projects.json');
+export function projectsPathFor(historyDir: string, sessionProfileId: string): string {
+    return path.join(profileDir(historyDir, sessionProfileId), 'projects.json');
 }
 
 /**
@@ -216,21 +216,21 @@ export function projectsPathFor(historyDir: string, scopeKey: string): string {
 export class ProjectStore {
     constructor(
         private readonly _historyDir: string,
-        private _scopeKey: string,
+        private _sessionProfileId: string,
         private readonly _workspaces: WorkspaceStore,
     ) {}
 
     get path(): string {
-        return projectsPathFor(this._historyDir, this._scopeKey);
+        return projectsPathFor(this._historyDir, this._sessionProfileId);
     }
 
-    setScope(scopeKey: string): void {
-        this._scopeKey = scopeKey;
+    setProfile(sessionProfileId: string): void {
+        this._sessionProfileId = sessionProfileId;
     }
 
-    /** Which profile's file this store reads: empty until a profile is bound. */
-    get scopeKey(): string {
-        return this._scopeKey;
+    /** Which agent's file this store reads: empty until a profile is bound. */
+    get sessionProfileId(): string {
+        return this._sessionProfileId;
     }
 
     projects(): Project[] {
@@ -324,19 +324,19 @@ export class ProjectStore {
  * A tab the user stopped using leaves the catalog when the caller drops it, not at a count.
  */
 export class TabStore {
-    constructor(private _historyDir: string, private _scopeKey: string) {}
+    constructor(private _historyDir: string, private _sessionProfileId: string) {}
 
-    /** The catalog is per profile; the transcripts are not. */
-    setScope(scopeKey: string): void {
-        this._scopeKey = scopeKey;
+    /** The catalog is per agent; the transcripts are not. */
+    setProfile(sessionProfileId: string): void {
+        this._sessionProfileId = sessionProfileId;
     }
 
     get catalogPath(): string {
-        return sessionsPathFor(this._historyDir, this._scopeKey);
+        return sessionsPathFor(this._historyDir, this._sessionProfileId);
     }
 
     get activeIdPath(): string {
-        return activeSessionPathFor(this._historyDir, this._scopeKey);
+        return activeSessionPathFor(this._historyDir, this._sessionProfileId);
     }
 
     readCatalog(): SessionInfo[] {
@@ -393,9 +393,9 @@ export class TabStore {
     }
 }
 
-/** Where the two tree files live: beside the profile's tabs. */
-export function treePathsFor(historyDir: string, scopeKey: string): TreePaths {
-    const dir = profileDir(historyDir, scopeKey);
+/** Where the two tree files live: beside the agent's tabs, in its id folder. */
+export function treePathsFor(historyDir: string, sessionProfileId: string): TreePaths {
+    const dir = profileDir(historyDir, sessionProfileId);
     return {
         current: path.join(dir, 'tree-current.json'),
         passive: path.join(dir, 'tree-passive.json'),
@@ -429,8 +429,8 @@ export class TreeStore {
      * A reload empties the set, a session switch or a workspace switch changes the key, so each of
      * those is told again. Nothing to point at means no block — and no introduction burned.
      */
-    noticeBlock(scopeKey: string, workspaceId: string, sessionId: string): string {
-        if (!scopeKey || !workspaceId || !sessionId) {
+    noticeBlock(sessionProfileId: string, workspaceId: string, sessionId: string): string {
+        if (!sessionProfileId || !workspaceId || !sessionId) {
             return '';
         }
         const key = `${sessionId}|${workspaceId}`;
@@ -438,7 +438,7 @@ export class TreeStore {
             return '';
         }
         this._announced.add(key);
-        return treeNoticeBlock(treePathsFor(this._historyDir, scopeKey));
+        return treeNoticeBlock(treePathsFor(this._historyDir, sessionProfileId));
     }
 
     /**
@@ -450,7 +450,7 @@ export class TreeStore {
      */
     refresh(): void {
         const input = this._input();
-        if (!input.profile) {
+        if (!input.sessionProfileId) {
             this._log('Tree cache: no profile bound, nothing written');
             return;
         }
@@ -458,7 +458,7 @@ export class TreeStore {
             this._log('Tree cache: this window has no workspace, nothing written');
             return;
         }
-        const paths = treePathsFor(this._historyDir, input.profile);
+        const paths = treePathsFor(this._historyDir, input.sessionProfileId);
         const snapshot = buildTreeSnapshot(input);
         const previous = this._previous(paths.current);
         const before = previous && previous.workspace ? previous.workspace.id : '';

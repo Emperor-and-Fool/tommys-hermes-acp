@@ -174,7 +174,7 @@ export class App implements vscode.WebviewViewProvider {
         tabs: () => this._session.tabs,
         sessionId: () => this._session.activeId,
         saveCatalog: () => this._session.saveCatalog(),
-        profileScope: () => ({ historyDir: this._historyDir, scopeKey: this._session.scopeKey }),
+        profileScope: () => ({ historyDir: this._historyDir, sessionProfileId: this._session.sessionProfileId }),
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -315,7 +315,7 @@ export class App implements vscode.WebviewViewProvider {
                 },
                 locale: () => getWebviewLocale(),
             },
-            new PermissionsStore(this._historyDir, () => this._session.scopeKey),
+            new PermissionsStore(this._historyDir, () => this._session.sessionProfileId),
         );
         this._rootPicker = new RootPicker({
             post: (msg) => this._postMessage(msg),
@@ -328,8 +328,8 @@ export class App implements vscode.WebviewViewProvider {
             onRunEnded: (handler) => this._connection.runEnded.on(handler),
             postToRail: (msg) => this._surfaces.postToRole('rail', msg),
         });
-        const agentProjects = new ProjectStore(this._historyDir, initialTarget.scopeKey, workspaces);
-        const tabs = new TabStore(this._historyDir, initialTarget.scopeKey);
+        const agentProjects = new ProjectStore(this._historyDir, initialTarget.sessionProfileId, workspaces);
+        const tabs = new TabStore(this._historyDir, initialTarget.sessionProfileId);
         this._projects = new Projects(workspaces, agentProjects, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
@@ -343,7 +343,7 @@ export class App implements vscode.WebviewViewProvider {
             onDidChangeWorkspaceFolders: (handler) =>
                 vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
         });
-        this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
+        this._session = new Sessions(this._historyDir, initialTarget.sessionProfileId, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
@@ -354,7 +354,8 @@ export class App implements vscode.WebviewViewProvider {
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
         this._trees = new TreeStore(this._historyDir, line => this._log(line), () => ({
-            profile: this._projects.scopeKey,
+            sessionProfileId: this._projects.sessionProfileId,
+            profile: this._profiles.resolveTarget().agentName,
             workspacePath: this._projects.current(),
             workspaceId: this._projects.currentId(),
             activeSessionId: this._session.activeId,
@@ -579,7 +580,7 @@ export class App implements vscode.WebviewViewProvider {
         // First turn in this session and workspace: say where the tree file is. Sent as its own
         // block, so the transcript still shows only what was typed.
         const treeBlock = this._trees
-            ? this._trees.noticeBlock(this._projects.scopeKey, this._projects.currentId(), tabId)
+            ? this._trees.noticeBlock(this._projects.sessionProfileId, this._projects.currentId(), tabId)
             : '';
         if (imageCount > 0 || historyBlock || treeBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,

@@ -27,8 +27,8 @@ export interface ModelHost {
     sessionId(): string;
     /** The one write point for the tab index; the provider swallows its failure. */
     saveCatalog(): boolean;
-    /** Read fresh on every call: the scope changes when the profile does. */
-    profileScope(): { historyDir: string; scopeKey: string };
+    /** Read fresh on every call: the key changes when the profile does. */
+    profileScope(): { historyDir: string; sessionProfileId: string };
     post(msg: HostToPane): void;
     log(line: string): void;
     otherSessionIsPrompting(): boolean;
@@ -67,13 +67,13 @@ export class ModelState {
     }
 
     private _profileState(): { modelId?: string; modelLabel?: string } {
-        const { historyDir, scopeKey } = this._host.profileScope();
-        return loadProfileState(historyDir, scopeKey);
+        const { historyDir, sessionProfileId } = this._host.profileScope();
+        return loadProfileState(historyDir, sessionProfileId);
     }
 
     private _saveProfileState(state: { modelId?: string; modelLabel?: string }): void {
-        const { historyDir, scopeKey } = this._host.profileScope();
-        saveProfileState(historyDir, scopeKey, state);
+        const { historyDir, sessionProfileId } = this._host.profileScope();
+        saveProfileState(historyDir, sessionProfileId, state);
     }
 
     async sync(options?: { skipModelOptions?: boolean }): Promise<void> {

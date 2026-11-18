@@ -26,6 +26,7 @@ function project(id: string, name: string): Project {
 
 function input(workspaceId: string, over: Record<string, unknown> = {}) {
     return {
+        sessionProfileId: 'id-dev-vsc',
         profile: 'dev-vsc',
         workspacePath: `/proj/${workspaceId}.code-workspace`,
         workspaceId,
@@ -74,7 +75,7 @@ describe('the tree file: two of them, and the window moving between workspaces',
     it('writes current, and keeps the workspace it left as passive', () => {
         const dir = tmp();
         const { cache, holder } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
         holder.current = input('w1');
         cache.refresh();
@@ -97,7 +98,7 @@ describe('the tree file: two of them, and the window moving between workspaces',
     it('does not rewrite a tree that has not changed', () => {
         const dir = tmp();
         const { cache } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
         cache.refresh();
         const before = fs.statSync(paths.current).mtimeMs;
         cache.refresh();
@@ -108,9 +109,9 @@ describe('the tree file: two of them, and the window moving between workspaces',
         const dir = tmp();
         const lines: string[] = [];
         const { cache, holder } = cacheOn(dir, line => lines.push(line));
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
-        holder.current = input('w1', { profile: '' });
+        holder.current = input('w1', { sessionProfileId: '' });
         cache.refresh();
         holder.current = input('', { workspaceId: '' });
         cache.refresh();
@@ -123,20 +124,20 @@ describe('the tree file: an agent is told it exists', () => {
     it('names both files once per session and workspace, then stays quiet', () => {
         const dir = tmp();
         const { cache } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
-        const first = cache.noticeBlock('dev-vsc', 'w1', 'tab-a');
+        const first = cache.noticeBlock('id-dev-vsc', 'w1', 'tab-a');
         assert.ok(first.includes(paths.current), 'current is named');
         assert.ok(first.includes(paths.passive), 'previous is named');
-        assert.strictEqual(cache.noticeBlock('dev-vsc', 'w1', 'tab-a'), '', 'the same turn is not repeated');
+        assert.strictEqual(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-a'), '', 'the same turn is not repeated');
 
         // A different session, or the same session in another workspace, is a fresh introduction.
-        assert.ok(cache.noticeBlock('dev-vsc', 'w1', 'tab-b').includes(paths.current));
-        assert.ok(cache.noticeBlock('dev-vsc', 'w2', 'tab-a').includes(paths.current));
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-b').includes(paths.current));
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w2', 'tab-a').includes(paths.current));
 
         // Nothing to point at yet: no block, and it does not burn the introduction.
         assert.strictEqual(cache.noticeBlock('', 'w1', 'tab-c'), '');
-        assert.strictEqual(cache.noticeBlock('dev-vsc', '', 'tab-c'), '');
-        assert.ok(cache.noticeBlock('dev-vsc', 'w1', 'tab-c').includes(paths.current));
+        assert.strictEqual(cache.noticeBlock('id-dev-vsc', '', 'tab-c'), '');
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-c').includes(paths.current));
     });
 });

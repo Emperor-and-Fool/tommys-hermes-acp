@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
-import { cliProfileForScopeKey, normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
+import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
 import { isCurrentProfile, profileNameFromPreviousNames, profileNameHoldingSessions } from './profileFallback';
 import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
@@ -18,7 +18,10 @@ export interface ProfileListEntry {
 }
 
 export interface ConnectionTarget {
-    scopeKey: string;
+    /** Our id for the agent: the key of every per-agent record, and the folder they live in. */
+    sessionProfileId: string;
+    /** Hermes' name for the profile today: what `--profile`, pane mail and the user use. */
+    agentName: string;
     selectionId: string;
     displayName: string;
     cliProfile: string;
@@ -133,7 +136,10 @@ export class Profiles {
             const resolvedId = selectionId || this.selectionId || agents[0].name;
             const agent = agents.find(a => a.name === resolvedId) || agents[0];
             return {
-                scopeKey: sanitizeProfileScopeKey(agent.name),
+                // A configured agent is not a Hermes profile, so it keeps the display-name key it
+                // has always had; nothing but a real profile has an id of ours.
+                sessionProfileId: sanitizeProfileScopeKey(agent.name),
+                agentName: agent.name,
                 selectionId: agent.name,
                 displayName: agent.name,
                 cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
@@ -144,7 +150,10 @@ export class Profiles {
         const resolvedId = selectionId || this.selectionId || normalizeHermesCliProfile(configProfile);
         const cliProfile = normalizeHermesCliProfile(resolvedId);
         return {
-            scopeKey: scopeKeyForCliProfile(cliProfile),
+            // The name is translated here and nowhere else: the id names the folder, the name is
+            // what Hermes is told. A name nobody has seen yet mints its row on first use.
+            sessionProfileId: this._host.store.idFor(cliProfile),
+            agentName: cliProfile,
             selectionId: cliProfile,
             displayName: this.labelFor(cliProfile),
             cliProfile,

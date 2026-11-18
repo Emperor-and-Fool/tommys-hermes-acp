@@ -166,8 +166,8 @@ export class Projects {
     }
 
     /** Which profile's projects file this component is writing to. */
-    get scopeKey(): string {
-        return this._agentProjects.scopeKey;
+    get sessionProfileId(): string {
+        return this._agentProjects.sessionProfileId;
     }
 
     /** The window's workspace id: what a tab, a project and the pane refer to. */
@@ -186,8 +186,8 @@ export class Projects {
     }
 
     /** The agent switched: its projects are a different file, beside that profile's tabs. */
-    bindProfileScope(scopeKey: string): void {
-        this._agentProjects.setScope(scopeKey);
+    bindProfileScope(sessionProfileId: string): void {
+        this._agentProjects.setProfile(sessionProfileId);
         this.postList();
     }
 
@@ -225,7 +225,7 @@ export class Projects {
             this._refuse('This window\'s workspace is not registered yet — reload the window.');
             return;
         }
-        if (!this._agentProjects.scopeKey) {
+        if (!this._agentProjects.sessionProfileId) {
             this._refuse('No agent profile is bound yet — reload the window.');
             return;
         }

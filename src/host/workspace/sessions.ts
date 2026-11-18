@@ -49,18 +49,18 @@ export class Sessions {
      */
     catalogRows: CatalogSession[] = [];
     hiddenSessions: CatalogSession[] = [];
-    scopeKey: string;
+    sessionProfileId: string;
     store: TabStore;
     /** Last few user turns: the one state Hermes cannot hold for us. */
     pendingUsers: PendingUserStore;
 
     constructor(
         private readonly historyDir: string,
-        scopeKey: string,
+        sessionProfileId: string,
         private readonly host: SessionsHost,
         store: TabStore,
     ) {
-        this.scopeKey = scopeKey;
+        this.sessionProfileId = sessionProfileId;
         this.store = store;
         this.pendingUsers = new PendingUserStore(this.historyDir);
     }
@@ -301,13 +301,13 @@ export class Sessions {
         return this.catalogRows.find(row => row.sessionId === hermesSessionId);
     }
 
-    bindProfileScope(scopeKey: string): void {
-        if (scopeKey === this.scopeKey) {
+    bindProfileScope(sessionProfileId: string): void {
+        if (sessionProfileId === this.sessionProfileId) {
             return;
         }
         this.saveCurrent();
-        this.scopeKey = scopeKey;
-        this.store.setScope(scopeKey);
+        this.sessionProfileId = sessionProfileId;
+        this.store.setProfile(sessionProfileId);
         this.tabs = [];
         this.loadCatalog();
         this.activeId = this.restoreActive();

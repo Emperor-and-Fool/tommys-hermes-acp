@@ -13,18 +13,18 @@ export interface DenyBackup {
  * The permissions feature's one door to its data: whether DANGER is engaged, and the deny lists it
  * saved before clearing them.
  *
- * Both live beside the profile's other data (`profiles/<scope>/`), not in a temp directory — a
- * backup that is pruned overnight is not a backup — and both are written here and nowhere else
- * (ST1). The scope is a function, not a value: a profile switch changes which directory is meant.
+ * Both live beside the agent's other data (`profiles/<sessionProfileId>/`), not in a temp
+ * directory — a backup that is pruned overnight is not a backup — and both are written here and
+ * nowhere else (ST1). The key is a function, not a value: a profile switch changes the directory.
  */
 export class PermissionsStore {
     constructor(
         private readonly _historyDir: string,
-        private readonly _scopeKey: () => string,
+        private readonly _sessionProfileId: () => string,
     ) {}
 
     private get _dir(): string {
-        return profileDir(this._historyDir, this._scopeKey());
+        return profileDir(this._historyDir, this._sessionProfileId());
     }
 
     /** Where the red action's record lives. */

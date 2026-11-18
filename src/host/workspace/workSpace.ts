@@ -97,7 +97,9 @@ export interface TreeSnapshot {
 }
 
 export interface TreeInput {
-    /** The profile scope key: these files are per profile, beside that profile's tabs. */
+    /** Our id for the agent: the folder these files live in, beside that agent's tabs. */
+    sessionProfileId: string;
+    /** Hermes' name for the agent today. Written into the file: the readers are agents. */
     profile: string;
     workspacePath: string;
     workspaceId: string;

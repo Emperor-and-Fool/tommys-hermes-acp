@@ -131,9 +131,9 @@ export class Connection {
         const generation = ++this._generation;
         const abandoned = (): boolean => generation !== this._generation;
         const target = this._host.profiles.resolveTarget(selectionId);
-        if (target.scopeKey !== this._host.session.scopeKey) {
-            this._host.session.bindProfileScope(target.scopeKey);
-            this._host.projects.bindProfileScope(target.scopeKey);
+        if (target.sessionProfileId !== this._host.session.sessionProfileId) {
+            this._host.session.bindProfileScope(target.sessionProfileId);
+            this._host.projects.bindProfileScope(target.sessionProfileId);
         }
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
@@ -428,8 +428,8 @@ export class Connection {
         this._resetClient();
         this._host.turn.promptSessionId = undefined;
         this._host.setBoundSessionId('');
-        this._host.session.bindProfileScope(target.scopeKey);
-        this._host.projects.bindProfileScope(target.scopeKey);
+        this._host.session.bindProfileScope(target.sessionProfileId);
+        this._host.projects.bindProfileScope(target.sessionProfileId);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
         this._host.profiles.persistSelection(target.selectionId);
