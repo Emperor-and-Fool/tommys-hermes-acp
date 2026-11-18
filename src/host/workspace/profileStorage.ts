@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { activeSessionPathFor, profileDir, profileStatePathFor, sessionsPathFor } from '../store/paths';
 
 export interface ProfileState {
     modelId?: string;
@@ -13,34 +14,6 @@ export function sanitizeProfileScopeKey(name: string, fallback = '__default__'):
         return fallback;
     }
     return trimmed.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || fallback;
-}
-
-export function profileDir(historyDir: string, scopeKey: string): string {
-    const dir = path.join(historyDir, 'profiles', scopeKey);
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-}
-
-export function sessionsPathFor(historyDir: string, scopeKey: string): string {
-    return path.join(profileDir(historyDir, scopeKey), 'sessions.json');
-}
-
-export function activeSessionPathFor(historyDir: string, scopeKey: string): string {
-    return path.join(profileDir(historyDir, scopeKey), 'active-session.txt');
-}
-
-/**
- * The workspace registry, above the profiles.
- *
- * The one path helper that takes no scope key: a workspace is the same fact for every profile
- * that runs in that window, and the primary and the secondant do not share one.
- */
-export function workspacesPathFor(historyDir: string): string {
-    return path.join(historyDir, 'workspaces.json');
-}
-
-export function profileStatePathFor(historyDir: string, scopeKey: string): string {
-    return path.join(profileDir(historyDir, scopeKey), 'profile-state.json');
 }
 
 export function loadProfileState(historyDir: string, scopeKey: string): ProfileState {

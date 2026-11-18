@@ -3,13 +3,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    activeSessionPathFor,
     migrateLegacySessionStorage,
     sanitizeProfileScopeKey,
     saveProfileState,
     loadProfileState,
-    sessionsPathFor,
 } from '../../host/workspace/profileStorage';
+import { activeSessionPathFor, sessionsPathFor } from '../../host/store/paths';
 
 describe('profileStorage', () => {
     it('sanitizeProfileScopeKey removes unsafe characters', () => {

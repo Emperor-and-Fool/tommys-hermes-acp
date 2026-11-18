@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
-import { activeSessionPathFor, profileDir, sessionsPathFor } from './profileStorage';
+import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic, writeAtomicText } from '../store/connection';
 import type { RootState } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
@@ -53,10 +53,6 @@ import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './wo
  * - Both files are read as unknown-tolerant: an unknown key is carried through a write, never
  *   dropped, which is the same courtesy a migration backfill needs.
  */
-
-export function workspacesPathFor(historyDir: string): string {
-    return path.join(historyDir, 'workspaces.json');
-}
 
 /** The file's shape: the workspaces only. `projects` lived here until they moved per profile. */
 interface WorkspaceFile {

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { profileDir } from '../workspace/profileStorage';
+import { profileDir } from '../store/paths';
 
 /** A saved deny list, exactly as the backup file holds it. */
 export interface DenyBackup {
