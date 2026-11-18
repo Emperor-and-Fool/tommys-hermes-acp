@@ -362,4 +362,61 @@ describe('data home migrations', () => {
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
         }
     });
+    it('files the workspace roots under the agent the primary was last writing to', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const devId = store.idFor('dev-vsc');
+            writeProfileFolder(home, kittId, [tab({ id: 'k1', hermesSessionId: 'h1' })]);
+            writeProfileFolder(home, devId, [tab({ id: 'd1', hermesSessionId: 'h2' })]);
+            // The primary's current profile is the one whose catalog was written last.
+            const old = new Date(Date.now() - 60_000);
+            fs.utimesSync(path.join(home, 'profiles', kittId, 'sessions.json'), old, old);
+            fs.writeFileSync(
+                path.join(home, 'workspaces.json'),
+                JSON.stringify({ workspaces: [
+                    { id: 'w-1', path: '/w/one', lastSeen: 1, primaryRoot: '/w/a', permissionRoot: '/w/b' },
+                    { id: 'w-2', path: '/w/two', lastSeen: 1 },
+                ] })
+            );
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, '');
+
+            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspace-roots.json'), 'utf-8'));
+            assert.deepStrictEqual(roots, { 'w-1': { primaryRoot: '/w/a', permissionRoot: '/w/b' } });
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', kittId, 'workspace-roots.json')), false);
+            assert.deepStrictEqual(lines.filter(line => line.startsWith('Migration:')), [
+                'Migration: 1 workspace root(s) filed under dev-vsc',
+            ]);
+            // workspaces.json is the registry's business; its roots are dropped on the store's next
+            // write, which is a separate rule and tested with the store.
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('never overwrites roots the agent folder already has', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const devId = store.idFor('dev-vsc');
+            writeProfileFolder(home, devId, [tab({ id: 'd1', hermesSessionId: 'h2' })]);
+            fs.writeFileSync(
+                path.join(home, 'profiles', devId, 'workspace-roots.json'),
+                JSON.stringify({ 'w-1': { primaryRoot: '/w/kept', permissionRoot: '' } })
+            );
+            fs.writeFileSync(
+                path.join(home, 'workspaces.json'),
+                JSON.stringify({ workspaces: [{ id: 'w-1', path: '/w/one', lastSeen: 1, primaryRoot: '/w/a' }] })
+            );
+            runMigrations(home, () => undefined, logger().log, '');
+            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspace-roots.json'), 'utf-8'));
+            assert.strictEqual(roots['w-1'].primaryRoot, '/w/kept');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
 });

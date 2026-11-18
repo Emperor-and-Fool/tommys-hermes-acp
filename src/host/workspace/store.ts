@@ -3,7 +3,8 @@ import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic, writeAtomicText } from '../store/connection';
-import type { RootState } from './cwd';
+import { NO_ROOTS } from './cwd';
+import type { RootState, RootsSource } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
 import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './workSpace';
 
@@ -94,32 +95,6 @@ export class WorkspaceStore {
         return entry;
     }
 
-    /**
-     * The two roots this workspace recorded: its default folder and the one the user picked.
-     *
-     * Paths, not indexes: a folder keeps its meaning when the others move, and the store speaks the
-     * same vocabulary as the owner that applies the rules (ST2).
-     */
-    roots(workspacePath: string): RootState {
-        const entry = this.entryFor(workspacePath);
-        return {
-            primaryRoot: entry?.primaryRoot || '',
-            permissionRoot: entry?.permissionRoot || '',
-        };
-    }
-
-    /** Write them. One writer, so a pick and a folder change cannot interleave on disk. */
-    setRoots(workspacePath: string, roots: RootState): void {
-        const file = this._read();
-        const entry = file.workspaces.find(item => item.path === workspacePath);
-        if (!entry) {
-            return;
-        }
-        entry.primaryRoot = roots.primaryRoot || undefined;
-        entry.permissionRoot = roots.permissionRoot || undefined;
-        this._write(file);
-    }
-
     /** Record that this workspace was opened now. An empty string is not a workspace. */
     register(workspacePath: string): Workspace[] {
         const file = this._read();
@@ -170,14 +145,18 @@ export class WorkspaceStore {
         }
         // Every entry's id is the one its path derives, so a registry that was lost, truncated or
         // re-written cannot change any of them. An old minted id is replaced here, once.
+        //
+        // A root recorded here by an older build is dropped in the same pass: the roots are per
+        // agent now (ProfileRootsStore) and the migration has already moved them out.
         let moved = false;
-        for (const entry of list) {
+        list = list.map((entry: Workspace & { primaryRoot?: string; permissionRoot?: string }) => {
             const derived = workspaceIdFor(entry.path);
-            if (entry.id !== derived) {
-                entry.id = derived;
+            const { primaryRoot: _primary, permissionRoot: _permission, ...row } = entry;
+            if (entry.id !== derived || _primary !== undefined || _permission !== undefined) {
                 moved = true;
             }
-        }
+            return { ...row, id: derived };
+        });
         if (moved) {
             this._write({ workspaces: list });
         }
@@ -200,6 +179,57 @@ export class WorkspaceStore {
             }
         } catch { /* no file, or nothing readable: there is nothing to carry */ }
         writeAtomic(this.path, carried ? { ...file, projects: carried } : file);
+    }
+}
+
+/** Where one agent's workspace roots live: beside its projects and tabs. */
+export function workspaceRootsPathFor(historyDir: string, sessionProfileId: string): string {
+    return path.join(profileDir(historyDir, sessionProfileId), 'workspace-roots.json');
+}
+
+/**
+ * The permission roots, per agent and per workspace.
+ *
+ * They used to sit inside `workspaces.json` — one editor fact shared by every profile — so one
+ * agent's pick was another's. A workspace keeps its identity in that registry; the roots belong to
+ * the agent, are keyed by workspace id, and are read by whichever extension is on that agent.
+ *
+ * The key is a function: a profile switch changes which folder is meant, without rebuilding stores.
+ */
+export class ProfileRootsStore implements RootsSource {
+    constructor(
+        private readonly _historyDir: string,
+        private readonly _sessionProfileId: () => string,
+    ) {}
+
+    get path(): string {
+        return workspaceRootsPathFor(this._historyDir, this._sessionProfileId());
+    }
+
+    roots(workspaceId: string): RootState {
+        if (!workspaceId) {
+            return { ...NO_ROOTS };
+        }
+        return this._read()[workspaceId] || { ...NO_ROOTS };
+    }
+
+    /** Write them. Absent roots are written as an empty string, never left stale (ST2). */
+    setRoots(workspaceId: string, roots: RootState): void {
+        if (!workspaceId) {
+            return;
+        }
+        const all = this._read();
+        all[workspaceId] = { primaryRoot: roots.primaryRoot || '', permissionRoot: roots.permissionRoot || '' };
+        writeAtomic(this.path, all);
+    }
+
+    private _read(): Record<string, RootState> {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(this.path, 'utf-8'));
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
     }
 }
 

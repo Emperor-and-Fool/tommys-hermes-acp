@@ -291,6 +291,15 @@ function sessionIdsIn(folder: string): string[] {
         .filter(Boolean);
 }
 
+function readJsonObject<T extends object>(target: string, fallback: T): T {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(target, 'utf-8'));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as T : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 function readJson<T>(target: string, fallback: T): T {
     try {
         const parsed = JSON.parse(fs.readFileSync(target, 'utf-8'));
@@ -346,6 +355,62 @@ function mergeSecondantHome(
     if (copied > 0) {
         log(`Migration: ${copied} attachment file(s) copied in from the secondant`);
     }
+}
+
+/**
+ * The permission roots, out of `workspaces.json` and into the agent's own file.
+ *
+ * They used to be one pair per workspace for the whole editor, so one agent's pick was another's.
+ * The values recorded so far belong to the agent the primary is on: the folder whose tabs were
+ * written last, which is the profile it was using when it stopped. This runs before the
+ * secondant's folders are merged in, so those fresh writes cannot win that test.
+ */
+function migrateWorkspaceRoots(home: string, store: ProfilesStore, log: MigrationsLog): void {
+    type LegacyWorkspace = { id?: string; path?: string; primaryRoot?: string; permissionRoot?: string };
+    const file = readJsonObject<{ workspaces?: LegacyWorkspace[] }>(path.join(home, 'workspaces.json'), {});
+    const rows = Array.isArray(file.workspaces) ? file.workspaces : [];
+    const withRoots = rows.filter(row => row && typeof row.id === 'string' && row.id && (row.primaryRoot || row.permissionRoot));
+    if (withRoots.length === 0) {
+        return;
+    }
+    const agentId = lastWrittenProfileId(home);
+    if (!agentId) {
+        log('Migration: workspace roots found, but no agent folder to file them under; left as they are');
+        return;
+    }
+    const target = path.join(home, 'profiles', agentId, 'workspace-roots.json');
+    const existing = readJsonObject<Record<string, { primaryRoot?: string; permissionRoot?: string }>>(target, {});
+    let moved = 0;
+    for (const row of withRoots) {
+        const id = String(row.id);
+        if (existing[id]) {
+            continue;
+        }
+        existing[id] = { primaryRoot: row.primaryRoot || '', permissionRoot: row.permissionRoot || '' };
+        moved += 1;
+    }
+    if (moved > 0) {
+        writeAtomic(target, existing);
+        log(`Migration: ${moved} workspace root(s) filed under ${store.nameFor(agentId) || agentId}`);
+    }
+}
+
+/** The id folder the primary wrote to last: the agent it was on when it stopped. */
+function lastWrittenProfileId(home: string): string | undefined {
+    const root = path.join(home, 'profiles');
+    let best: { id: string; at: number } | undefined;
+    for (const name of folderNames(root)) {
+        if (!ID_FOLDER.test(name)) {
+            continue;
+        }
+        try {
+            const at = fs.statSync(path.join(root, name, 'sessions.json')).mtimeMs;
+            if (!best || at > best.at) {
+                best = { id: name, at };
+            }
+        } catch { /* no catalog: no window wrote to this folder */ }
+    }
+    return best?.id;
 }
 
 /**
@@ -407,6 +472,7 @@ export function runMigrations(
     migrateLegacySessionLayout(home, log);
     const store = new ProfilesStore(home);
     migrateProfileFolders(home, store, agentForScope, log);
+    migrateWorkspaceRoots(home, store, log);
     if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
         mergeSecondantHome(home, store, agentForScope, log, secondantHome);
     }

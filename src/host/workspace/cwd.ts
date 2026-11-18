@@ -1,4 +1,5 @@
 import path from 'path';
+import { workspaceIdFor } from './workSpace';
 
 /**
  * Containment by directory, not by string prefix: `/work/repo-secrets` is not inside `/work/repo`,
@@ -64,10 +65,15 @@ export function effectiveRoot(state: RootState): string {
     return state.permissionRoot || state.primaryRoot;
 }
 
-/** The workspace record's roots, through the port: the store behind it is the only writer. */
+/**
+ * A workspace's roots, through the port: the store behind it is the only writer.
+ *
+ * The key is the workspace **id**, not its path: the record lives in a registry both extensions
+ * write, while the roots belong to one agent (ST5: references are ids).
+ */
 export interface RootsSource {
-    roots(workspacePath: string): RootState;
-    setRoots(workspacePath: string, roots: RootState): void;
+    roots(workspaceId: string): RootState;
+    setRoots(workspaceId: string, roots: RootState): void;
 }
 
 /** What the locator needs from the editor. Declared here; the composition root fills it. */
@@ -123,13 +129,18 @@ export class WorkspaceCwd {
      */
     roots(): RootState {
         const folders = this._source.folders();
-        const workspacePath = this.workspaceIdentity();
-        const stored = this._roots && workspacePath ? this._roots.roots(workspacePath) : NO_ROOTS;
+        const workspaceId = this.workspaceRootKey();
+        const stored = this._roots && workspaceId ? this._roots.roots(workspaceId) : NO_ROOTS;
         const next = reconcileRoots(stored, folders);
-        if (this._roots && workspacePath && (next.primaryRoot !== stored.primaryRoot || next.permissionRoot !== stored.permissionRoot)) {
-            this._roots.setRoots(workspacePath, next);
+        if (this._roots && workspaceId && (next.primaryRoot !== stored.primaryRoot || next.permissionRoot !== stored.permissionRoot)) {
+            this._roots.setRoots(workspaceId, next);
         }
         return next;
+    }
+
+    /** This workspace's id: what its roots are filed under, in the agent's own file. */
+    private workspaceRootKey(): string {
+        return workspaceIdFor(this.workspaceIdentity());
     }
 
     /**
@@ -153,12 +164,12 @@ export class WorkspaceCwd {
         if (folder && !this._source.folders().includes(folder)) {
             return false;
         }
-        const workspacePath = this.workspaceIdentity();
-        if (!this._roots || !workspacePath) {
+        const workspaceId = this.workspaceRootKey();
+        if (!this._roots || !workspaceId) {
             return false;
         }
         const current = this.roots();
-        this._roots.setRoots(workspacePath, { primaryRoot: current.primaryRoot, permissionRoot: folder });
+        this._roots.setRoots(workspaceId, { primaryRoot: current.primaryRoot, permissionRoot: folder });
         return true;
     }
 
