@@ -465,7 +465,17 @@ export function runMigrations(
     /** Where the secondant kept its own data; a caller with a temp home passes its own. */
     secondantHome = legacySecondantHome(),
 ): void {
-    backupDataHome(home, log);
+    if (!fs.existsSync(home)) {
+        // No data home is no data to migrate, and nowhere to put a lock.
+        return;
+    }
+    const backup = backupDataHome(home, log);
+    if (!backup) {
+        // The copy failed. Every step below renames, merges or re-keys what is there, and without
+        // that copy this home is the only state there is: no backup, no migration.
+        log('Migration: no backup was made, so nothing was migrated');
+        return;
+    }
     migrateLegacySessionLayout(home, log);
     const store = new ProfilesStore(home);
     migrateProfileFolders(home, store, agentForScope, log);

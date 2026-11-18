@@ -419,4 +419,28 @@ describe('data home migrations', () => {
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
         }
     });
+    it('migrates nothing when the backup cannot be made', function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        // The home lives inside its own folder, so an unwritable parent stops the *copy* from being
+        // created while the home itself stays readable.
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-migrate-parent-'));
+        const home = path.join(parent, 'home');
+        try {
+            fs.mkdirSync(home, { recursive: true });
+            writeProfileFolder(home, 'kitt', [tab({ id: 't1', hermesSessionId: 'h1' })]);
+            fs.chmodSync(parent, 0o500);
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, '');
+            // The folder is still called by its name: no backup, no migration.
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'kitt')), true);
+            assert.strictEqual(lines.length, 2, lines.join(' | '));
+            assert.match(lines[0], /^Backup failed: /);
+            assert.strictEqual(lines[1], 'Migration: no backup was made, so nothing was migrated');
+        } finally {
+            fs.chmodSync(parent, 0o700);
+            fs.rmSync(parent, { recursive: true, force: true });
+        }
+    });
 });
