@@ -287,7 +287,7 @@ export class App implements vscode.WebviewViewProvider {
         });
         this._profiles.seedStore();
         this._attachments = new AttachmentStore(this._historyDir);
-        runMigrations(this._historyDir, (line) => this._log(line));
+        runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
         const initialTarget = this._profiles.seed();
         // The workspace feature's three stores: built once, here, and handed to the two

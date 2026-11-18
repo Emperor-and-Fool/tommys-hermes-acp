@@ -140,6 +140,20 @@ export function profileNameHoldingSessions(sessionIds: string[], hermesHome = re
     return holdsAny(path.join(hermesHome, 'state.db'), wanted) ? HERMES_DEFAULT_PROFILE : undefined;
 }
 
+/**
+ * Is this a profile Hermes has today?
+ *
+ * The default profile has no folder of its own (its state sits at the root), so it is always one;
+ * a named profile is one when its folder holds a state.db. Used by the folder migration to decide
+ * whether a name in our data home is still Hermes' name for that agent.
+ */
+export function isCurrentProfile(profileName: string, hermesHome = resolveHermesRoot()): boolean {
+    if (profileName === HERMES_DEFAULT_PROFILE) {
+        return true;
+    }
+    return hasProfileState(path.join(hermesHome, 'profiles', profileName));
+}
+
 /** The folder names under `profiles/`, sorted, so the same home always answers the same first. */
 function profileFolders(root: string): string[] {
     try {

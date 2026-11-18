@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
 import { cliProfileForScopeKey, normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
+import { isCurrentProfile, profileNameFromPreviousNames, profileNameHoldingSessions } from './profileFallback';
 import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
 import type { ProfilesStore } from '../store/profiles';
 
@@ -104,6 +105,23 @@ export class Profiles {
         void this.ensureDiscovered().then(() => {
             store.seed(this.discovered ?? []);
         });
+    }
+
+    /**
+     * The agent a folder in our data home belongs to.
+     *
+     * The folder was written under a name, and a name is the one thing about a profile that changes.
+     * Three questions, in order: is that name Hermes' name for a profile today (then it is the
+     * answer); does some profile.yaml hold it under `previous_names`; whose state.db holds the tabs
+     * the folder has. Nothing found is an answer too — the caller leaves the folder where it is.
+     */
+    agentForScope(scopeKey: string, sessionIds: string[]): string | undefined {
+        const name = cliProfileForScopeKey(scopeKey);
+        const known = this._host.store.all().some(row => row.agentName === name);
+        if (known || isCurrentProfile(name)) {
+            return name;
+        }
+        return profileNameFromPreviousNames(name) || profileNameHoldingSessions(sessionIds);
     }
 
     resolveTarget(selectionId?: string): ConnectionTarget {
