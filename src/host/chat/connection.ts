@@ -1,5 +1,4 @@
 import { RunEnded } from './runEnded';
-import * as vscode from 'vscode';
 import { AcpClient, TokenUsage } from '../acp/AcpClient';
 import { tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
@@ -12,6 +11,16 @@ import type { Sessions } from '../workspace/sessions';
 import type { ModelState } from '../models/modelState';
 import type { PromptRunner } from './promptRunner';
 import type { TabLifecycle } from '../workspace/lifecycle';
+
+/**
+ * A pane's view, as the connection needs it.
+ *
+ * The connection reads one thing of it: whether this window has one — a view that was disposed has
+ * nothing to reconnect. No member is used, so this is the presence token itself rather than an
+ * interface of invented members; the alternative was importing `vscode.WebviewView`, which is what
+ * F6 keeps out of a feature file.
+ */
+export type PaneSurface = object;
 
 /**
  * What the connection needs from the provider. Module instances where the moved code calls an
@@ -40,7 +49,7 @@ export interface ConnectionHost {
     excludedProfile?: () => string | undefined;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
-    surfaceView(): vscode.WebviewView | undefined;
+    surfaceView(): PaneSurface | undefined;
 }
 
 /**
