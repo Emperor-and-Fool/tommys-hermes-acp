@@ -21,40 +21,63 @@ import * as path from 'path';
  */
 
 /**
- * Where the extension keeps its data.
+ * The data home: one folder for both extensions.
+ *
+ * The name is the primary's historical home and stays a constant on purpose. It used to be derived
+ * from the extension id, which gave the primary and the secondant a copy of everything each — the
+ * reason Kitt's projects looked lost when the primary moved to her. Per-agent records live under
+ * `profiles/<sessionProfileId>/`, which is the same fact for both extensions, so the home is too.
  *
  * Deliberately not `context.globalStorageUri`: that folder lives inside the editor's user-data
  * directory, so uninstalling the extension, resetting a profile or starting a fresh editor version
  * can take the sessions, projects and attachments with it. Each platform gets the user's own
- * location for application data, and the extension id keeps the primary and the secondant apart:
+ * location for application data:
  *
  *   Windows  %LOCALAPPDATA% (not Roaming: this state belongs to the machine)
  *   macOS    ~/Library/Application Support
  *   Linux    $XDG_DATA_HOME when it is absolute, else ~/.local/share
  */
-export function dataHomeFor(extensionId: string): string {
+const DATA_HOME_NAME = 'emperorandfool.tommys-hermes-acp';
+
+/**
+ * The secondant's own home, from before the two shared one.
+ *
+ * Named once, here, because it is a migration source: our code reads it and never writes it (its
+ * documents are the secondant's), and no extension id derives a data home any more.
+ */
+const LEGACY_SECONDANT_HOME_NAME = 'emperorandfool.tommys-hermes-secondant';
+
+/** The user's application-data folder, per platform. */
+function dataRoot(): string {
     const home = os.homedir();
     const xdg = (process.env.XDG_DATA_HOME || '').trim();
-    let base: string;
     if (process.platform === 'win32') {
-        base = (process.env.LOCALAPPDATA || '').trim() || path.join(home, 'AppData', 'Local');
-    } else if (process.platform === 'darwin') {
-        base = path.join(home, 'Library', 'Application Support');
-    } else {
-        base = path.isAbsolute(xdg) ? xdg : path.join(home, '.local', 'share');
+        return (process.env.LOCALAPPDATA || '').trim() || path.join(home, 'AppData', 'Local');
     }
-    return path.join(base, extensionId.toLowerCase());
+    if (process.platform === 'darwin') {
+        return path.join(home, 'Library', 'Application Support');
+    }
+    return path.isAbsolute(xdg) ? xdg : path.join(home, '.local', 'share');
+}
+
+/** Where both extensions keep their data. */
+export function dataHome(): string {
+    return path.join(dataRoot(), DATA_HOME_NAME);
+}
+
+/** Where the secondant kept its data alone: read by the migration, never written by us. */
+export function legacySecondantHome(): string {
+    return path.join(dataRoot(), LEGACY_SECONDANT_HOME_NAME);
 }
 
 /**
  * The data home, created if it is not there yet.
  *
- * `dataHomeFor` answers where; this makes the folder exist, because every store that follows opens
- * a file inside it. The `mkdir` used to sit in the composition root, which is a write to the data
- * home from outside `host/store/` (ST1).
+ * Because every store that follows opens a file inside it. The `mkdir` used to sit in the
+ * composition root, which is a write to the data home from outside `host/store/` (ST1).
  */
-export function ensureDataHome(extensionId: string): string {
-    const home = dataHomeFor(extensionId);
+export function ensureDataHome(): string {
+    const home = dataHome();
     fs.mkdirSync(home, { recursive: true });
     return home;
 }

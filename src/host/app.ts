@@ -273,7 +273,7 @@ export class App implements vscode.WebviewViewProvider {
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
             'hermes-chat'
         );
-        const storagePath = ensureDataHome(this._extensionId);
+        const storagePath = ensureDataHome();
         this._historyDir = storagePath;
         // The profile table is built here, before the feature that resolves names to ids (C2): the
         // seed is the first thing the window does with it.
