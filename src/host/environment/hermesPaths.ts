@@ -19,6 +19,20 @@ export function resolveDefaultHermesHome(): string {
     return path.join(os.homedir(), '.hermes');
 }
 
+/**
+ * The root of Hermes' data: the folder whose `profiles/` holds the profiles and whose own
+ * `state.db` is the default profile's.
+ *
+ * Not simply `resolveDefaultHermesHome()`: Hermes points `HERMES_HOME` at the *profile's* own folder
+ * for an agent it starts (this session runs with `HERMES_HOME=~/.hermes/profiles/dev-vsc`), and the
+ * profile folders then sit beside it rather than inside it. The check is structural — a home inside
+ * a `profiles/` folder is a profile, and its root is that folder's parent.
+ */
+export function resolveHermesRoot(): string {
+    const home = resolveDefaultHermesHome();
+    return path.basename(path.dirname(home)) === 'profiles' ? path.dirname(path.dirname(home)) : home;
+}
+
 /** The binaries inside `<home>/hermes-agent/venv`; on Windows each name also gets an extension. */
 export function agentVenv(home: string, binary: string, windowsExtensions: string[] = ['exe', 'cmd']): string[] {
     const venv = path.join(home, 'hermes-agent', 'venv');
