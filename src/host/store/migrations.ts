@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { writeAtomic } from './connection';
+import { legacySecondantHome, writeAtomic } from './connection';
 import { activeSessionPathFor, profileDir, sessionsPathFor } from './paths';
 import { ProfilesStore } from './profiles';
 
@@ -163,10 +163,15 @@ export function mergeProfileFolder(source: string, target: string, log: Migratio
 
     const sourceTabs = readJson<SessionInfo[]>(path.join(source, 'sessions.json'), []);
     const targetTabs = readJson<SessionInfo[]>(path.join(target, 'sessions.json'), []);
-    const mergedTabs = mergeTabs(sourceTabs, targetTabs, bySourceId, name, log);
+    const { tabs: mergedTabs, conflicts } = mergeTabs(sourceTabs, targetTabs, bySourceId, name);
     if (JSON.stringify(mergedTabs) !== JSON.stringify(targetTabs)) {
         writeAtomic(path.join(target, 'sessions.json'), mergedTabs);
         log(`Migration: ${name} tabs merged (${mergedTabs.length - targetTabs.length} added)`);
+        // A conflict is only news when this run actually changed the file: a second run over the
+        // same folder would otherwise repeat it at every activation.
+        for (const line of conflicts) {
+            log(line);
+        }
     }
 
     const activeSource = path.join(source, 'active-session.txt');
@@ -232,9 +237,9 @@ function mergeTabs(
     target: SessionInfo[],
     bySourceProjectId: Map<string, string>,
     label: string,
-    log: MigrationsLog,
-): SessionInfo[] {
+): { tabs: SessionInfo[]; conflicts: string[] } {
     const tabs = target.slice();
+    const conflicts: string[] = [];
     for (const incomingRaw of source) {
         if (!incomingRaw || typeof incomingRaw.id !== 'string') {
             continue;
@@ -257,14 +262,14 @@ function mergeTabs(
                 continue;
             }
             if (have && theirs && have !== theirs) {
-                log(`Migration: ${label} tab ${existing.id} keeps its ${field} ("${have}" over "${theirs}")`);
+                conflicts.push(`Migration: ${label} tab ${existing.id} keeps its ${field} ("${have}" over "${theirs}")`);
             }
         }
         if (incoming.sticky && !existing.sticky) {
             existing.sticky = true;
         }
     }
-    return tabs;
+    return { tabs, conflicts };
 }
 
 /** The folders under `profiles/`, sorted, so a run always visits them in the same order. */
@@ -296,14 +301,71 @@ function readJson<T>(target: string, fallback: T): T {
 }
 
 /**
+ * The secondant's own home, merged in by session. Its folder is read, never written, never removed:
+ * it also keeps the secondant's documents, and a copy is the only thing this migration makes.
+ *
+ * The centre wins where both have something: the same tab keeps its tags and its project, and takes
+ * only what it is missing. The secondant's `workspaces.json` and `pending_*.json` are not merged —
+ * a pending turn is a live fact of that window, not a record to copy.
+ */
+function mergeSecondantHome(
+    home: string,
+    store: ProfilesStore,
+    agentForScope: AgentResolver,
+    log: MigrationsLog,
+    sourceHome: string,
+): void {
+    const root = path.join(sourceHome, 'profiles');
+    for (const name of folderNames(root)) {
+        const source = path.join(root, name);
+        const agent = agentForScope(name, sessionIdsIn(source));
+        if (!agent) {
+            log(`Migration: secondant profiles/${name} names no agent, left as it is`);
+            continue;
+        }
+        mergeProfileFolder(source, path.join(home, 'profiles', store.idFor(agent)), log, `secondant profiles/${name}`);
+    }
+    // The images themselves are content-addressed files, not rows: copy the ones the centre does
+    // not have, so a tab moved in from the secondant still shows what it carried. The secondant's
+    // own index is not copied — its rows are converted where the rows live (the attachments step).
+    const images = path.join(sourceHome, 'attachments');
+    let copied = 0;
+    try {
+        fs.mkdirSync(path.join(home, 'attachments'), { recursive: true });
+        for (const file of fs.readdirSync(images, { withFileTypes: true })) {
+            if (!file.isFile() || file.name === 'index.json') {
+                continue;
+            }
+            const destination = path.join(home, 'attachments', file.name);
+            if (!fs.existsSync(destination)) {
+                fs.copyFileSync(path.join(images, file.name), destination);
+                copied += 1;
+            }
+        }
+    } catch { /* no attachments folder, or one this process cannot read: nothing to copy */ }
+    if (copied > 0) {
+        log(`Migration: ${copied} attachment file(s) copied in from the secondant`);
+    }
+}
+
+/**
  * Run every step, in order, from the composition root at activation.
  *
  * Nothing here throws: a migration that cannot finish logs and leaves the file as it found it, so a
  * broken migration costs the migration, never the extension.
  */
-export function runMigrations(home: string, agentForScope: AgentResolver, log: MigrationsLog): void {
+export function runMigrations(
+    home: string,
+    agentForScope: AgentResolver,
+    log: MigrationsLog,
+    /** Where the secondant kept its own data; a caller with a temp home passes its own. */
+    secondantHome = legacySecondantHome(),
+): void {
     backupDataHome(home, log);
     migrateLegacySessionLayout(home, log);
     const store = new ProfilesStore(home);
     migrateProfileFolders(home, store, agentForScope, log);
+    if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
+        mergeSecondantHome(home, store, agentForScope, log, secondantHome);
+    }
 }

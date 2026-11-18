@@ -106,7 +106,7 @@ describe('data home migrations', () => {
             // What environment/profiles.ts answers for the default profile's scope key.
             const resolver = (scope: string): string | undefined => (scope === '__default__' ? 'default' : undefined);
             const first = logger();
-            runMigrations(home, resolver, first.log);
+            runMigrations(home, resolver, first.log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'sessions.json')), false);
             const defaultId = new ProfilesStore(home).idFor('default');
             assert.strictEqual(fs.readFileSync(activeSessionPathFor(home, defaultId), 'utf-8'), 'abc');
@@ -118,7 +118,7 @@ describe('data home migrations', () => {
             ]);
 
             const second = logger();
-            runMigrations(home, resolver, second.log);
+            runMigrations(home, resolver, second.log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', defaultId, 'sessions.json')), true);
             assert.deepStrictEqual(second.lines, ['Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' exists, left as it is']);
         } finally {
@@ -134,7 +134,7 @@ describe('data home migrations', () => {
             const id = store.idFor('kitt');
             writeProfileFolder(home, 'kitt', [tab({ id: 't1', hermesSessionId: 'h1' })], [], { 'notes.md': 'mine' });
             const { lines, log } = logger();
-            runMigrations(home, () => 'kitt', log);
+            runMigrations(home, () => 'kitt', log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'kitt')), false);
             assert.deepStrictEqual(readTabs(path.join(home, 'profiles', id)).map(t => t.id), ['t1']);
             assert.strictEqual(fs.readFileSync(path.join(home, 'profiles', id, 'notes.md'), 'utf-8'), 'mine');
@@ -166,7 +166,7 @@ describe('data home migrations', () => {
                 { id: 'p-new', name: 'Docs', workspaceId: 'w1' },
             ], { 'docs.md': 'from the side' });
             const { lines, log } = logger();
-            runMigrations(home, () => 'kitt', log);
+            runMigrations(home, () => 'kitt', log, '');
 
             const tabs = readTabs(centre);
             assert.deepStrictEqual(tabs.map(t => t.id).sort(), ['t1', 't2', 't3']);
@@ -185,8 +185,8 @@ describe('data home migrations', () => {
                 'Migration: profiles/kitt project "Other" taken over',
                 'Migration: profiles/kitt project "Docs" taken over',
                 'Migration: profiles/kitt projects merged (2 added)',
-                'Migration: profiles/kitt tab t1 keeps its project ("p-centre" over "p-side")',
                 'Migration: profiles/kitt tabs merged (1 added)',
+                'Migration: profiles/kitt tab t1 keeps its project ("p-centre" over "p-side")',
                 'Migration: profiles/kitt 1 file(s) copied in',
             ]);
         } finally {
@@ -200,7 +200,7 @@ describe('data home migrations', () => {
         try {
             writeProfileFolder(home, 'dev', [tab({ id: 't1', hermesSessionId: 'h1' })]);
             const { lines, log } = logger();
-            runMigrations(home, () => undefined, log);
+            runMigrations(home, () => undefined, log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'dev', 'sessions.json')), true);
             assert.deepStrictEqual(lines, [
                 `Backup: ${path.basename(home)}.backup-${backupStamp()} written`,
@@ -225,7 +225,7 @@ describe('data home migrations', () => {
                 ({ pa: 'kitt', emai: 'iris' } as Record<string, string>)[scope];
             const bySession = (scope: string, ids: string[]): string | undefined =>
                 byPreviousName(scope) || (ids.includes('h2') ? 'iris' : undefined);
-            runMigrations(home, bySession, logger().log);
+            runMigrations(home, bySession, logger().log, '');
             assert.deepStrictEqual(readTabs(path.join(home, 'profiles', kittId)).map(t => t.id), ['t1']);
             assert.deepStrictEqual(readTabs(path.join(home, 'profiles', irisId)).map(t => t.id), ['t2']);
         } finally {
@@ -247,12 +247,86 @@ describe('data home migrations', () => {
                 tab({ id: 't1', hermesSessionId: 'h1', project: 'p-side' }),
                 tab({ id: 't3', hermesSessionId: 'h3' }),
             ], [{ id: 'p-side', name: 'Projects', workspaceId: 'w1' }]);
-            runMigrations(home, () => 'kitt', logger().log);
+            runMigrations(home, () => 'kitt', logger().log, '');
             const before = fs.readFileSync(path.join(home, 'profiles', id, 'sessions.json'), 'utf-8');
             const second = logger();
-            runMigrations(home, () => 'kitt', second.log);
+            runMigrations(home, () => 'kitt', second.log, '');
             assert.strictEqual(fs.readFileSync(path.join(home, 'profiles', id, 'sessions.json'), 'utf-8'), before);
             assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+    it('merges the secondant home in, merges by session, and leaves that home untouched', () => {
+        const home = tempHome();
+        const secondant = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const centre = path.join(home, 'profiles', kittId);
+            // The centre's kitt is empty; the secondant's holds five projects and tags.
+            fs.mkdirSync(centre, { recursive: true });
+            writeProfileFolder(secondant, 'kitt', [
+                tab({ id: 't1', hermesSessionId: 'h1', project: 'p1' }),
+                tab({ id: 't2', hermesSessionId: 'h2', workspaceId: 'w1' }),
+            ], [{ id: 'p1', name: 'Projects', workspaceId: 'w1' }], { 'notes.md': 'from the secondant' });
+            fs.mkdirSync(path.join(secondant, 'attachments'), { recursive: true });
+            fs.writeFileSync(path.join(secondant, 'attachments', 'abc.png'), 'image bytes');
+            const before = fs.readFileSync(path.join(secondant, 'profiles', 'kitt', 'sessions.json'), 'utf-8');
+
+            const { lines, log } = logger();
+            runMigrations(home, () => 'kitt', log, secondant);
+
+            assert.deepStrictEqual(readTabs(centre).map(t => t.id), ['t1', 't2']);
+            assert.strictEqual(readTabs(centre).find(t => t.id === 't1')!.project, 'p1');
+            assert.strictEqual(fs.readFileSync(path.join(centre, 'notes.md'), 'utf-8'), 'from the secondant');
+            assert.strictEqual(fs.readFileSync(path.join(home, 'attachments', 'abc.png'), 'utf-8'), 'image bytes');
+            // The secondant's own home is a source, never a target.
+            assert.strictEqual(fs.readFileSync(path.join(secondant, 'profiles', 'kitt', 'sessions.json'), 'utf-8'), before);
+            assert.deepStrictEqual(lines.filter(line => line.includes('secondant')), [
+                'Migration: secondant profiles/kitt project "Projects" taken over',
+                'Migration: secondant profiles/kitt projects merged (1 added)',
+                'Migration: secondant profiles/kitt tabs merged (2 added)',
+                'Migration: secondant profiles/kitt 1 file(s) copied in',
+                'Migration: 1 attachment file(s) copied in from the secondant',
+            ]);
+
+            const second = logger();
+            runMigrations(home, () => 'kitt', second.log, secondant);
+            assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(secondant, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('leaves a secondant folder alone when no agent answers for its name', () => {
+        const home = tempHome();
+        const secondant = tempHome();
+        try {
+            writeProfileFolder(secondant, 'pa', [tab({ id: 't1', hermesSessionId: 'h1' })]);
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, secondant);
+            assert.deepStrictEqual(lines.filter(line => line.startsWith('Migration: secondant')), [
+                'Migration: secondant profiles/pa names no agent, left as it is',
+            ]);
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', 'pa')), false);
+            assert.strictEqual(fs.existsSync(path.join(secondant, 'profiles', 'pa', 'sessions.json')), true);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(secondant, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+
+    it('ignores a secondant home that is not there', () => {
+        const home = tempHome();
+        try {
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, path.join(home, 'no-secondant'));
+            assert.deepStrictEqual(lines.filter(line => line.includes('secondant')), []);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
