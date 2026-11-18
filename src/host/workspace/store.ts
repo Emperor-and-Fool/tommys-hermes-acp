@@ -143,19 +143,20 @@ export class WorkspaceStore {
         } catch {
             return { workspaces: [] };
         }
-        // Every entry's id is the one its path derives, so a registry that was lost, truncated or
-        // re-written cannot change any of them. An old minted id is replaced here, once.
+        // The id is STORED, not derived (00.02 §1): an entry that has one keeps it, and
+        // `workspaceIdFor` is only the mint for a workspace seen for the first time. A path that
+        // changes is a value update, not a new workspace, once a row has an id.
         //
         // A root recorded here by an older build is dropped in the same pass: the roots are per
         // agent now (ProfileRootsStore) and the migration has already moved them out.
         let moved = false;
         list = list.map((entry: Workspace & { primaryRoot?: string; permissionRoot?: string }) => {
-            const derived = workspaceIdFor(entry.path);
             const { primaryRoot: _primary, permissionRoot: _permission, ...row } = entry;
-            if (entry.id !== derived || _primary !== undefined || _permission !== undefined) {
+            const id = typeof entry.id === 'string' && entry.id ? entry.id : workspaceIdFor(entry.path);
+            if (entry.id !== id || _primary !== undefined || _permission !== undefined) {
                 moved = true;
             }
-            return { ...row, id: derived };
+            return { ...row, id };
         });
         if (moved) {
             this._write({ workspaces: list });

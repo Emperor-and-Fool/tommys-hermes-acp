@@ -157,13 +157,15 @@ describe('the workspace id is the path', () => {
         assert.strictEqual(workspaceIdFor(''), '', 'no workspace has no id');
     });
 
-    it('replaces a minted id in the file with the derived one, once', () => {
+    it('keeps the id a row already has, and mints one only for a path it has not seen', () => {
         const dir = tmp();
         const store = new WorkspaceStore(dir);
-        fs.writeFileSync(store.path, JSON.stringify([{ id: 'minted-old', path: '/proj/a.code-workspace', lastSeen: 1 }]));
-        const first = store.read()[0];
-        assert.strictEqual(first.id, workspaceIdFor('/proj/a.code-workspace'));
-        const onDisk = JSON.parse(fs.readFileSync(store.path, 'utf-8'));
-        assert.strictEqual(onDisk.workspaces[0].id, first.id, 'the file carries the derived id too');
+        fs.writeFileSync(store.path, JSON.stringify([{ id: 'stored-id', path: '/proj/a.code-workspace', lastSeen: 1 }]));
+        assert.strictEqual(store.read()[0].id, 'stored-id', 'a stored id is a value, not a derivation');
+
+        const registered = store.register('/proj/b.code-workspace');
+        const added = registered.find(entry => entry.path === '/proj/b.code-workspace')!;
+        assert.strictEqual(added.id, workspaceIdFor('/proj/b.code-workspace'), 'a first sight mints from the path');
+        assert.strictEqual(store.read().find(entry => entry.path === '/proj/a.code-workspace')!.id, 'stored-id');
     });
 });
