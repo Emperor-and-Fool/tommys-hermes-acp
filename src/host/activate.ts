@@ -45,19 +45,9 @@ export function activateExtension(
     initI18n();
     console.log(`Tommys Hermes (${id.role}) activating...`);
 
-    // The editor, behind the cwd owner's port: asked here, once, where `vscode` is already in reach.
-    const cwdSource = {
-        workspaceFile: () => {
-            const file = vscode.workspace.workspaceFile;
-            return file && file.scheme === 'file' ? file.fsPath : '';
-        },
-        folders: () => (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath),
-        onFoldersChanged: (handler: () => void) => {
-            const subscription = vscode.workspace.onDidChangeWorkspaceFolders(() => handler());
-            return () => subscription.dispose();
-        },
-    };
-    const app = new App(id, context.extensionUri, context, cwdSource, primary);
+    // The App builds its own adapters for the editor (`editor/`, F6): `vscode` is reached there,
+    // not here, so this side only names what it needs.
+    const app = new App(id, context.extensionUri, context, primary);
 
     const bind = (command: string, run: (app: App) => void | Promise<void>): void => {
         context.subscriptions.push(

@@ -1,4 +1,20 @@
 /**
+ * The window's folders and its workspace file: what the editor has open.
+ *
+ * Two features ask this: the cwd owner (`workspace/cwd.ts`, which only knows the first three
+ * members) and the project group (`workspace/projectGrouped.ts`). One adapter answers both, so
+ * "which workspace am I in" has one source (F6).
+ */
+export interface EditorFolders {
+    /** The window's `.code-workspace` file, or '' when it opened plain folders. */
+    workspaceFile(): string;
+    /** The folders the window opened, in the editor's order. */
+    folders(): string[];
+    /** Told when that list changes; returns the unsubscribe. */
+    onFoldersChanged(handler: () => void): () => void;
+}
+
+/**
  * What the chat feature asks of the editor: the folders it may read, a file list, a file's head, a
  * file opened, text inserted at the cursor.
  *

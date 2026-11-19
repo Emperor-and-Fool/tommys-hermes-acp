@@ -26,9 +26,9 @@ import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
 import { createEditorFiles } from './editor/files';
+import { createEditorFolders } from './editor/folders';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
-import type { CwdSource } from './workspace/cwd';
 import type { ChatSurface } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
@@ -248,6 +248,9 @@ export class App implements vscode.WebviewViewProvider {
     /** Which folder this window works in, and which window it is: one owner, one answer. */
     private readonly _cwd: WorkspaceCwd;
 
+    /** The window's folders, behind the port the cwd owner and the project group both ask. */
+    private readonly _folders = createEditorFolders();
+
     /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
     private readonly _rootPicker: RootPicker;
 
@@ -263,8 +266,6 @@ export class App implements vscode.WebviewViewProvider {
         private readonly _id: ExtensionIdentity,
         private readonly _extensionUri: vscode.Uri,
         private readonly _context: vscode.ExtensionContext,
-        /** The editor behind the cwd owner's port: folders and workspace file, nothing else. */
-        cwdSource: CwdSource,
         /** The primary's API, when this is the secondant: it answers which profile is taken. */
         private readonly _primary?: PrimaryProfileSource
     ) {
@@ -297,7 +298,7 @@ export class App implements vscode.WebviewViewProvider {
         const workspaces = new WorkspaceStore(this._historyDir);
         // The roots live with the workspace record, so the locator reads and writes them there;
         // the store only exists from here on, which is why the locator is built at this point.
-        this._cwd = new WorkspaceCwd(cwdSource, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
+        this._cwd = new WorkspaceCwd(this._folders, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
         // Permissions keeps its own record and its own deny backups, in the profile's folder.
         this._approvals = new Approvals(
             {
@@ -343,8 +344,10 @@ export class App implements vscode.WebviewViewProvider {
                 void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
             },
             currentWorkspacePath: () => this._cwd.workspaceIdentity(),
-            onDidChangeWorkspaceFolders: (handler) =>
-                vscode.workspace.onDidChangeWorkspaceFolders(() => handler()),
+            onDidChangeWorkspaceFolders: (handler) => {
+                const unsubscribe = this._folders.onFoldersChanged(handler);
+                return { dispose: unsubscribe };
+            },
         });
         this._session = new Sessions(this._historyDir, initialTarget.sessionProfileId, {
             post: (msg) => this._postMessage(msg),
