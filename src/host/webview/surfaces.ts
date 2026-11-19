@@ -32,6 +32,9 @@ export interface ChatSurface {
     panel?: vscode.WebviewPanel;
 }
 
+/** What asked for the rail. Logged with the branch it took: the same call can read differently. */
+export type RevealTrigger = 'panel:active' | 'openChat' | 'sendSelection' | 'switchSession';
+
 /** What the host supplies: the six provider concerns a surface cannot own. */
 export interface SurfacesHost {
     /** The pane's HTML, with its resource URIs resolved against this webview. */
@@ -258,8 +261,9 @@ export class Surfaces {
         // The conversation is on screen in an editor tab: what is missing beside it is the list
         // of chats, so the rail follows the panel into view.
         panel.onDidChangeViewState(() => {
+            this._host.log(`Chat panel view state: active=${panel.active}, visible=${panel.visible}`);
             if (panel.active) {
-                this.revealRail();
+                this.revealRail('panel:active');
             }
         });
         this.postRole(surface);
@@ -286,18 +290,31 @@ export class Surfaces {
     /**
      * Show our side panel, unless the user is already looking at it.
      *
-     * The one place that names the view container (`workbench.view.extension.<sidebarId>`). Three
-     * intents reach it: a command asking for the chat, our editor panel becoming the active tab,
-     * and a session tab clicked inside the panel — in every case the rail is where the other
+     * Three intents reach it: a command asking for the chat, our editor panel becoming the active
+     * tab, and a session tab clicked inside the panel — in every case the rail is where the other
      * chats are.
      *
-     * The guard is what keeps it from stealing focus: a visible view is already on screen, and
-     * revealing it again would pull focus out of whatever has it.
+     * Documented API first: `WebviewView.show(true)` reveals our own view and keeps the focus in
+     * the editor (the typings: "When true the view will not take focus"). The container command
+     * `workbench.view.extension.<id>` is used only when no view is in hand — it is a workbench
+     * internal, and it opens the whole container, which is what we want then and nothing else.
+     *
+     * One log line per branch, with the trigger: a guard that skips and a command VS Code ignores
+     * look identical from the pane, and the reason both panes are told apart here is that the
+     * same branch can behave differently on the primary and the secondant.
      */
-    revealRail(): void {
+    revealRail(trigger: RevealTrigger): void {
+        const where = `${identity().role}, ${trigger}`;
         if (this._view?.visible) {
+            this._host.log(`Reveal rail: already visible (${where})`);
             return;
         }
+        if (this._view) {
+            this._host.log(`Reveal rail: show(preserveFocus) (${where})`);
+            this._view.show(true);
+            return;
+        }
+        this._host.log(`Reveal rail: open container (view not resolved) (${where})`);
         void vscode.commands.executeCommand(`workbench.view.extension.${identity().sidebarId}`);
     }
 
@@ -311,7 +328,7 @@ export class Surfaces {
         const wrapped: T = {
             ...commands,
             switchSession: (sessionId: string, interrupt: boolean) => {
-                this.revealRail();
+                this.revealRail('switchSession');
                 commands.switchSession(sessionId, interrupt);
             },
         };

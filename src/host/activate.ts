@@ -80,7 +80,7 @@ export function activateExtension(
 
     context.subscriptions.push(
         vscode.commands.registerCommand(id.cmd('openChat'), () => {
-            app.revealRail();
+            app.revealRail('openChat');
         })
     );
 
@@ -93,7 +93,7 @@ export function activateExtension(
             }
             const text = `At ${selection.fileName}:${selection.line}\n\`\`\`\n${selection.text}\n\`\`\``;
 
-            app.revealRail();
+            app.revealRail('sendSelection');
             app.insertIntoInput(text);
         })
     );

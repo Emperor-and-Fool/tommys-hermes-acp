@@ -33,7 +33,7 @@ import { createEditorSettings } from './editor/settings';
 import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
-import type { ChatSurface } from './webview/surfaces';
+import type { ChatSurface, RevealTrigger } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
 import type { RouterHost } from './webview/router';
@@ -908,7 +908,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Show our side panel, unless it is already on screen: the rail lists the chats. */
-    public revealRail(): void { this._surfaces.revealRail(); }
+    public revealRail(trigger: RevealTrigger): void { this._surfaces.revealRail(trigger); }
 
     /** Called by the panel serializer so the tab comes back after a reload. */
     public restoreChatPanel(panel: vscode.WebviewPanel): void {
