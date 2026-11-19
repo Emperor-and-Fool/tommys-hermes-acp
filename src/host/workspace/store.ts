@@ -459,11 +459,16 @@ export class TreeStore {
      * @param _input What to write, read at the moment of the write — the tree is assembled from
      * three owners (identity, projects, tabs) and this is the one place that asks all of them.
      */
+    /** Folder ids to paths: the tree names where a tab works, and agents read paths. */
+    private readonly _folders: FoldersStore;
+
     constructor(
         private readonly _historyDir: string,
         private readonly _log: (line: string) => void,
         private readonly _input: () => TreeInput,
-    ) {}
+    ) {
+        this._folders = new FoldersStore(_historyDir);
+    }
 
     /**
      * The block that names the two files, once per session and workspace.
@@ -501,7 +506,7 @@ export class TreeStore {
             return;
         }
         const paths = treePathsFor(this._historyDir, input.sessionProfileId);
-        const snapshot = buildTreeSnapshot(input);
+        const snapshot = buildTreeSnapshot({ ...input, folderPath: id => this._folders.pathFor(id) });
         const previous = this._previous(paths.current);
         const before = previous && previous.workspace ? previous.workspace.id : '';
         if (before && before !== input.workspaceId) {

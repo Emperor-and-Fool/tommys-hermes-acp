@@ -5,6 +5,7 @@ import type { Project, SessionInfo } from '../../shared/chat';
 import { legacySecondantHome, writeAtomic } from './connection';
 import { activeSessionPathFor, profileDir, sessionsPathFor } from './paths';
 import { ProfilesStore, isSessionProfileId } from './profiles';
+import { FoldersStore } from './folders';
 
 /**
  * The one-time fixes to the data home, run at every activation and safe to re-run.
@@ -344,7 +345,7 @@ function mergeTabs(
             continue;
         }
         let tagFilled = false;
-        for (const field of ['workspaceId', 'project', 'cwd', 'hermesSessionId', 'modelId', 'modelLabel'] as const) {
+        for (const field of ['workspaceId', 'project', 'permissionRootFolderId', 'hermesSessionId', 'modelId', 'modelLabel'] as const) {
             const have = existing[field];
             const theirs = incoming[field];
             if ((have === undefined || have === '') && theirs) {
@@ -552,6 +553,48 @@ function migrateAttachmentsIndex(home: string, store: ProfilesStore, log: Migrat
 }
 
 /**
+ * A tab's `cwd` was a path; it is a folder id now (00.02 §3).
+ *
+ * Every path that a tab still carries becomes a folder row (minted if it is the first sight of it)
+ * and the tab gets that row's id. The old path is dropped: the folder table holds it, and a path in
+ * the tab would be a second copy that a move could leave behind.
+ */
+function migrateSessionFolders(home: string, store: ProfilesStore, folders: FoldersStore, log: MigrationsLog): void {
+    for (const name of folderNames(path.join(home, 'profiles'))) {
+        if (!isSessionProfileId(name)) {
+            continue;
+        }
+        const sessionsFile = path.join(home, 'profiles', name, 'sessions.json');
+        if (!fs.existsSync(sessionsFile)) {
+            continue;
+        }
+        const tabs = readJson<Array<SessionInfo & { cwd?: string }>>(sessionsFile, []);
+        let keyed = 0;
+        const next = tabs.map(tab => {
+            if (!tab || typeof tab !== 'object') {
+                return tab;
+            }
+            const { cwd, ...rest } = tab;
+            if (!cwd || rest.permissionRootFolderId) {
+                return rest;
+            }
+            const folder = folders.folderFor(cwd);
+            if (!folder) {
+                return rest;
+            }
+            keyed += 1;
+            return { ...rest, permissionRootFolderId: folder.id };
+        });
+        if (keyed === 0) {
+            continue;
+        }
+        writeAtomic(sessionsFile, next);
+        const agent = store.nameFor(name) || name;
+        log(`Migration: ${agent} ${keyed} session root(s) keyed by folder id`);
+    }
+}
+
+/**
  * Run every step, in order, from the composition root at activation.
  *
  * Nothing here throws: a migration that cannot finish logs and leaves the file as it found it, so a
@@ -587,6 +630,7 @@ export function runMigrations(
             mergeSecondantHome(home, store, agentForScope, log, secondantHome);
         }
         migrateAttachmentsIndex(home, store, log);
+        migrateSessionFolders(home, store, new FoldersStore(home), log);
     } finally {
         releaseLock(home);
     }

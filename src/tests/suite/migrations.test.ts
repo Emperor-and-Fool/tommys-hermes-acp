@@ -569,4 +569,36 @@ describe('data home migrations', () => {
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
         }
     });
+
+    it('turns the cwd path of a tab into a folder id, and mints the folder row', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            writeProfileFolder(home, kittId, [
+                { id: 't1', title: 't1', createdAt: 1, updatedAt: 1, hermesSessionId: 'h1', cwd: '/w/a' } as SessionInfo,
+                tab({ id: 't2', hermesSessionId: 'h2', permissionRootFolderId: 'already-a-folder' }),
+            ]);
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, '');
+
+            const tabs = readTabs(path.join(home, 'profiles', kittId));
+            assert.strictEqual('cwd' in tabs[0], false, 'the path is not kept in the tab');
+            const folderId = tabs[0].permissionRootFolderId!;
+            assert.match(folderId, /^[0-9a-f]{8}-[0-9a-f]{4}-/);
+            assert.strictEqual(tabs[1].permissionRootFolderId, 'already-a-folder', 'a tab that has a root is left alone');
+            const folders = JSON.parse(fs.readFileSync(path.join(home, 'folders.json'), 'utf-8')).folders;
+            assert.deepStrictEqual(folders.map((row: { id: string; path: string }) => [row.id, row.path]), [[folderId, '/w/a']]);
+            assert.deepStrictEqual(lines.filter(line => line.includes('session root')), [
+                'Migration: kitt 1 session root(s) keyed by folder id',
+            ]);
+
+            const second = logger();
+            runMigrations(home, () => undefined, second.log, '');
+            assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
 });

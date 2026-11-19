@@ -201,7 +201,6 @@ export class Sessions {
             .map(tab => ({
                 sessionId: tab.hermesSessionId || tab.id,
                 title: tab.title,
-                cwd: tab.cwd,
                 hidden: false,
                 messageCount: 0,
                 updatedAt: tab.updatedAt,

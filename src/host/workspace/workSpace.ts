@@ -97,6 +97,8 @@ export interface TreeSnapshot {
 }
 
 export interface TreeInput {
+    /** A folder id to its path: the tree says where a tab's root is, and agents read paths. */
+    folderPath?: (folderId: string) => string;
     /** Our id for the agent: the folder these files live in, beside that agent's tabs. */
     sessionProfileId: string;
     /** Hermes' name for the agent today. Written into the file: the readers are agents. */
@@ -118,7 +120,9 @@ export function buildTreeSnapshot(input: TreeInput): TreeSnapshot {
         title: tab.title,
         ...(tab.hermesSessionId ? { hermesSessionId: tab.hermesSessionId } : {}),
         sticky: tab.sticky === true,
-        ...(tab.cwd ? { cwd: tab.cwd } : {}),
+        ...(tab.permissionRootFolderId && input.folderPath && input.folderPath(tab.permissionRootFolderId)
+            ? { cwd: input.folderPath(tab.permissionRootFolderId) }
+            : {}),
         updatedAt: tab.updatedAt || 0,
     });
     const owned = input.projects.map(project => project.id);

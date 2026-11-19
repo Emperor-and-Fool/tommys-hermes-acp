@@ -24,7 +24,7 @@ describe('applyCatalogRows', () => {
             sticky: true,
             modelId: 'm-1',
             modelLabel: 'Model One',
-            cwd: '/work/a',
+            permissionRootFolderId: 'f-a',
             title: 'name from before',
         })];
         const result = applyCatalogRows({
@@ -40,7 +40,7 @@ describe('applyCatalogRows', () => {
         assert.strictEqual(merged.sticky, true);
         assert.strictEqual(merged.modelId, 'm-1');
         assert.strictEqual(merged.modelLabel, 'Model One');
-        assert.strictEqual(merged.cwd, '/work/a');
+        assert.strictEqual(merged.permissionRootFolderId, 'f-a');
         assert.strictEqual(merged.hermesSessionId, 'h-1');
         assert.strictEqual(result.activeChanged, false);
         assert.strictEqual('messageCount' in merged, false, 'the count is Hermes\' and is not copied');

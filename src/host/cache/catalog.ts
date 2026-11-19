@@ -42,7 +42,8 @@ export function applyCatalogRows<T extends CatalogRow>(input: ApplyCatalogInput<
             modelId: prior?.modelId,
             modelLabel: prior?.modelLabel,
             hermesSessionId: row.sessionId,
-            cwd: row.cwd ?? prior?.cwd,
+            // Hermes' own cwd is not ours to copy: the tab's root is a folder id, chosen here.
+            permissionRootFolderId: prior?.permissionRootFolderId,
             // No catalog row carries the workspace or the folder: ours ride forward, or not at all.
             ...(prior?.workspaceId ? { workspaceId: prior.workspaceId } : {}),
             ...(prior?.project ? { project: prior.project } : {}),

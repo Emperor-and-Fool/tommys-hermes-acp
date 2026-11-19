@@ -101,7 +101,7 @@ describe('tab move: the workspace cwd decides, not the tab record', () => {
         session.activeId = 'tab-moved';
         session.tabs = [
             { id: 'tab-moved', title: 'Moved', createdAt: 0, updatedAt: 0,
-              hermesSessionId: 'hermes-moved', cwd: '/work/old' },
+              hermesSessionId: 'hermes-moved', permissionRootFolderId: 'f-old' },
         ];
 
         const loaded: Array<{ cwd: string; sessionId: string }> = [];

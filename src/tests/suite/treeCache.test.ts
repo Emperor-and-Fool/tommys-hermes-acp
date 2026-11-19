@@ -31,6 +31,7 @@ function input(workspaceId: string, over: Record<string, unknown> = {}) {
         workspacePath: `/proj/${workspaceId}.code-workspace`,
         workspaceId,
         activeSessionId: 'a',
+        folderPath: (folderId: string) => (folderId === 'f-x' ? '/work/x' : ''),
         projects: [project('p1', 'Features')],
         tabs: [tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true }), tab('b')],
         ...over,
@@ -48,7 +49,7 @@ describe('the tree file: what it says', () => {
     it('puts each tab under its project, and everything else on the plane', () => {
         const snapshot = buildTreeSnapshot(input('w1', {
             tabs: [
-                tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true, cwd: '/x' }),
+                tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true, permissionRootFolderId: 'f-x' }),
                 tab('b'),
                 tab('c', { project: 'gone' }),
             ],
@@ -58,7 +59,7 @@ describe('the tree file: what it says', () => {
         assert.deepStrictEqual(snapshot.projects.map(entry => entry.name), ['Features']);
         assert.deepStrictEqual(snapshot.projects[0].tabs.map(entry => entry.id), ['a']);
         assert.deepStrictEqual(snapshot.projects[0].tabs[0], {
-            id: 'a', title: 'Title a', hermesSessionId: 'h-a', sticky: true, cwd: '/x', updatedAt: 2,
+            id: 'a', title: 'Title a', hermesSessionId: 'h-a', sticky: true, cwd: '/work/x', updatedAt: 2,
         });
         // 'b' belongs to no project; 'c' names one this workspace does not have.
         assert.deepStrictEqual(snapshot.plane.map(entry => entry.id), ['b', 'c']);
