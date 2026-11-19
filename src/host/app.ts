@@ -12,7 +12,7 @@ import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
-import { setting, settingsSection } from '../shared/extensionId';
+import { setting } from '../shared/extensionId';
 import type { ExtensionIdentity } from '../shared/extensionId';
 import type { PrimaryProfileSource } from './activate';
 import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
@@ -27,6 +27,7 @@ import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
 import { createEditorFiles } from './editor/files';
 import { createEditorFolders } from './editor/folders';
+import { createEditorSettings } from './editor/settings';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
 import type { ChatSurface } from './webview/surfaces';
@@ -251,6 +252,9 @@ export class App implements vscode.WebviewViewProvider {
     /** The window's folders, behind the port the cwd owner and the project group both ask. */
     private readonly _folders = createEditorFolders();
 
+    /** Our own settings, by bare key, and the news that one changed. */
+    private readonly _settings = createEditorSettings();
+
     /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
     private readonly _rootPicker: RootPicker;
 
@@ -283,7 +287,7 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
-            settings: { get: <T>(key: string) => vscode.workspace.getConfiguration(settingsSection()).get<T>(key) },
+            settings: this._settings,
             store: new ProfilesStore(storagePath),
             excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
         });
@@ -403,7 +407,7 @@ export class App implements vscode.WebviewViewProvider {
             workspaceState: context.workspaceState,
             debugTabSwitch: () => {
                 try {
-                    return vscode.workspace.getConfiguration('tommys').get<boolean>('debugTabSwitch', false) === true;
+                    return this._settings.get<boolean>('debugTabSwitch', false) === true;
                 } catch {
                     return false;
                 }
@@ -437,10 +441,8 @@ export class App implements vscode.WebviewViewProvider {
             this._projects.start(),
             { dispose: this._rootPicker.start() },
             { dispose: this._approvals.start() },
-            vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration(settingsSection())) {
-                    void this._onConfigurationChanged(e);
-                }
+            this._settings.onDidChange(affects => {
+                void this._onConfigurationChanged(affects);
             })
         );
     }
@@ -691,29 +693,28 @@ export class App implements vscode.WebviewViewProvider {
         this._detection.configureEnvironment();
     }
 
-    private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
-        if (e.affectsConfiguration(setting('showThoughts')) || e.affectsConfiguration(setting('showToolCalls'))) {
+    private async _onConfigurationChanged(affects: (key: string) => boolean): Promise<void> {
+        if (affects('showThoughts') || affects('showToolCalls')) {
             this._postConfig();
         }
-        if (e.affectsConfiguration(setting('models')) || e.affectsConfiguration(setting('defaultModel'))) {
+        if (affects('models') || affects('defaultModel')) {
             if (!this._models.isRuntimeSource()) {
                 this._models.reset();
             }
             void this._models.sync();
         }
-        if (e.affectsConfiguration(setting('agents'))) {
+        if (affects('agents')) {
             this._profiles.forgetDiscovered();
             this._profiles.postList();
         }
-        const reconnectKeys = [setting('path'), setting('profile')];
-        if (e.affectsConfiguration(setting('profile'))) {
+        const reconnectKeys = ['path', 'profile'];
+        if (affects('profile')) {
             // Another profile means another approvals.mode.
             this._approvals.onProfileChanged();
         }
-        if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
-                const config = vscode.workspace.getConfiguration(settingsSection());
-                this._profiles.selectionId = normalizeHermesCliProfile(config.get<string>('profile'));
+        if (reconnectKeys.some(key => affects(key))) {
+            if (affects('profile') && this._profiles.readAgentConfigs().length === 0) {
+                this._profiles.selectionId = normalizeHermesCliProfile(this._settings.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();
         }
@@ -845,7 +846,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The executable the connection would start: the configured path first, then the search. */
     private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
+        const configured = this._settings.get<string>('path');
         const quick = await tryResolveHermesQuick(configured);
         if (quick) {
             return quick;
@@ -1027,11 +1028,10 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private _postConfig(): void {
-        const config = vscode.workspace.getConfiguration(settingsSection());
         this._postMessage({
             type: 'config',
-            showThoughts: config.get<boolean>('showThoughts', true),
-            showToolCalls: config.get<boolean>('showToolCalls', true),
+            showThoughts: this._settings.get<boolean>('showThoughts', true),
+            showToolCalls: this._settings.get<boolean>('showToolCalls', true),
         });
     }
 

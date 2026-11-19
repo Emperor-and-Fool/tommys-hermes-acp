@@ -15,6 +15,22 @@ export interface EditorFolders {
 }
 
 /**
+ * One of our own settings, and the news that it changed.
+ *
+ * The section (`tommys` / `tommys2`) is the adapter's to know: the caller names a bare key, the
+ * same key its `package.json` contribution uses. A key outside our section never reaches the
+ * handler, which is what the old `affectsConfiguration(settingsSection())` guard did at each site.
+ */
+export interface EditorSettings {
+    /** A setting by its bare key (`path`, `models`): the editor's default when it has none. */
+    get<T>(key: string): T | undefined;
+    /** The same, with the default this caller wants when the setting is unset. */
+    get<T>(key: string, defaultValue: T): T;
+    /** Told when one of our settings changed; `affects` answers for a bare key. */
+    onDidChange(handler: (affects: (key: string) => boolean) => void): { dispose(): void };
+}
+
+/**
  * What the chat feature asks of the editor: the folders it may read, a file list, a file's head, a
  * file opened, text inserted at the cursor.
  *
