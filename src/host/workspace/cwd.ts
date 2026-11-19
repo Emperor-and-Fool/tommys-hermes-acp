@@ -1,5 +1,4 @@
 import path from 'path';
-import { workspaceIdFor } from './workSpace';
 
 /**
  * Containment by directory, not by string prefix: `/work/repo-secrets` is not inside `/work/repo`,
@@ -10,77 +9,72 @@ export function pathWithin(root: string, target: string): boolean {
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** The two roots a workspace records. Empty string means unset, and a workspace may have none. */
-export interface RootState {
-    primaryRoot: string;
-    permissionRoot: string;
+/** A folder a workspace offers: ours, by id, with the path it currently has. */
+export interface OfferedFolder {
+    folderId: string;
+    /** The folder's path. Empty when its row was lost: nothing can be put there. */
+    path: string;
+    /** When it joined this workspace: the fallback answer for "the most recent folder". */
+    addedAt: number;
+    /** Gone from the workspace: shown in the dialog, and not choosable. */
+    removed: boolean;
 }
 
-/** A workspace that has recorded no roots yet. */
-export const NO_ROOTS: RootState = { primaryRoot: '', permissionRoot: '' };
-
 /**
- * Which folders the picker offers: only a workspace showing two or more folders has a choice.
- * With one folder there is nothing to pick — that folder is the workspace (tier 1).
+ * A workspace's folders and its rows, through the port: the store behind it is the only writer.
+ *
+ * Ids, not paths: a session's cwd is `permissionRootFolderId`, so a folder that is moved changes one
+ * value in the folder table instead of every reference to it (00.02 §1). The workspace is named by
+ * its stored id, never by a hash of its path.
  */
+export interface RootsSource {
+    /** This workspace's folders, in the editor's last order. */
+    offered(workspaceId: string): OfferedFolder[];
+    /** The agent's default folder for this workspace: what a new session starts in. */
+    defaultFolderId(workspaceId: string): string;
+    setDefaultFolderId(workspaceId: string, folderId: string): void;
+    /** What the editor reports for a workspace: the folder tables behind every later question. */
+    record(workspaceId: string, paths: string[]): void;
+    /** A folder's path today. '' when the id is not one of ours. */
+    pathFor(folderId: string): string;
+    /** The stored id of a workspace, by the path the editor gives us. */
+    workspaceId(workspacePath: string): string;
+}
+
+/** The folders the picker may offer: a workspace showing two or more has a choice (tier 1). */
 export function offeredRoots(folders: string[]): string[] {
     return folders.length > 1 ? folders.slice() : [];
 }
 
 /**
- * What a workspace's roots become when the editor's folder list has changed.
+ * Which folder a new session starts in, by the rules the old roots had, now on folder ids.
  *
- * Three rules, and the third is why they are here:
- *   - a chosen root that is gone falls back to the primary;
- *   - a primary that is gone becomes the most recent folder — the last in the editor's order,
- *     which is where VS Code puts a folder added to a window (until folders record the moment
- *     they were opened, which is a later job);
- *   - a workspace that has never recorded a primary takes the first folder, and an empty folder
- *     list means no roots at all.
+ *   - one folder is the whole workspace: there is nothing to choose, so no choice is kept;
+ *   - a workspace that has never chosen takes its first folder;
+ *   - a chosen folder that is still there stays;
+ *   - a chosen folder that is gone becomes the most recently added one still there — `addedAt`,
+ *     not VS Code's position, because position says where it is drawn, not when it joined.
  */
-export function reconcileRoots(state: RootState, folders: string[]): RootState {
-    if (folders.length === 0) {
-        return NO_ROOTS;
+export function defaultFolderFor(storedFolderId: string, offered: OfferedFolder[]): string {
+    const live = offered.filter(folder => !folder.removed && folder.path);
+    if (live.length === 0) {
+        return '';
     }
-    if (folders.length === 1) {
-        // One folder is the whole workspace (tier 1): there is nothing to pick, so no pick is kept.
-        return { primaryRoot: folders[0], permissionRoot: '' };
+    if (live.length === 1) {
+        return live[0].folderId;
     }
-    const permissionRoot = state.permissionRoot && folders.includes(state.permissionRoot)
-        ? state.permissionRoot
-        : '';
-    let primaryRoot: string;
-    if (!state.primaryRoot) {
-        primaryRoot = folders[0];
-    } else if (folders.includes(state.primaryRoot)) {
-        primaryRoot = state.primaryRoot;
-    } else {
-        primaryRoot = folders[folders.length - 1];
+    if (!storedFolderId) {
+        return live[0].folderId;
     }
-    return { primaryRoot, permissionRoot };
-}
-
-/** The folder Hermes works in: the chosen root, else the primary. */
-export function effectiveRoot(state: RootState): string {
-    return state.permissionRoot || state.primaryRoot;
-}
-
-/**
- * A workspace's roots, through the port: the store behind it is the only writer.
- *
- * The key is the workspace **id**, not its path: the record lives in a registry both extensions
- * write, while the roots belong to one agent (ST5: references are ids).
- */
-export interface RootsSource {
-    roots(workspaceId: string): RootState;
-    setRoots(workspaceId: string, roots: RootState): void;
-    /** What VS Code reports for a workspace: the folder tables behind every later root choice. */
-    record(workspaceId: string, paths: string[]): void;
+    if (live.some(folder => folder.folderId === storedFolderId)) {
+        return storedFolderId;
+    }
+    return live.reduce((best, folder) => (folder.addedAt > best.addedAt ? folder : best), live[0]).folderId;
 }
 
 /** What the locator needs from the editor. Declared here; the composition root fills it. */
 export interface CwdSource {
-    /** The window's `.code-workspace` file, or '' when it opened plain folders. Not used to locate yet. */
+    /** The window's `.code-workspace` file, or '' when it opened plain folders. */
     workspaceFile(): string;
     /** The folders the window opened, in the editor's order. */
     folders(): string[];
@@ -89,60 +83,87 @@ export interface CwdSource {
 }
 
 /**
- * The one owner of "which folder is this window's cwd".
+ * The one owner of "which folder does this session work in".
  *
- * A workspace is our context; the folder is a member of it; the cwd is the one folder we hand to
- * Hermes, where its commands run and where Workspace edit mode lets it write. The editor decides
- * which folders are open — the user's Open menu, or the start — and nothing else does: focus does
- * not (no active-editor tier), settings do not (no `tommys.cwd`).
+ * One concept, not two: the folder Hermes works in for a session — its cwd, and the boundary for
+ * edits. `primaryRoot` and `permissionRoot` were the default and the pick of that same thing; the
+ * default is the agent's row per workspace (`defaultFolderId`) and the pick is the session's own
+ * (`permissionRootFolderId`), and both are folder ids resolved through the folder table.
  *
- * Tiers, in the order they are tried:
- *   1. one folder, no `.code-workspace` -> that folder is the workspace, so it is the cwd.
- *   2. a `.code-workspace` -> its first folder.
- *   3. later: a picked root among those folders. The seam is this method and nowhere else.
- * No folder: `''` — not a working area, so no cwd, no session, and Hermes is not started.
+ * The editor decides which folders are open — the user's Open menu, or the start — and nothing else:
+ * focus does not (no active-editor tier), settings do not (no `tommys.cwd`). No folder means no
+ * working area, so no cwd, no session, and Hermes is not started.
  */
 export class WorkspaceCwd {
-    constructor(private readonly _source: CwdSource, private readonly _roots?: RootsSource) {}
+    constructor(private readonly _source: CwdSource, private readonly _roots: RootsSource) {}
 
     /**
-     * The cwd for this window, or '' when the window opened no folder.
-     *
-     * Tier 1 and tier 2 are the first folder: with one folder that IS the workspace, and with a
-     * `.code-workspace` the first of its folders is the primary. Tier 3 is the user's pick, which
-     * only a workspace showing two or more folders can have.
+     * The cwd of a session: its own folder, else the agent's default for this workspace, else the
+     * one folder the workspace shows. `''` when nothing is left to work in.
      */
-    forWindow(): string {
-        const folders = this._source.folders();
-        if (folders.length === 0) {
+    forSession(permissionRootFolderId: string): string {
+        const live = this.live();
+        if (live.length === 0) {
             return '';
         }
-        if (folders.length === 1 || !this._roots) {
-            return folders[0];
+        if (live.length === 1) {
+            return live[0].path;
         }
-        return effectiveRoot(this.roots()) || folders[0];
+        const chosen = live.find(folder => folder.folderId === permissionRootFolderId)
+            || live.find(folder => folder.folderId === this.defaultFolderId())
+            || live[0];
+        return chosen.path;
+    }
+
+    /** The same answer as a path, for a caller with no session yet (a spawn, a new session). */
+    defaultFolderPath(): string {
+        const folderId = this.defaultFolderId();
+        return folderId ? this._roots.pathFor(folderId) : (this.live()[0]?.path || '');
     }
 
     /**
-     * This workspace's roots, reconciled with the folders the editor has now.
+     * This workspace's default folder for the agent, reconciled with the folders the editor has now.
      *
-     * Reconciling writes only when the rules actually moved something, so a plain read of the mode
-     * on every card does not turn into a write on every card.
+     * Written only when the rules actually moved something, so a plain read of the mode on every card
+     * does not turn into a write on every card.
      */
-    roots(): RootState {
-        const folders = this._source.folders();
-        const workspaceId = this.workspaceRootKey();
-        const stored = this._roots && workspaceId ? this._roots.roots(workspaceId) : NO_ROOTS;
-        const next = reconcileRoots(stored, folders);
-        if (this._roots && workspaceId && (next.primaryRoot !== stored.primaryRoot || next.permissionRoot !== stored.permissionRoot)) {
-            this._roots.setRoots(workspaceId, next);
+    defaultFolderId(): string {
+        const workspaceId = this.workspaceId();
+        if (!workspaceId) {
+            return '';
+        }
+        const stored = this._roots.defaultFolderId(workspaceId);
+        const next = defaultFolderFor(stored, this._roots.offered(workspaceId));
+        if (next && next !== stored) {
+            this._roots.setDefaultFolderId(workspaceId, next);
         }
         return next;
     }
 
-    /** This workspace's id: what its roots are filed under, in the agent's own file. */
-    private workspaceRootKey(): string {
-        return workspaceIdFor(this.workspaceIdentity());
+    /**
+     * The folders this workspace offers, live ones only.
+     *
+     * Before the folder tables hold this workspace (a window that has not recorded yet) the editor's
+     * own list is the truth, in its order: nothing else knows the folders at that moment.
+     */
+    live(): OfferedFolder[] {
+        const workspaceId = this.workspaceId();
+        const offered = workspaceId ? this._roots.offered(workspaceId) : [];
+        if (offered.length === 0) {
+            return this._source.folders().map((folderPath, index) => ({
+                folderId: '',
+                path: folderPath,
+                addedAt: index,
+                removed: false,
+            }));
+        }
+        return offered.filter(folder => !folder.removed && folder.path);
+    }
+
+    /** This workspace's stored id: identity, not a hash of its path (00.02 §1). */
+    workspaceId(): string {
+        const identity = this.workspaceIdentity();
+        return identity ? this._roots.workspaceId(identity) : '';
     }
 
     /**
@@ -159,20 +180,6 @@ export class WorkspaceCwd {
     /** The folders this window shows, in the editor's order. */
     folders(): string[] {
         return this._source.folders();
-    }
-
-    /** Record the folder the user picked. A folder this window does not show is refused. */
-    setPermissionRoot(folder: string): boolean {
-        if (folder && !this._source.folders().includes(folder)) {
-            return false;
-        }
-        const workspaceId = this.workspaceRootKey();
-        if (!this._roots || !workspaceId) {
-            return false;
-        }
-        const current = this.roots();
-        this._roots.setRoots(workspaceId, { primaryRoot: current.primaryRoot, permissionRoot: folder });
-        return true;
     }
 
     /**
@@ -194,10 +201,9 @@ export class WorkspaceCwd {
 
     /** Record what the editor reports for this workspace (00.02 §2). */
     recordFolders(): void {
-        const workspaceId = this.workspaceRootKey();
+        const workspaceId = this.workspaceId();
         if (workspaceId) {
-            this._roots?.record(workspaceId, this._source.folders());
+            this._roots.record(workspaceId, this._source.folders());
         }
     }
-
 }

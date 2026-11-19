@@ -3,48 +3,39 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { NO_ROOTS, effectiveRoot, offeredRoots, reconcileRoots } from '../../host/workspace/cwd';
+import { defaultFolderFor, offeredRoots } from '../../host/workspace/cwd';
+import type { OfferedFolder } from '../../host/workspace/cwd';
 import { ProfileWorkspaceStore } from '../../host/workspace/store';
-import { FoldersStore } from '../../host/store/folders';
 
 /**
  * The permission root: which folder Hermes works in when a workspace shows several. The rules are
  * pure so every case can be named without an editor, and the store keeps the answer per workspace.
  */
 describe('permission root: the rules', () => {
-    it('a workspace that recorded nothing takes the first folder as primary', () => {
-        assert.deepStrictEqual(reconcileRoots(NO_ROOTS, ['/w/a', '/w/b']),
-            { primaryRoot: '/w/a', permissionRoot: '' });
+    const offered = (rows: Array<[string, number, boolean]>): OfferedFolder[] =>
+        rows.map(([path, addedAt, removed]) => ({ folderId: `f-${path}`, path, addedAt, removed }));
+
+    it('a workspace that recorded nothing takes the first folder as its default', () => {
+        assert.strictEqual(defaultFolderFor('', offered([['/w/a', 1, false], ['/w/b', 2, false]])), 'f-/w/a');
     });
 
-    it('keeps the primary it has, and keeps the pick while its folder is still there', () => {
-        const state = { primaryRoot: '/w/a', permissionRoot: '/w/b' };
-        assert.deepStrictEqual(reconcileRoots(state, ['/w/a', '/w/b', '/w/c']), state);
+    it('keeps the default it has while its folder is still there', () => {
+        assert.strictEqual(defaultFolderFor('f-/w/b', offered([['/w/a', 1, false], ['/w/b', 2, false]])), 'f-/w/b');
     });
 
-    it('a chosen root that went away falls back to the primary', () => {
-        assert.deepStrictEqual(reconcileRoots({ primaryRoot: '/w/a', permissionRoot: '/w/b' }, ['/w/a']),
-            { primaryRoot: '/w/a', permissionRoot: '' });
+    it('a default that went away becomes the most recently added folder still there', () => {
+        assert.strictEqual(
+            defaultFolderFor('f-gone', offered([['/w/a', 50, false], ['/w/b', 10, false], ['/w/c', 99, true]])),
+            'f-/w/a',
+        );
     });
 
-    it('a primary that went away becomes the most recent folder, the last in the editor list', () => {
-        assert.deepStrictEqual(reconcileRoots({ primaryRoot: '/w/a', permissionRoot: '' }, ['/w/b', '/w/c']),
-            { primaryRoot: '/w/c', permissionRoot: '' });
+    it('one folder is the whole workspace: the default is that folder', () => {
+        assert.strictEqual(defaultFolderFor('f-old', offered([['/w/only', 1, false]])), 'f-/w/only');
     });
 
-    it('one folder is the whole workspace: the pick is dropped and that folder is the root', () => {
-        assert.deepStrictEqual(reconcileRoots({ primaryRoot: '/w/a', permissionRoot: '/w/b' }, ['/w/b']),
-            { primaryRoot: '/w/b', permissionRoot: '' });
-    });
-
-    it('no folders means no roots at all', () => {
-        assert.deepStrictEqual(reconcileRoots({ primaryRoot: '/w/a', permissionRoot: '/w/b' }, []), NO_ROOTS);
-    });
-
-    it('the root Hermes works in is the pick, else the primary', () => {
-        assert.strictEqual(effectiveRoot({ primaryRoot: '/w/a', permissionRoot: '/w/b' }), '/w/b');
-        assert.strictEqual(effectiveRoot({ primaryRoot: '/w/a', permissionRoot: '' }), '/w/a');
-        assert.strictEqual(effectiveRoot(NO_ROOTS), '');
+    it('no folders means no default at all', () => {
+        assert.strictEqual(defaultFolderFor('f-old', []), '');
     });
 
     it('a picker is offered only when there are two or more folders to choose between', () => {
@@ -90,14 +81,17 @@ describe('permission root: the store', () => {
         }
     });
 
-    it('answers the roots port in paths while the cwd owner still asks in paths', () => {
+    it('answers the port in folder ids, and names a workspace by its stored id', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-'));
         const store = new ProfileWorkspaceStore(dir, () => 'id-dev-vsc');
         try {
-            store.setRoots('w-1', { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-            // The pick belongs to the session now; only the default is this table's business.
-            assert.deepStrictEqual(store.roots('w-1'), { primaryRoot: '/w/a', permissionRoot: '' });
-            assert.strictEqual(store.defaultFolderId('w-1'), new FoldersStore(dir).folderFor('/w/a')!.id);
+            store.record('w-1', ['/w/a', '/w/b']);
+            const offered = store.offered('w-1');
+            assert.deepStrictEqual(offered.map(folder => folder.path), ['/w/a', '/w/b']);
+            assert.strictEqual(store.pathFor(offered[1].folderId), '/w/b');
+            const workspaceId = store.workspaceId('/w/space.code-workspace');
+            assert.ok(workspaceId.length > 0);
+            assert.strictEqual(store.workspaceId('/w/space.code-workspace'), workspaceId, 'a stored id, not a new one per call');
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }

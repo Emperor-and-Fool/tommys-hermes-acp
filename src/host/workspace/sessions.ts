@@ -315,6 +315,20 @@ export class Sessions {
         this.postList();
     }
 
+    /**
+     * Put a tab's permission root: the folder Hermes works in for that session, and the boundary for
+     * edits. Only the last choice is kept (00.02 §3), and the tab is written at once so a reload
+     * starts where the user left it.
+     */
+    setPermissionRoot(sessionId: string, folderId: string): boolean {
+        const tab = this.tabs.find(record => record.id === sessionId);
+        if (!tab) {
+            return false;
+        }
+        tab.permissionRootFolderId = folderId || undefined;
+        return this.saveCatalog();
+    }
+
     /** Point the pane at another tab: save the old one, and let the replay fill the new one. */
     activate(sessionId: string, options?: { skipSaveCurrent?: boolean }): void {
         this.host.log(`Switch to session: ${sessionId}`);

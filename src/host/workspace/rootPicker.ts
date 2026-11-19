@@ -20,6 +20,10 @@ export interface RootPickerHost {
     activeSessionBusy(): boolean;
     /** Re-load the active session so Hermes moves it to the new cwd now. */
     reloadActiveSession(): Promise<void>;
+    /** The root folder id of the tab on screen; '' when it has not chosen one. */
+    sessionRootId(): string;
+    /** Put that tab's root folder. False when the tab is not one of ours. */
+    setSessionRoot(folderId: string): boolean;
     /** The profile whose name the dialog uses. */
     profileLabel(): string;
     /** Told when a run ends: a pick refused while it ran applies then. */
@@ -102,7 +106,7 @@ export class RootPicker {
     state(options?: { open?: boolean; notice?: 'lastRootRemoved' | 'appliesNextRun' }): void {
         this._last = options;
         const folders = this._host.cwd.folders();
-        const root = this._host.cwd.forWindow();
+        const root = this._host.cwd.forSession(this._host.sessionRootId());
         const offered = offeredRoots(folders);
         const state = {
             type: 'permissionRootState' as const,
@@ -137,12 +141,13 @@ export class RootPicker {
 
     /** The pane's picker answered. */
     async setRoot(folder: string): Promise<void> {
-        const before = this._host.cwd.forWindow();
-        if (!this._host.cwd.setPermissionRoot(folder)) {
+        const before = this._host.cwd.forSession(this._host.sessionRootId());
+        const chosen = this._host.cwd.live().find(entry => entry.path === folder);
+        if (!chosen || !this._host.setSessionRoot(chosen.folderId)) {
             this.state();
             return;
         }
-        const after = this._host.cwd.forWindow();
+        const after = this._host.cwd.forSession(this._host.sessionRootId());
         if (after === before) {
             this.state();
             return;

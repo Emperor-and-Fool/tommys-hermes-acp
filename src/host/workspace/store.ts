@@ -4,7 +4,7 @@ import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic, writeAtomicText } from '../store/connection';
 import { FoldersStore } from '../store/folders';
-import type { RootState, RootsSource } from './cwd';
+import type { OfferedFolder, RootsSource } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
 import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './workSpace';
 
@@ -206,12 +206,15 @@ export function profileWorkspacesPathFor(historyDir: string, sessionProfileId: s
 export class ProfileWorkspaceStore implements RootsSource {
     /** The folder tables: the paths this table answers in ids are minted and read there. */
     private readonly _folders: FoldersStore;
+    /** The workspace registry: the id a workspace is filed under is a row there, not a hash. */
+    private readonly _workspaces: WorkspaceStore;
 
     constructor(
         private readonly _historyDir: string,
         private readonly _sessionProfileId: () => string,
     ) {
         this._folders = new FoldersStore(_historyDir);
+        this._workspaces = new WorkspaceStore(_historyDir);
     }
 
     get path(): string {
@@ -249,22 +252,28 @@ export class ProfileWorkspaceStore implements RootsSource {
         this._folders.record(workspaceId, paths);
     }
 
-    /**
-     * The roots a window works with, as ids resolved to paths.
-     *
-     * Kept for the cwd owner until step 5 hands it folder ids directly: `roots()` answers the
-     * agent's default folder as `primaryRoot`, and there is no per-workspace pick any more — a pick
-     * belongs to the session (`permissionRootFolderId`).
-     */
-    roots(workspaceId: string): RootState {
-        return { primaryRoot: this._folders.pathFor(this.defaultFolderId(workspaceId)), permissionRoot: '' };
+    /** The folders of a workspace, by id: what the cwd owner chooses among. */
+    offered(workspaceId: string): OfferedFolder[] {
+        return this._folders.foldersOf(workspaceId).map(folder => ({
+            folderId: folder.folderId,
+            path: folder.path,
+            addedAt: folder.addedAt,
+            removed: folder.removed,
+        }));
     }
 
-    setRoots(workspaceId: string, roots: RootState): void {
-        const folder = this._folders.folderFor(roots.primaryRoot);
-        if (folder) {
-            this.setDefaultFolderId(workspaceId, folder.id);
+    /** A folder's path today: the one value a move changes. */
+    pathFor(folderId: string): string {
+        return this._folders.pathFor(folderId);
+    }
+
+    /** A workspace's stored id, by its path. A path the registry has not seen becomes a row. */
+    workspaceId(workspacePath: string): string {
+        if (!workspacePath) {
+            return '';
         }
+        const known = this._workspaces.entryFor(workspacePath);
+        return known ? known.id : this._workspaces.ensure(workspacePath).id;
     }
 
     private _update(workspaceId: string, change: (row: ProfileWorkspaceRow) => ProfileWorkspaceRow): void {

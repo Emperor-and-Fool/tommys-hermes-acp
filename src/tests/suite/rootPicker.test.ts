@@ -5,9 +5,9 @@ import { RootPicker, type RootPickerHost } from '../../host/workspace/rootPicker
 import type { HostToPane } from '../../shared/webview';
 
 /** A window whose folder list a test can change, and a record that keeps what it is told. */
-function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '' }) {
+function harness(folders: string[], chosenRoot = '') {
     let list = folders.slice();
-    const state = { ...roots };
+    let sessionRoot = chosenRoot;
     const handlers: Array<() => void> = [];
     const cwd = new WorkspaceCwd(
         {
@@ -19,12 +19,17 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
             },
         },
         {
-            roots: () => ({ ...state }),
+            offered: () => list.map((folderPath, index) => ({
+                folderId: `f${index}`,
+                path: folderPath,
+                addedAt: index,
+                removed: false,
+            })),
+            defaultFolderId: () => 'f0',
+            setDefaultFolderId: () => undefined,
             record: () => undefined,
-            setRoots: (_path: string, next: { primaryRoot: string; permissionRoot: string }) => {
-                state.primaryRoot = next.primaryRoot;
-                state.permissionRoot = next.permissionRoot;
-            },
+            pathFor: (folderId: string) => list[Number(folderId.replace('f', ''))] || '',
+            workspaceId: () => 'w-1',
         },
     );
     const posts: HostToPane[] = [];
@@ -41,7 +46,12 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
         cwd,
         activeSessionBusy: () => busy,
         reloadActiveSession: async () => {
-            reloads.push(cwd.forWindow());
+            reloads.push(cwd.forSession(sessionRoot));
+        },
+        sessionRootId: () => sessionRoot,
+        setSessionRoot: (folderId: string) => {
+            sessionRoot = folderId;
+            return true;
         },
         profileLabel: () => 'dev-vsc',
         onRunEnded: (handler: () => void) => {
@@ -59,7 +69,6 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
         picker,
         posts,
         reloads,
-        state,
         setBusy: (value: boolean) => {
             busy = value;
         },
@@ -74,6 +83,8 @@ function harness(folders: string[], roots = { primaryRoot: '', permissionRoot: '
             handlers.forEach(handler => handler());
         },
         last: () => posts[posts.length - 1] as Extract<HostToPane, { type: 'permissionRootState' }>,
+        root: () => sessionRoot,
+        rootPath: () => cwd.forSession(sessionRoot),
     };
 }
 
@@ -107,7 +118,7 @@ describe('permission root: the picker', () => {
         await h.picker.setRoot('/w/b');
         assert.deepStrictEqual(h.reloads, ['/w/b']);
         assert.strictEqual(h.last().notice, undefined);
-        assert.strictEqual(h.state.permissionRoot, '/w/b');
+        assert.strictEqual(h.rootPath(), '/w/b');
     });
 
     it('a busy session is told the pick applies from the next run, and is left alone', async () => {
@@ -116,7 +127,7 @@ describe('permission root: the picker', () => {
         await h.picker.setRoot('/w/b');
         assert.deepStrictEqual(h.reloads, [], 'nothing is interrupted');
         assert.strictEqual(h.last().notice, 'appliesNextRun');
-        assert.strictEqual(h.state.permissionRoot, '/w/b', 'the choice is still recorded');
+        assert.strictEqual(h.rootPath(), '/w/b', 'the choice is still recorded');
     });
 
     it('a pick refused while busy is applied when that run ends', async () => {
@@ -136,7 +147,7 @@ describe('permission root: the picker', () => {
     it('refuses a folder this window does not show', async () => {
         const h = harness(['/w/a', '/w/b']);
         await h.picker.setRoot('/elsewhere');
-        assert.strictEqual(h.state.permissionRoot, '');
+        assert.strictEqual(h.root(), '', 'no root was put on the session');
         assert.deepStrictEqual(h.reloads, []);
     });
 });
@@ -152,7 +163,7 @@ describe('permission root: the start-up post', () => {
     });
 
     it('a stored choice is the one marked, not the primary', () => {
-        const h = harness(['/w/a', '/w/b'], { primaryRoot: '/w/a', permissionRoot: '/w/b' });
+        const h = harness(['/w/a', '/w/b'], 'f1');
         assert.strictEqual(h.lastOpen().root, '/w/b');
         assert.strictEqual(h.lastOpen().open, true);
     });
