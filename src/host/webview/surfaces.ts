@@ -83,6 +83,16 @@ export class Surfaces {
         return this._list.some(surface => !!surface.view);
     }
 
+    /**
+     * Whether the rail is on screen: the side panel, with the conversation in the editor.
+     *
+     * Only the rail opens the permission-root row by itself, so this is the one question the row
+     * asks before spending a new folder's welcome.
+     */
+    get railVisible(): boolean {
+        return this._list.some(surface => surface.role === 'rail' && surface.view?.visible === true);
+    }
+
     /** The webview the plugin icon is read from: whichever renderer exists. */
     get iconWebview(): vscode.Webview | undefined {
         return this._list[0]?.webview ?? this._view?.webview;

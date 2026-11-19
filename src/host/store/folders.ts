@@ -32,6 +32,12 @@ export interface FolderRow {
     [key: string]: unknown;
 }
 
+/**
+ * How long a folder that joins a workspace is announced as new. Kept here because the row is what
+ * remembers it: a window closed mid-way resumes from the seconds this store holds, not from 30.
+ */
+export const NEW_FOLDER_SECONDS = 30;
+
 /** One folder of one workspace, as reported by the editor. */
 export interface WorkspaceFolderRow {
     workspaceId: string;
@@ -41,6 +47,11 @@ export interface WorkspaceFolderRow {
     /** When it appeared in this workspace. `removed_at` absent means it is still there. */
     addedAt: number;
     removedAt?: number;
+    /**
+     * Seconds left of the "new folder" welcome, counted down only while the rail shows it.
+     * Absent means 0, which is what every row written before this column existed means.
+     */
+    newSecondsLeft?: number;
     [key: string]: unknown;
 }
 
@@ -52,6 +63,8 @@ export interface OfferedFolder {
     addedAt: number;
     /** Gone from the workspace: the row is kept, but nothing new may be put in it. */
     removed: boolean;
+    /** Seconds left of the welcome; 0 for a folder that is not new. */
+    newSecondsLeft?: number;
 }
 
 export function foldersPathFor(dataHome: string): string {
@@ -123,7 +136,8 @@ export class FoldersStore {
      *
      * A folder that appears gets `addedAt`; one that is gone gets `removedAt` and keeps its row; one
      * that comes back is live again with a fresh `addedAt`, because that is when it joined this
-     * workspace. Positions are VS Code's order.
+     * workspace. Positions are VS Code's order. A folder that joins — or rejoins — also gets the
+     * welcome, so the rail can say which one is new.
      */
     record(workspaceId: string, paths: string[], now = Date.now()): WorkspaceFolderRow[] {
         if (!workspaceId) {
@@ -138,13 +152,14 @@ export class FoldersStore {
         folderIds.forEach((folderId, position) => {
             const link = links.find(row => row.workspaceId === workspaceId && row.folderId === folderId);
             if (!link) {
-                links.push({ workspaceId, folderId, position, addedAt: now });
+                links.push({ workspaceId, folderId, position, addedAt: now, newSecondsLeft: NEW_FOLDER_SECONDS });
                 return;
             }
             link.position = position;
             if (link.removedAt !== undefined) {
                 delete link.removedAt;
                 link.addedAt = now;
+                link.newSecondsLeft = NEW_FOLDER_SECONDS;
             }
         });
         for (const link of links) {
@@ -156,6 +171,28 @@ export class FoldersStore {
             this._writeLinks(links);
         }
         return links.filter(link => link.workspaceId === workspaceId);
+    }
+
+    /**
+     * How much of a folder's welcome is left.
+     *
+     * One row, one write, and only when the value actually changed — a clock that is stopped after
+     * one tick writes once, and a clock stopped at the value it already had writes nothing.
+     * Returns whether anything was written.
+     */
+    setNewSecondsLeft(workspaceId: string, folderId: string, seconds: number): boolean {
+        if (!workspaceId || !folderId) {
+            return false;
+        }
+        const links = this._readLinks();
+        const link = links.find(row => row.workspaceId === workspaceId && row.folderId === folderId);
+        const next = Math.max(0, Math.round(seconds));
+        if (!link || (link.newSecondsLeft || 0) === next) {
+            return false;
+        }
+        link.newSecondsLeft = next;
+        this._writeLinks(links);
+        return true;
     }
 
     /**
@@ -174,6 +211,7 @@ export class FoldersStore {
                 position: link.position,
                 addedAt: link.addedAt,
                 removed: link.removedAt !== undefined,
+                newSecondsLeft: link.newSecondsLeft || 0,
             }));
     }
 

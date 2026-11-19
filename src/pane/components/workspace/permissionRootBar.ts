@@ -31,6 +31,8 @@ export function initPermissionRoot(): void {
         close.addEventListener('click', function () {
             open = false;
             drawRow();
+            // The host owns the countdown: a closed row stops it and keeps the seconds it reached.
+            post({ type: 'permissionRootClose' });
         });
     }
 }
@@ -56,6 +58,7 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
         folders: msg.folders,
         offered: msg.offered,
         profile: msg.profile,
+        newFolders: msg.newFolders || [],
         ...(msg.notice ? { notice: msg.notice } : {}),
     };
     // `open` is the host's automatic open, and it is only ever sent to a surface meant to show it.
@@ -104,15 +107,25 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
 
     const options = byId('permissionRootOptions');
     if (options) {
+        const fresh = new Set(msg.newFolders || []);
         options.textContent = '';
         msg.offered.forEach(function (folder) {
+            const isNew = fresh.has(folder);
             const choice = document.createElement('button');
             choice.type = 'button';
-            choice.className = 'permission-root-option' + (folder === msg.root ? ' is-current' : '');
+            choice.className = 'permission-root-option' + (folder === msg.root ? ' is-current' : '')
+                + (isNew ? ' is-new' : '');
             choice.dataset.root = folder;
             choice.textContent = baseName(folder);
             choice.title = folder;
             choice.setAttribute('aria-pressed', folder === msg.root ? 'true' : 'false');
+            if (isNew) {
+                // Behind the folder's own name: the word says what the colour means.
+                const badge = document.createElement('span');
+                badge.className = 'permission-root-new';
+                badge.textContent = locale.permissionRootNew || 'New';
+                choice.appendChild(badge);
+            }
             choice.addEventListener('click', function () {
                 post({ type: 'setPermissionRoot', root: folder });
             });

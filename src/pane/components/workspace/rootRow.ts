@@ -4,6 +4,8 @@ export interface RootFacts {
     folders: string[];
     offered: string[];
     profile: string;
+    /** The offered folders whose welcome has not run out: drawn with the word "New". */
+    newFolders?: string[];
     notice?: 'lastRootRemoved' | 'appliesNextRun';
 }
 

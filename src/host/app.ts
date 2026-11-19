@@ -212,6 +212,7 @@ export class App implements vscode.WebviewViewProvider {
         onViewResolved: () => { this._webviewLocale = getLocale(); },
         onViewVisible: () => {
             this._syncWebviewLocale();
+            this._rootPicker.railShown();
             if (!this._connection.acp) {
                 this._connection.connect();
             }
@@ -357,6 +358,8 @@ export class App implements vscode.WebviewViewProvider {
             setSessionRoot: (folderId) => this._session.setPermissionRoot(this._session.activeId, folderId),
             profileLabel: () => this._profiles.resolveTarget().displayName,
             onRunEnded: (handler) => this._connection.runEnded.on(handler),
+            onProfileActive: (handler) => this._connection.profileActive.on(handler),
+            railInView: () => this._surfaces.railVisible,
             postToRail: (msg) => this._surfaces.postToRole('rail', msg),
         });
         const agentProjects = new ProjectStore(this._historyDir, initialTarget.sessionProfileId, workspaces);

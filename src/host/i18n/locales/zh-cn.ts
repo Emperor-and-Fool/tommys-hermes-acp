@@ -46,6 +46,7 @@ export const zhCn: LocaleStrings = {
     permissionRootTitle: '权限根目录',
     permissionRootBody: '此工作区同时打开 {folders} 个文件夹，Hermes 只能在其中之一工作。'
         + '请选择 {profile} 的工作文件夹；该文件夹之外的编辑需要授权。',
+    permissionRootNew: '新',
     permissionRootLastRemoved: '最后一个根目录已移除：本项目无法再从本窗口访问。'
         + '其会话将保持未归属状态，只能通过 Hermes TUI 或重新打开该文件夹访问。',
     appliesNextRun: '将在下一轮运行时生效。',

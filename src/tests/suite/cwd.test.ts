@@ -58,6 +58,7 @@ function fakeRoots(
             },
             record: () => undefined,
             pathFor: folderId => offered.find(folder => folder.folderId === folderId)?.path || '',
+            setNewSecondsLeft: () => undefined,
             workspaceId: () => workspaceId,
         },
     };

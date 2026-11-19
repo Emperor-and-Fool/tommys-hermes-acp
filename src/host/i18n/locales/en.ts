@@ -47,6 +47,7 @@ export const en: LocaleStrings = {
     permissionRootTitle: 'Permission root',
     permissionRootBody: 'This workspace opens {folders} folders side by side. Hermes can work in one of them. '
         + 'Choose the folder {profile} works in; outside it, edits ask for permission.',
+    permissionRootNew: 'New',
     permissionRootLastRemoved: 'Last root removed: projects are no longer reachable from this window. '
         + 'Their sessions stay untagged, available only through the Hermes TUI or by reopening the folder.',
     appliesNextRun: 'Applies from the next run.',

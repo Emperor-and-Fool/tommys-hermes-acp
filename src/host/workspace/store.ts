@@ -259,12 +259,18 @@ export class ProfileWorkspaceStore implements RootsSource {
             path: folder.path,
             addedAt: folder.addedAt,
             removed: folder.removed,
+            newSecondsLeft: folder.newSecondsLeft,
         }));
     }
 
     /** A folder's path today: the one value a move changes. */
     pathFor(folderId: string): string {
         return this._folders.pathFor(folderId);
+    }
+
+    /** How much of a folder's "new" welcome is left, on the workspace row that owns it. */
+    setNewSecondsLeft(workspaceId: string, folderId: string, seconds: number): void {
+        this._folders.setNewSecondsLeft(workspaceId, folderId, seconds);
     }
 
     /** A workspace's stored id, by its path. A path the registry has not seen becomes a row. */

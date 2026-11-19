@@ -18,6 +18,8 @@ export interface OfferedFolder {
     addedAt: number;
     /** Gone from the workspace: shown in the dialog, and not choosable. */
     removed: boolean;
+    /** Seconds left of the "new folder" welcome; 0 (or absent) for a folder that is not new. */
+    newSecondsLeft?: number;
 }
 
 /**
@@ -37,6 +39,8 @@ export interface RootsSource {
     record(workspaceId: string, paths: string[]): void;
     /** A folder's path today. '' when the id is not one of ours. */
     pathFor(folderId: string): string;
+    /** How much of a folder's "new" welcome is left: the row is the record, not the caller. */
+    setNewSecondsLeft(workspaceId: string, folderId: string, seconds: number): void;
     /** The stored id of a workspace, by the path the editor gives us. */
     workspaceId(workspacePath: string): string;
 }
@@ -204,6 +208,19 @@ export class WorkspaceCwd {
         const workspaceId = this.workspaceId();
         if (workspaceId) {
             this._roots.record(workspaceId, this._source.folders());
+        }
+    }
+
+    /**
+     * How much of a folder's "new" welcome is left, written to the row that owns it.
+     *
+     * The value sits on the workspace row, so the primary and the secondant share it: they share
+     * the workspace, and a folder that just joined is new to both of them.
+     */
+    setFolderNewSeconds(folderId: string, seconds: number): void {
+        const workspaceId = this.workspaceId();
+        if (workspaceId && folderId) {
+            this._roots.setNewSecondsLeft(workspaceId, folderId, seconds);
         }
     }
 }

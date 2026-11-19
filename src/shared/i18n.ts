@@ -46,6 +46,8 @@ export interface LocaleStrings {
     permissionRootTitle: string;
     permissionRootBody: string;
     permissionRootLastRemoved: string;
+    /** The word on a folder that just joined the workspace. */
+    permissionRootNew: string;
     appliesNextRun: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */

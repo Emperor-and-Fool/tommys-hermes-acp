@@ -85,6 +85,55 @@ describe('the folder tables', () => {
         }
     });
 
+    it('gives a folder that joins the workspace the welcome, and one that comes back too', () => {
+        const home = tempHome();
+        try {
+            const store = new FoldersStore(home);
+            store.record('w1', ['/w/a'], 1000);
+            assert.strictEqual(store.foldersOf('w1')[0].newSecondsLeft, 30, 'a new folder is new');
+
+            store.record('w1', ['/w/a', '/w/b'], 2000);
+            const second = store.foldersOf('w1')[1];
+            assert.deepStrictEqual([second.path, second.newSecondsLeft], ['/w/b', 30]);
+
+            // The welcome is spent, the folder leaves, and it joins again: that is a new joining.
+            store.setNewSecondsLeft('w1', second.folderId, 0);
+            store.record('w1', ['/w/a'], 3000);
+            store.record('w1', ['/w/a', '/w/b'], 4000);
+            const back = store.foldersOf('w1').find(folder => folder.path === '/w/b')!;
+            assert.strictEqual(back.newSecondsLeft, 30, 'a returning folder is new again');
+
+            // A plain re-record of the same list spends nothing and refreshes nothing.
+            store.setNewSecondsLeft('w1', back.folderId, 12);
+            store.record('w1', ['/w/a', '/w/b'], 5000);
+            assert.strictEqual(store.foldersOf('w1').find(folder => folder.path === '/w/b')!.newSecondsLeft, 12);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('writes the seconds left only when the value changed', () => {
+        const home = tempHome();
+        try {
+            const store = new FoldersStore(home);
+            store.record('w1', ['/w/a'], 1000);
+            const folderId = store.foldersOf('w1')[0].folderId;
+            const linksPath = workspaceFoldersPathFor(home);
+            const before = fs.statSync(linksPath);
+
+            assert.strictEqual(store.setNewSecondsLeft('w1', folderId, 30), false, 'the same value is not written');
+            const afterSame = fs.statSync(linksPath);
+            assert.strictEqual(afterSame.mtimeMs, before.mtimeMs);
+            assert.strictEqual(afterSame.ino, before.ino, 'no temp file was renamed over it');
+
+            assert.strictEqual(store.setNewSecondsLeft('w1', folderId, 25.4), true);
+            assert.strictEqual(store.foldersOf('w1')[0].newSecondsLeft, 25, 'seconds are whole');
+            assert.strictEqual(store.setNewSecondsLeft('w1', 'not-a-folder', 10), false, 'no row, nothing written');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
     it('keeps a row it does not understand, and reads a missing table as empty', () => {
         const home = tempHome();
         try {

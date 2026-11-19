@@ -4028,3 +4028,30 @@ body.is-viewer .multi-select-toolbar {
 .permission-root-option:hover {
     background: var(--input-bg);
 }
+
+/*
+ * A folder that just joined the workspace: the chip flashes orange and carries the word, so the
+ * colour has a meaning written next to it. The current chip stays green, so a chip that is both
+ * keeps its border and gains the flash plus the word.
+ */
+.permission-root-option.is-new {
+    animation: permission-root-new-flash 1.6s ease-in-out infinite;
+}
+
+.permission-root-option.is-new:not(.is-current) {
+    border-color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+.permission-root-new {
+    margin-left: 6px;
+    color: var(--vscode-editorWarning-foreground, #d18616);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+@keyframes permission-root-new-flash {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    50% { box-shadow: 0 0 0 2px var(--vscode-editorWarning-foreground, #d18616); }
+}

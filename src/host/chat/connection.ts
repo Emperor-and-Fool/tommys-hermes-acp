@@ -1,4 +1,4 @@
-import { RunEnded } from './runEnded';
+import { Signal } from './signal';
 import { AcpClient, TokenUsage } from '../acp/AcpClient';
 import { tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
@@ -354,6 +354,8 @@ export class Connection {
             if (abandoned()) {
                 return;
             }
+            // The catalog has just been applied, counts and all: this profile is active now.
+            this.profileActive.fire();
             await this._host.models.sync({ skipModelOptions: true });
             if (abandoned()) {
                 return;
@@ -457,7 +459,15 @@ export class Connection {
     }
 
     /** Said whenever a run ends: the features that were refused while it ran act on it. */
-    readonly runEnded = new RunEnded();
+    readonly runEnded = new Signal();
+
+    /**
+     * Said whenever a profile becomes active: the agent connected and its sessions are on screen.
+     *
+     * Fired where the catalog has just been applied (`connectInner`, after `resumeOrAdopt`), which
+     * is app start, a profile switch and a workspace switch — never a tab switch.
+     */
+    readonly profileActive = new Signal();
 
     /** Listeners for the mode Hermes reports: the permissions feature brings edits in line. */
     private readonly _sessionModeListeners = new Set<(mode: string) => void>();

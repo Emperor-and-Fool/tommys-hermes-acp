@@ -216,6 +216,9 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
         case 'openPermissionRoot':
             host.permissionRoot.open();
             break;
+        case 'permissionRootClose':
+            host.permissionRoot.close();
+            break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');
             break;
