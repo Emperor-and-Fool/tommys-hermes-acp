@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { Profiles } from '../../host/environment/profiles';
+import { Profiles, excludedProfiles } from '../../host/environment/profiles';
 import { ProfilesStore } from '../../host/store/profiles';
 
 function createStateDb(dbPath: string, sessionIds: string[]): void {
@@ -20,7 +20,11 @@ function createStateDb(dbPath: string, sessionIds: string[]): void {
     }
 }
 
-function setup(settings: Record<string, unknown> = {}, hermesHome?: string) {
+function setup(
+    settings: Record<string, unknown> = {},
+    hermesHome?: string,
+    excluded: Array<{ cliProfile: string }> = []
+) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-profiles-target-'));
     const store = new ProfilesStore(home);
     const profiles = new Profiles({
@@ -33,6 +37,7 @@ function setup(settings: Record<string, unknown> = {}, hermesHome?: string) {
         settings: { get: <T>(key: string) => settings[key] as T | undefined },
         store,
         hermesHome: hermesHome ? () => hermesHome : undefined,
+        excludedProfiles: () => excluded,
     });
     return { home, store, profiles };
 }
@@ -145,6 +150,50 @@ describe('connecting by the name Hermes has', () => {
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
             fs.rmSync(hermes, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('the exclusion list', () => {
+    it("is this window's sibling plus what the other windows announced", () => {
+        const list = excludedProfiles({
+            sibling: 'kitt',
+            elsewhere: [{ cliProfile: 'dev' }, { cliProfile: '' }],
+        });
+        assert.deepStrictEqual(list, [
+            { cliProfile: 'kitt', holder: 'the secondant' },
+            { cliProfile: 'dev', holder: 'another window' },
+        ]);
+    });
+
+    it('names the primary, and trims the profile it is given', () => {
+        const list = excludedProfiles({ primary: '  dev  ', elsewhere: [] });
+        assert.deepStrictEqual(list, [{ cliProfile: 'dev', holder: 'the primary' }]);
+    });
+
+    it('offers none of the excluded profiles in the picker', () => {
+        const { home, profiles } = setup(
+            { agents: [{ name: 'A', profile: 'dev' }, { name: 'B', profile: 'kitt' }] },
+            undefined,
+            [{ cliProfile: 'dev' }, { cliProfile: 'kitt' }]
+        );
+        try {
+            assert.deepStrictEqual(profiles.entries(), [], 'both are held elsewhere');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('offers the ones nothing excludes', () => {
+        const { home, profiles } = setup(
+            { agents: [{ name: 'A', profile: 'dev' }, { name: 'B', profile: 'kitt' }] },
+            undefined,
+            [{ cliProfile: 'dev' }]
+        );
+        try {
+            assert.deepStrictEqual(profiles.entries().map(entry => entry.id), ['B']);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
         }
     });
 });

@@ -45,8 +45,8 @@ export interface ConnectionHost {
     steerNotice(text: string): void;
     /** A switch completed: the new profile's display name. */
     profileChanged(name: string): void;
-    /** The profile this extension may not use: the primary's, seen from the secondant. */
-    excludedProfile?: () => string | undefined;
+    /** The profile this extension may not use: the sibling's, or one live in another window. */
+    excludedProfiles?: () => Array<{ cliProfile: string; holder: string }>;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): PaneSurface | undefined;
@@ -150,12 +150,13 @@ export class Connection {
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
 
-        // The rule the two extensions live by: the secondant never runs on the primary's
-        // profile. Checked here, on every path that connects, because a picker that hides it is
-        // a preference while this is the guarantee.
-        const excluded = this._host.excludedProfile?.();
-        if (excluded && target.cliProfile === excluded) {
-            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to the primary`);
+        // The rule the extensions live by: two panes never run on one profile — not the sibling in
+        // this window, and not an instance in another one. Checked here, on every path that
+        // connects, because a picker that hides them is a preference while this is the guarantee.
+        const excluded = (this._host.excludedProfiles?.() || []).filter(entry => !!entry.cliProfile);
+        const refusedBy = excluded.find(entry => entry.cliProfile === target.cliProfile);
+        if (refusedBy) {
+            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to ${refusedBy.holder}`);
             this._host.post({
                 type: 'status',
                 status: 'error',

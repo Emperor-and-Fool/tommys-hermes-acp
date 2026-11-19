@@ -50,6 +50,43 @@ export interface SettingsReader {
     get<T>(key: string): T | undefined;
 }
 
+/** A profile this instance may not run on, and who holds it. The holder is for the log line. */
+export interface ExcludedProfile {
+    cliProfile: string;
+    holder: string;
+}
+
+/**
+ * The exclusion list the picker and the connect guarantee share.
+ *
+ * In this window the two extensions withhold each other's profile through their junction; in any
+ * other window each instance announces its own in the presence table (`store/presence.ts`).
+ * Normalised here, once: the comparison is on the CLI profile, never on the label an agent
+ * happens to be called.
+ */
+export function excludedProfiles(input: {
+    /** The primary's profile, as the secondant is told it. */
+    primary?: string;
+    /** The secondant's profile, as the primary is told it. */
+    sibling?: string;
+    /** Every row another running instance announced, with its profile. */
+    elsewhere: Array<{ cliProfile: string }>;
+}): ExcludedProfile[] {
+    const list: ExcludedProfile[] = [];
+    if (input.primary) {
+        list.push({ cliProfile: normalizeHermesCliProfile(input.primary), holder: 'the primary' });
+    }
+    if (input.sibling) {
+        list.push({ cliProfile: normalizeHermesCliProfile(input.sibling), holder: 'the secondant' });
+    }
+    for (const row of input.elsewhere) {
+        if (row.cliProfile) {
+            list.push({ cliProfile: normalizeHermesCliProfile(row.cliProfile), holder: 'another window' });
+        }
+    }
+    return list.filter(entry => !!entry.cliProfile);
+}
+
 /** What the profile selector needs from the provider. */
 export interface ProfilesHost {
     log(line: string): void;
@@ -58,8 +95,12 @@ export interface ProfilesHost {
     settings: SettingsReader;
     /** The profile table: names to the ids our records will hang off (host/store/profiles.ts). */
     store: ProfilesStore;
-    /** The profile the picker must not offer: the primary's, when this is the secondant. */
-    excludedProfile?: () => string | undefined;
+    /**
+     * The profiles the picker must not offer: the sibling's in this window, and every profile a
+     * running instance announced in another window. Named by the CLI profile, the value the agent
+     * actually runs on.
+     */
+    excludedProfiles?: () => Array<{ cliProfile: string }>;
     /** Where Hermes keeps its profiles. Absent means the real home; a test passes a temp one. */
     hermesHome?: () => string;
 }
@@ -240,15 +281,16 @@ export class Profiles {
             ? agents.map(a => ({ id: a.name, label: a.name }))
             : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
 
-        // The secondant may not offer the profile the primary is on: it is not a preference,
-        // it is the rule the two extensions live by. Compare what the agent will run on
-        // (`cliProfile`), not the id or label an agent happens to be called.
-        const excluded = this._host.excludedProfile?.();
-        if (!excluded) {
+        // The rule the extensions live by: two panes may not run on one profile, in this window or
+        // in any other. Compare what the agent will run on (`cliProfile`), not the id or label an
+        // agent happens to be called.
+        const excluded = (this._host.excludedProfiles?.() || [])
+            .map(entry => normalizeHermesCliProfile(entry.cliProfile))
+            .filter(Boolean);
+        if (excluded.length === 0) {
             return list;
         }
-        const excludedCli = normalizeHermesCliProfile(excluded);
-        return list.filter(entry => this.resolveTarget(entry.id).cliProfile !== excludedCli);
+        return list.filter(entry => !excluded.includes(this.resolveTarget(entry.id).cliProfile));
     }
 
     readAgentConfigs(): HermesAgentConfig[] {

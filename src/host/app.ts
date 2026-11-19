@@ -10,6 +10,8 @@ import { EnvironmentDetection } from './environment/detection';
 import { ensureDataHome } from './store/connection';
 import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
+import { PresenceStore } from './store/presence';
+import { ProfilePresence } from './environment/presence';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
 import type { ExtensionIdentity } from '../shared/extensionId';
@@ -38,7 +40,7 @@ import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
 import type { RouterHost } from './webview/router';
 import { Sessions } from './workspace/sessions';
-import { Profiles } from './environment/profiles';
+import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
@@ -172,6 +174,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Which profile/agent we connect to, and which the picker offers. */
     private readonly _profiles: Profiles;
+
+    /** This window's row in the cross-window presence table: who runs what, for every picker. */
+    private readonly _presence: ProfilePresence;
 
     /** This tab's own messages offered to the picker; not an earlier session. */
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
@@ -313,9 +318,22 @@ export class App implements vscode.WebviewViewProvider {
             globalState: context.globalState,
             settings: this._settings,
             store: new ProfilesStore(storagePath),
-            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
+            excludedProfiles: () => excludedProfiles({
+                primary: this._primary?.activeProfile || '',
+                sibling: this._siblingProfile,
+                elsewhere: this._presence.live(),
+            }),
         });
         this._profiles.seedStore();
+        // Announced before anything asks who may run what: the pickers read the other windows'
+        // rows through `_presence.live()`, and this instance's own row is what they see there.
+        this._presence = new ProfilePresence({
+            store: new PresenceStore(storagePath),
+            role: this._id.role,
+            profile: () => this._profiles.resolveTarget().cliProfile,
+            log: (line) => this._log(line),
+        });
+        this._presence.start();
         this._attachments = new AttachmentStore(this._historyDir);
         runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
@@ -455,10 +473,15 @@ export class App implements vscode.WebviewViewProvider {
             steerNotice: (text) => this._log(text),
             profileChanged: (name) => {
                 this._fireProfileChanged(name);
+                // A new profile is news for the other windows now, not on the next beat.
+                this._presence.beat();
                 // Push it up too: the primary's picker must stop offering this profile.
                 this._primary?.registerSiblingProfile?.(this.activeProfile);
             },
-            excludedProfile: () => this._primary?.activeProfile || undefined,
+            excludedProfiles: () => excludedProfiles({
+                primary: this._primary?.activeProfile || '',
+                elsewhere: this._presence.live(),
+            }),
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
@@ -1478,6 +1501,7 @@ export class App implements vscode.WebviewViewProvider {
         this._mail?.presence.dispose();
         this._output.dispose();
         this._profileListeners.clear();
+        this._presence.dispose();
     }
 
 }
