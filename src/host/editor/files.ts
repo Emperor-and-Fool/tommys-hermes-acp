@@ -9,7 +9,8 @@ const EXCLUDE = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.hermes/
  * The editor, behind the port the chat feature declares.
  *
  * This is the only place the pane's file actions meet `vscode`: listing, reading a head, opening a
- * file, inserting at the cursor. The rule about what may be read lives with the feature; this file
+ * file, inserting at the cursor. It lives in `host/editor/`, the folder F6 gives to everything the
+ * editor does that is not one of our own views. The rule about what may be read lives with the feature; this file
  * only answers what the editor knows.
  */
 export function createEditorFiles(): EditorFiles {

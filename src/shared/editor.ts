@@ -3,7 +3,7 @@
  * file opened, text inserted at the cursor.
  *
  * Declared in `shared/` because two sides need this shape — the feature that asks (`chat/files.ts`)
- * and the adapter that answers (`environment/editor.ts`) — and the architecture lets both import
+ * and the adapter that answers (`editor/files.ts`) — and the architecture lets both import
  * `shared/` while a feature may not be imported by infrastructure (F5).
  */
 export interface EditorFiles {

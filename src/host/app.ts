@@ -25,7 +25,7 @@ import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
-import { createEditorFiles } from './environment/editor';
+import { createEditorFiles } from './editor/files';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
 import type { CwdSource } from './workspace/cwd';
