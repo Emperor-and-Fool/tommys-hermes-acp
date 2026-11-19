@@ -9,6 +9,7 @@
 import * as vscode from 'vscode';
 import { App } from './app';
 import { initI18n, t } from './i18n';
+import { createEditorNotices } from './editor/notices';
 import type { ExtensionIdentity } from '../shared/extensionId';
 
 /** What the secondant may ask the primary: only which profile it is on. */
@@ -44,6 +45,8 @@ export function activateExtension(
 ): App {
     initI18n();
     console.log(`Tommys Hermes (${id.role}) activating...`);
+
+    const notices = createEditorNotices();
 
     // The App builds its own adapters for the editor (`editor/`, F6): `vscode` is reached there,
     // not here, so this side only names what it needs.
@@ -83,7 +86,7 @@ export function activateExtension(
         vscode.commands.registerCommand(id.cmd('sendSelection'), () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.selection.isEmpty) {
-                void vscode.window.showInformationMessage(t('selectCodeFirst'));
+                notices.info(t('selectCodeFirst'));
                 return;
             }
             const selection = editor.document.getText(editor.selection);

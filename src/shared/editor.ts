@@ -1,4 +1,15 @@
 /**
+ * What the user is told, in the editor's own voice.
+ *
+ * Not the pane's: these are the editor's notifications, and they were always `vscode.window`'s.
+ * A level is all the caller chooses — the feature does not know how a notice is shown.
+ */
+export interface EditorNotices {
+    info(message: string): void;
+    warn(message: string): void;
+}
+
+/**
  * The window's folders and its workspace file: what the editor has open.
  *
  * Two features ask this: the cwd owner (`workspace/cwd.ts`, which only knows the first three

@@ -27,6 +27,7 @@ import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
 import { createEditorFiles } from './editor/files';
 import { createEditorFolders } from './editor/folders';
+import { createEditorNotices } from './editor/notices';
 import { createEditorSettings } from './editor/settings';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
@@ -254,6 +255,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Our own settings, by bare key, and the news that one changed. */
     private readonly _settings = createEditorSettings();
+
+    /** What the user is told: the editor's toasts, never the pane's. */
+    private readonly _notices = createEditorNotices();
 
     /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
     private readonly _rootPicker: RootPicker;
@@ -667,15 +671,15 @@ export class App implements vscode.WebviewViewProvider {
         await this._connection.awaitSessionReady();
         await this._models.awaitSwitch();
         if (!this._connection.acp) {
-            vscode.window.showWarningMessage(t('hermesNotConnectedConnecting'));
+            this._notices.warn(t('hermesNotConnectedConnecting'));
             await this._connection.connect();
         }
         if (!this._connection.acp) {
-            vscode.window.showWarningMessage(t('hermesNotConnected'));
+            this._notices.warn(t('hermesNotConnected'));
             return;
         }
         if (this._session.tabs.length === 0) {
-            vscode.window.showWarningMessage(t('noActiveTabHint'));
+            this._notices.warn(t('noActiveTabHint'));
             return;
         }
         this._enqueueChatOp(async () => {
@@ -1116,7 +1120,7 @@ export class App implements vscode.WebviewViewProvider {
         }
         const other = this._mail.presence.other();
         if (!other) {
-            void vscode.window.showInformationMessage(t('otherPaneNotLive'));
+            this._notices.info(t('otherPaneNotLive'));
             return;
         }
         const sent = this._mail.outbox.send(
@@ -1138,7 +1142,7 @@ export class App implements vscode.WebviewViewProvider {
             })
         );
         if (sent) {
-            void vscode.window.showInformationMessage(`Forwarded to ${other.profile}`);
+            this._notices.info(`Forwarded to ${other.profile}`);
         }
     }
 
