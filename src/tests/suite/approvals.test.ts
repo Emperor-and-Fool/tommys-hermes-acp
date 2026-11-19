@@ -4,7 +4,7 @@ import { Approvals, editModeFor, type ApprovalsHost } from '../../host/permissio
 import type { HostToPane } from '../../shared/webview';
 
 /** The feature with a recording control, so the order of its writes is what the test checks. */
-function harness(options: { patterns?: string[]; backupFails?: boolean; reported?: string } = {}) {
+function harness(options: { patterns?: string[]; backupFails?: boolean; reported?: string; echo?: boolean } = {}) {
     const calls: string[] = [];
     const posts: HostToPane[] = [];
     let openAccess = false;
@@ -42,16 +42,22 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
     };
     let busy = false;
     let reported = options.reported ?? 'default';
+    let sessionId = 'session-1';
     const sessionModes: string[] = [];
     const runEnded: Array<() => void> = [];
+    const sessionModeHandlers: Array<(mode: string) => void> = [];
     const acp = {
-        activeSessionId: 'session-1',
+        get activeSessionId() {
+            return sessionId;
+        },
         get currentSessionMode() {
             return reported;
         },
         setSessionMode: async (mode: string) => {
             sessionModes.push(mode);
-            reported = mode;
+            if (options.echo !== false) {
+                reported = mode;
+            }
         },
     };
     const host: ApprovalsHost = {
@@ -67,7 +73,10 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
             runEnded.push(handler);
             return () => undefined;
         },
-        onSessionMode: () => () => undefined,
+        onSessionMode: (handler: (mode: string) => void) => {
+            sessionModeHandlers.push(handler);
+            return () => undefined;
+        },
         respondToPermission: () => {},
         storedPermissionOption: () => undefined,
         locale: () => ({}) as never,
@@ -84,6 +93,14 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
             busy = value;
         },
         endRun: () => runEnded.forEach(handler => handler()),
+        /** Hermes says what a session's mode is: the client's report, then our listeners. */
+        fireSessionMode: (mode: string) => {
+            reported = mode;
+            sessionModeHandlers.forEach(handler => handler(mode));
+        },
+        setSessionId: (id: string) => {
+            sessionId = id;
+        },
         reported: () => reported,
     };
 }
@@ -189,5 +206,66 @@ describe('permissions feature: a change made while a run is in flight', () => {
         const posts = h.posts.filter(msg => msg.type === 'approvalMode') as Array<{ notice?: string }>;
         assert.strictEqual(posts[posts.length - 1]?.notice, undefined);
         assert.deepStrictEqual(h.sessionModes, ['accept_edits']);
+    });
+});
+
+describe('permissions feature: the edit mode a first prompt waits for', () => {
+    it('one intent is one set_mode, even with the session-mode listener in the way', async () => {
+        // Hermes does not echo the mode here: that is the window in which a second caller could
+        // send the same request again.
+        const h = harness({ echo: false });
+        const awaited = h.approvals.applyEdits();
+        const listener = h.approvals.applyEdits();
+        h.fireSessionMode('default');
+
+        await Promise.all([awaited, listener]);
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits'], 'one request, not two');
+    });
+
+    it('a refused set_mode is logged, and the state still says a mode is waiting for that session', async () => {
+        const h = harness();
+        h.setBusy(true);
+        await h.approvals.applyEdits();
+
+        const last = h.posts.filter(post => post.type === 'approvalMode').pop() as
+            { notice?: string; noticeSessionId?: string };
+        assert.strictEqual(last.notice, 'appliesNextRun');
+        assert.strictEqual(last.noticeSessionId, 'session-1', 'the notice names the session it waits for');
+        assert.deepStrictEqual(h.sessionModes, [], 'nothing was sent while the run was busy');
+    });
+
+    it('a blank chat has nothing deferred, so it posts no notice', async () => {
+        const h = harness();
+        h.setSessionId('');
+        h.setBusy(true);
+        await h.approvals.applyEdits();
+        assert.ok(!h.posts.some(post => (post as { notice?: string }).notice), 'no session, no notice');
+    });
+
+    it('a run that ends on another session does not apply the mode here', async () => {
+        const h = harness();
+        h.setBusy(true);
+        await h.approvals.applyEdits();
+        assert.strictEqual((h.posts.length > 0), true);
+
+        h.setSessionId('session-2');
+        h.setBusy(false);
+        h.endRun();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepStrictEqual(h.sessionModes, [], 'the mode belongs to session-1, which is not loaded');
+    });
+
+    it('the mode it waited for is applied when that session is the one that ended', async () => {
+        const h = harness();
+        h.setBusy(true);
+        await h.approvals.applyEdits();
+        h.setBusy(false);
+        h.endRun();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits']);
+        const last = h.posts.filter(post => post.type === 'approvalMode').pop() as { notice?: string };
+        assert.strictEqual(last.notice, undefined, 'and the notice is over');
     });
 });

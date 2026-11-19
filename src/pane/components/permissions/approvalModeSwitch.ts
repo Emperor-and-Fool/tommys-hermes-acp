@@ -281,9 +281,11 @@ export function applyApprovalMode(
     denyBackup?: string,
     openAccess?: boolean,
     notice?: 'appliesNextRun',
+    noticeSessionId?: string,
 ): void {
     permissionsState.approvalMode = mode || 'unknown';
     permissionsState.approvalModeNotice = notice === 'appliesNextRun' ? 'appliesNextRun' : '';
+    permissionsState.approvalModeNoticeSession = notice === 'appliesNextRun' ? (noticeSessionId || '') : '';
     permissionsState.approvalModeError = error || '';
     if (typeof denyCount === 'number') {
         permissionsState.approvalDenyCount = denyCount;

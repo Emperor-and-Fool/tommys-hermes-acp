@@ -405,7 +405,7 @@ export function init(): void {
 
             case 'approvalMode':
                 approvalModeSwitch.applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup,
-                    msg.openAccess, msg.notice);
+                    msg.openAccess, msg.notice, msg.noticeSessionId);
                 permissionModeBar.syncPermissionModeNotice();
                 break;
 

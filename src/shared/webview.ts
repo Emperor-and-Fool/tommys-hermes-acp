@@ -91,7 +91,7 @@ export type HostToPane =
      * The button's state. `notice` is set while an edit mode waits for the run in flight: commands
      * follow the button at once, edits only when that run ends.
      */
-    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean; notice?: 'appliesNextRun' }
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean; notice?: 'appliesNextRun'; noticeSessionId?: string }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }

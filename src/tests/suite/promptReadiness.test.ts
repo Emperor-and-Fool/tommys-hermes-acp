@@ -12,30 +12,42 @@ import type { HostToPane } from '../../shared/webview';
  * session that does not exist.
  */
 describe('session readiness', () => {
-    const acp = (status: 'ready' | 'error', sessionId: string) => ({
+    const acp = (status: 'ready' | 'error', sessionId: string, order: string[]) => ({
         activeSessionId: sessionId,
         status,
-        newSession: async () => undefined,
+        newSession: async () => {
+            order.push('session/new');
+        },
         loadSession: async () => undefined,
     });
 
-    const host = (status: 'ready' | 'error', sessionId: string) => {
+    const host = (status: 'ready' | 'error', sessionId: string, editModeFails = false) => {
         const posted: HostToPane[] = [];
+        const logged: string[] = [];
+        const order: string[] = [];
         let bound = '';
         const value = {
-            acp: () => acp(status, sessionId) as never,
+            acp: () => acp(status, sessionId, order) as never,
             acpStatus: () => status,
             sessionId: () => 'tab-a',
             messages: () => [],
             tabs: () => [{ id: 'tab-a', title: 'New Chat', createdAt: 0, updatedAt: 0 }],
             resolveCwd: () => '/tmp/window',
             resolveCwdFor: () => '/tmp',
-            log: () => undefined,
+            log: (line: string) => {
+                logged.push(line);
+            },
             post: (msg: HostToPane) => posted.push(msg),
             otherSessionIsPrompting: () => false,
             detachActivePrompt: async () => undefined,
             bindHermesSessionId: (id: string) => { bound = id; },
             applySessionModelPreference: async () => undefined,
+            applySessionEditMode: async () => {
+                order.push('set_mode');
+                if (editModeFails) {
+                    throw new Error('Internal error');
+                }
+            },
             setBoundSessionId: () => undefined,
             saveMessage: () => undefined,
             savePermissionRequest: () => undefined,
@@ -45,7 +57,7 @@ describe('session readiness', () => {
             cancelPendingPermissions: () => undefined,
             awaitSessionReady: async () => undefined,
         } as unknown as PromptHost;
-        return { host: value, posted, bound: () => bound };
+        return { host: value, posted, order, logged, bound: () => bound };
     };
 
     it('refuses the turn when session/new left the client in error', async () => {
@@ -70,5 +82,21 @@ describe('session readiness', () => {
         const readiness = await new PromptRunner(harness.host).ensureSessionReady();
 
         assert.deepStrictEqual(readiness, { ok: false, notified: false });
+    });
+
+    it('session/new, then the edit mode, and only then does the send go on', async () => {
+        const harness = host('ready', 'hermes-1');
+        const readiness = await new PromptRunner(harness.host).ensureSessionReady();
+
+        assert.deepStrictEqual(readiness, { ok: true });
+        assert.deepStrictEqual(harness.order, ['session/new', 'set_mode'], 'the mode is asked for before the prompt');
+    });
+
+    it('a refused edit mode is logged, and the send still goes through', async () => {
+        const harness = host('ready', 'hermes-1', true);
+        const readiness = await new PromptRunner(harness.host).ensureSessionReady();
+
+        assert.deepStrictEqual(readiness, { ok: true }, 'the message the user asked for is not held back');
+        assert.ok(harness.logged.some(line => line.includes('Edit mode not applied before the first prompt')));
     });
 });

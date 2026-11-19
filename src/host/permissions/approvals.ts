@@ -81,8 +81,20 @@ export class Approvals {
     /** Guards the red action's two writes: a second press must not be overtaken by the first. */
     private _token = 0;
 
-    /** An edit mode the run in flight refused: it is asked for again when that run ends. */
-    private _pendingEdits = false;
+    /** An edit mode a run in flight refused: the Hermes session it is waiting for ('' = none). */
+    private _pendingEdits = '';
+
+    /**
+     * What we last asked Hermes for, per session, until it reports a mode.
+     *
+     * The report is the truth (the client remembers what Hermes says, never what we asked), so this
+     * is only a fence: two callers — the awaited one before a first prompt and the listener that
+     * fires on `session/new` — must not turn one intent into two `set_mode` requests.
+     */
+    private _askedMode?: { sessionId: string; mode: string };
+
+    /** The `set_mode` request in flight: a second caller waits for the same answer. */
+    private _settingMode?: { sessionId: string; mode: string; promise: Promise<void> };
 
     constructor(
         private readonly _host: ApprovalsHost,
@@ -110,13 +122,20 @@ export class Approvals {
      */
     start(): () => void {
         const unRun = this._host.onRunEnded(() => {
-            if (this._pendingEdits) {
-                // Not cleared here: applyEdits either sets the mode (and says the notice is over) or
-                // finds itself refused again and keeps waiting.
-                void this.applyEdits();
+            if (!this._pendingEdits) {
+                return;
             }
+            // The mode belongs to that session: a run that ended on another tab is not its turn.
+            if (this._host.acp()?.activeSessionId !== this._pendingEdits) {
+                return;
+            }
+            // Not cleared here: applyEdits either sets the mode (and says the notice is over) or
+            // finds itself refused again and keeps waiting.
+            void this.applyEdits();
         });
         const unMode = this._host.onSessionMode(() => {
+            // Hermes answered: what we asked for is settled, and whatever it reports is the truth.
+            this._askedMode = undefined;
             void this.applyEdits();
         });
         return () => {
@@ -153,10 +172,15 @@ export class Approvals {
     }
 
     /**
-     * Make the open session's edit mode match the buttons.
+     * Make the loaded session's edit mode match the buttons.
      *
-     * Idle only. A run in flight refuses the change, so the intent is remembered and applied when
-     * that run ends — never sent twice, and never retried in a loop.
+     * Idle only. A run in flight refuses the change, so the intent is remembered for that session
+     * and applied when that run ends — never sent twice, and never retried in a loop.
+     *
+     * Callers race on purpose: `promptRunner` awaits this before a first prompt goes out, and the
+     * session-mode listener fires on the very `session/new` that made the session. One intent must
+     * become one `set_mode`, so a caller that matches the request in flight waits for it instead of
+     * sending its own, and one that matches a request already answered waits for the report.
      */
     async applyEdits(): Promise<void> {
         const acp = this._host.acp();
@@ -164,36 +188,63 @@ export class Approvals {
         if (!acp || !acp.activeSessionId || !desired) {
             return;
         }
+        const sessionId = acp.activeSessionId;
+        const inflight = this._settingMode;
+        if (inflight && inflight.sessionId === sessionId && inflight.mode === desired) {
+            await inflight.promise;
+            return;
+        }
         if (acp.currentSessionMode === desired) {
-            this._defer(false);
+            this._askedMode = undefined;
+            this._defer('');
+            return;
+        }
+        if (this._askedMode?.sessionId === sessionId && this._askedMode.mode === desired) {
+            // Asked, and the request came back; Hermes' report has not landed yet. Nothing to send:
+            // the awaited caller needs the request's answer, and it has had it.
             return;
         }
         if (this._host.activeSessionBusy()) {
-            this._defer(true);
+            this._defer(sessionId);
             this._host.log(`Edit mode ${desired} waits for the next run`);
             return;
         }
+        const promise = this._sendMode(acp, sessionId, desired);
+        this._settingMode = { sessionId, mode: desired, promise };
+        try {
+            await promise;
+        } finally {
+            if (this._settingMode?.promise === promise) {
+                this._settingMode = undefined;
+            }
+        }
+    }
+
+    /** One request, and its two outcomes: the fence is set before it goes out, and dropped on failure. */
+    private async _sendMode(acp: AcpClient, sessionId: string, desired: string): Promise<void> {
+        this._askedMode = { sessionId, mode: desired };
         try {
             await acp.setSessionMode(desired);
-            this._defer(false);
+            this._defer('');
             this._host.log(`Edit mode set to ${desired}`);
         } catch (err) {
-            this._defer(true);
+            this._askedMode = undefined;
+            this._defer(sessionId);
             this._host.log(`Edit mode ${desired} refused: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
     /**
-     * Record whether an edit mode is waiting, and say it when that changes.
+     * Record which session an edit mode is waiting for, and say it when that changes.
      *
-     * The pane shows "Applies from the next run." while it waits, beside the buttons — the command
-     * side has already followed the press, and this is the half that has not.
+     * The pane shows "Applies from the next run." only while that session is the one on screen, and
+     * a blank chat — no Hermes session at all — never gets here, so it never shows it.
      */
-    private _defer(waiting: boolean): void {
-        if (this._pendingEdits === waiting) {
+    private _defer(sessionId: string): void {
+        if (this._pendingEdits === sessionId) {
             return;
         }
-        this._pendingEdits = waiting;
+        this._pendingEdits = sessionId;
         this._say({});
     }
 
@@ -214,8 +265,11 @@ export class Approvals {
             ...(extra.denyBackup ? { denyBackup: extra.denyBackup } : {}),
             ...(extra.error ? { error: extra.error } : {}),
             // Derived, never passed: a deferred edit mode is the only reason to defer, and
-            // `_pendingEdits` is its one owner.
-            ...(this._pendingEdits ? { notice: 'appliesNextRun' as const } : {}),
+            // `_pendingEdits` is its one owner. Its session travels with it, so the pane can keep
+            // the notice to the tab it is about.
+            ...(this._pendingEdits
+                ? { notice: 'appliesNextRun' as const, noticeSessionId: this._pendingEdits }
+                : {}),
         });
     }
 

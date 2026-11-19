@@ -10,7 +10,8 @@
  */
 import { byId } from '../../dom';
 import { post } from '../../post';
-import { permissionsState } from './permissionsState';
+import { state } from '../../state';
+import { approvalModeNoticeApplies } from './permissionsState';
 import {
     beginApprovalModePending,
     createApprovalModeBlock,
@@ -19,6 +20,12 @@ import {
 } from './approvalModeSwitch';
 
 let open = false;
+
+/** The Hermes session the pane is showing: '' on a blank tab, which no notice can be about. */
+function activeHermesSessionId(): string {
+    const tab = state.lastSessions.find(session => session.id === state.activeSessionId);
+    return tab?.hermesSessionId || '';
+}
 
 export function permissionModeRowIsOpen(): boolean {
     return open;
@@ -32,7 +39,7 @@ export function setPermissionModeRow(next: boolean): void {
         return;
     }
     open = next;
-    bar.hidden = !(open || !!permissionsState.approvalModeNotice);
+    bar.hidden = !(open || approvalModeNoticeApplies(activeHermesSessionId()));
     if (btn) {
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
@@ -54,7 +61,7 @@ export function setPermissionModeRow(next: boolean): void {
 export function syncPermissionModeNotice(): void {
     const bar = byId('permissionModeBar');
     const notice = byId('permissionModeNotice');
-    const waiting = permissionsState.approvalModeNotice === 'appliesNextRun';
+    const waiting = approvalModeNoticeApplies(activeHermesSessionId());
     if (notice) {
         notice.textContent = waiting ? (locale.appliesNextRun || 'Applies from the next run.') : '';
         notice.hidden = !waiting;

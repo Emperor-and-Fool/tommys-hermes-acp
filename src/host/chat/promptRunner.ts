@@ -27,6 +27,14 @@ export interface PromptHost {
     detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void>;
     bindHermesSessionId(hermesSessionId: string): void;
     applySessionModelPreference(): Promise<void>;
+    /**
+     * Bring the session's edit mode in line with the buttons, and wait for Hermes' answer.
+     *
+     * Awaited before a first prompt goes out: Hermes starts every session on `default`, and a
+     * `set_mode` sent after the prompt is refused as busy, so the whole first turn would run on the
+     * wrong mode. A refusal is logged and the send goes on — the mode is not worth the message.
+     */
+    applySessionEditMode(): Promise<void>;
     setBoundSessionId(sessionId: string): void;
     saveMessage(role: string, text: string): void;
     savePermissionRequest(id: string, request: PermissionRequest): void;
@@ -343,6 +351,15 @@ export class PromptRunner {
                 return { ok: false, notified: false };
             }
             this.host.bindHermesSessionId(acp.activeSessionId);
+            // Hermes starts every session on `default`. The button's edit mode goes out now, and
+            // the send waits for its answer: sent after the prompt, Hermes refuses it as busy and
+            // the whole first turn runs on `default`.
+            try {
+                await this.host.applySessionEditMode();
+            } catch (err) {
+                // A refused or broken edit mode is logged; the message the user asked for still goes.
+                this.host.log(`Edit mode not applied before the first prompt: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
         await this.host.applySessionModelPreference();
         this.host.setBoundSessionId(sessionId);

@@ -161,6 +161,7 @@ export class App implements vscode.WebviewViewProvider {
         detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._lifecycle.bindHermesSessionId(id),
         applySessionModelPreference: () => this._models.applySessionPreference(),
+        applySessionEditMode: () => this._approvals.applyEdits(),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._session.saveMessage(role, text),
         savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
