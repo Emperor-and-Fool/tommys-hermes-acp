@@ -388,6 +388,14 @@ function sessionIdsIn(folder: string): string[] {
         .filter(Boolean);
 }
 
+function readText(target: string): string {
+    try {
+        return fs.readFileSync(target, 'utf-8');
+    } catch {
+        return '';
+    }
+}
+
 function readJsonObject<T extends object>(target: string, fallback: T): T {
     try {
         const parsed = JSON.parse(fs.readFileSync(target, 'utf-8'));
@@ -595,6 +603,72 @@ function migrateSessionFolders(home: string, store: ProfilesStore, folders: Fold
 }
 
 /**
+ * The per-workspace rows, out of the two files that held them (00.02 §4).
+ *
+ * `workspace-roots.json` held a default and a pick per workspace; the pick belongs to the session
+ * now (`permissionRootFolderId`), so it is dropped, and the default becomes `defaultFolderId`, a
+ * folder id. `active-session.txt` was one pointer per agent; it becomes `activeSessionId` under the
+ * workspace of that session. Both files are removed once their content has a home, and the dated
+ * backup still holds them.
+ */
+function migrateProfileWorkspaces(home: string, store: ProfilesStore, folders: FoldersStore, log: MigrationsLog): void {
+    for (const name of folderNames(path.join(home, 'profiles'))) {
+        if (!isSessionProfileId(name)) {
+            continue;
+        }
+        const dir = path.join(home, 'profiles', name);
+        const rootsFile = path.join(dir, 'workspace-roots.json');
+        const activeFile = path.join(dir, 'active-session.txt');
+        const target = path.join(dir, 'workspaces.json');
+        if (!fs.existsSync(rootsFile) && !fs.existsSync(activeFile)) {
+            continue;
+        }
+        const agent = store.nameFor(name) || name;
+        const rows = readJsonObject<Record<string, { primaryRoot?: string; permissionRoot?: string }>>(rootsFile, {});
+        const existing = readJsonObject<Record<string, { defaultFolderId: string; activeSessionId: string }>>(target, {});
+        let moved = 0;
+        for (const [workspaceId, roots] of Object.entries(rows)) {
+            if (!workspaceId || existing[workspaceId] || !roots || !roots.primaryRoot) {
+                continue;
+            }
+            const folder = folders.folderFor(roots.primaryRoot);
+            if (!folder) {
+                continue;
+            }
+            existing[workspaceId] = { defaultFolderId: folder.id, activeSessionId: '' };
+            moved += 1;
+        }
+
+        const active = readText(activeFile).trim();
+        let activePlaced = true;
+        if (active) {
+            const tabs = readJson<SessionInfo[]>(path.join(dir, 'sessions.json'), []);
+            const tab = tabs.find(entry => entry && (entry.id === active || entry.hermesSessionId === active));
+            const workspaceId = tab?.workspaceId || '';
+            if (workspaceId) {
+                const row = existing[workspaceId] || { defaultFolderId: '', activeSessionId: '' };
+                existing[workspaceId] = { ...row, activeSessionId: active };
+                moved += 1;
+            } else {
+                activePlaced = false;
+                log(`Migration: ${agent} active session "${active}" names no workspace, left as it is`);
+            }
+        }
+
+        if (moved > 0) {
+            writeAtomic(target, existing);
+            log(`Migration: ${agent} ${moved} per-workspace row(s) moved to workspaces.json`);
+        }
+        if (fs.existsSync(rootsFile)) {
+            fs.rmSync(rootsFile, { force: true });
+        }
+        if (active && activePlaced) {
+            fs.rmSync(activeFile, { force: true });
+        }
+    }
+}
+
+/**
  * Run every step, in order, from the composition root at activation.
  *
  * Nothing here throws: a migration that cannot finish logs and leaves the file as it found it, so a
@@ -630,7 +704,9 @@ export function runMigrations(
             mergeSecondantHome(home, store, agentForScope, log, secondantHome);
         }
         migrateAttachmentsIndex(home, store, log);
-        migrateSessionFolders(home, store, new FoldersStore(home), log);
+        const folders = new FoldersStore(home);
+        migrateSessionFolders(home, store, folders, log);
+        migrateProfileWorkspaces(home, store, folders, log);
     } finally {
         releaseLock(home);
     }

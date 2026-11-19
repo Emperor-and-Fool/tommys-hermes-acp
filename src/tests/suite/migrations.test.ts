@@ -115,12 +115,16 @@ describe('data home migrations', () => {
                 'Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' written',
                 'Migration: the root sessions.json moved into the default profile',
                 "Migration: profiles/__default__ moved to default's id folder",
+                'Migration: default active session "abc" names no workspace, left as it is',
             ]);
 
             const second = logger();
             runMigrations(home, resolver, second.log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', defaultId, 'sessions.json')), true);
-            assert.deepStrictEqual(second.lines, ['Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' exists, left as it is']);
+            assert.deepStrictEqual(second.lines, [
+                'Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' exists, left as it is',
+                'Migration: default active session "abc" names no workspace, left as it is',
+            ]);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
@@ -384,11 +388,15 @@ describe('data home migrations', () => {
             const { lines, log } = logger();
             runMigrations(home, () => undefined, log, '');
 
-            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspace-roots.json'), 'utf-8'));
-            assert.deepStrictEqual(roots, { 'w-1': { primaryRoot: '/w/a', permissionRoot: '/w/b' } });
-            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', kittId, 'workspace-roots.json')), false);
+            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspaces.json'), 'utf-8'));
+            const folderA = JSON.parse(fs.readFileSync(path.join(home, 'folders.json'), 'utf-8')).folders
+                .find((row: { path: string }) => row.path === '/w/a');
+            assert.deepStrictEqual(roots, { 'w-1': { defaultFolderId: folderA.id, activeSessionId: '' } });
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', devId, 'workspace-roots.json')), false);
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', kittId, 'workspaces.json')), false, 'the other agent gets no row');
             assert.deepStrictEqual(lines.filter(line => line.startsWith('Migration:')), [
                 'Migration: 1 workspace root(s) filed under dev-vsc',
+                'Migration: dev-vsc 1 per-workspace row(s) moved to workspaces.json',
             ]);
             // workspaces.json is the registry's business; its roots are dropped on the store's next
             // write, which is a separate rule and tested with the store.
@@ -405,16 +413,16 @@ describe('data home migrations', () => {
             const devId = store.idFor('dev-vsc');
             writeProfileFolder(home, devId, [tab({ id: 'd1', hermesSessionId: 'h2' })]);
             fs.writeFileSync(
-                path.join(home, 'profiles', devId, 'workspace-roots.json'),
-                JSON.stringify({ 'w-1': { primaryRoot: '/w/kept', permissionRoot: '' } })
+                path.join(home, 'profiles', devId, 'workspaces.json'),
+                JSON.stringify({ 'w-1': { defaultFolderId: 'f-kept', activeSessionId: '' } })
             );
             fs.writeFileSync(
                 path.join(home, 'workspaces.json'),
                 JSON.stringify({ workspaces: [{ id: 'w-1', path: '/w/one', lastSeen: 1, primaryRoot: '/w/a' }] })
             );
             runMigrations(home, () => undefined, logger().log, '');
-            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspace-roots.json'), 'utf-8'));
-            assert.strictEqual(roots['w-1'].primaryRoot, '/w/kept');
+            const roots = JSON.parse(fs.readFileSync(path.join(home, 'profiles', devId, 'workspaces.json'), 'utf-8'));
+            assert.strictEqual(roots['w-1'].defaultFolderId, 'f-kept');
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
@@ -591,6 +599,48 @@ describe('data home migrations', () => {
             assert.deepStrictEqual(folders.map((row: { id: string; path: string }) => [row.id, row.path]), [[folderId, '/w/a']]);
             assert.deepStrictEqual(lines.filter(line => line.includes('session root')), [
                 'Migration: kitt 1 session root(s) keyed by folder id',
+            ]);
+
+            const second = logger();
+            runMigrations(home, () => undefined, second.log, '');
+            assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+    it('moves the default root and the active session into the per-workspace table', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const dir = writeProfileFolder(home, kittId, [
+                tab({ id: 't1', hermesSessionId: 'h1', workspaceId: 'w1' }),
+                tab({ id: 't2', hermesSessionId: 'h2', workspaceId: 'w2' }),
+            ]);
+            fs.writeFileSync(path.join(dir, 'workspace-roots.json'), JSON.stringify({
+                w1: { primaryRoot: '/w/a', permissionRoot: '/w/b' },
+                w2: { primaryRoot: '/w/c' },
+            }));
+            fs.writeFileSync(path.join(dir, 'active-session.txt'), 't2');
+
+            const { lines, log } = logger();
+            runMigrations(home, () => undefined, log, '');
+
+            const rows = JSON.parse(fs.readFileSync(path.join(dir, 'workspaces.json'), 'utf-8'));
+            const folderA = JSON.parse(fs.readFileSync(path.join(home, 'folders.json'), 'utf-8')).folders
+                .find((row: { path: string }) => row.path === '/w/a');
+            assert.deepStrictEqual(rows, {
+                w1: { defaultFolderId: folderA.id, activeSessionId: '' },
+                w2: { defaultFolderId: rows.w2.defaultFolderId, activeSessionId: 't2' },
+            });
+            assert.match(rows.w2.defaultFolderId, /^[0-9a-f]{8}-[0-9a-f]{4}-/, 'the default is a folder id');
+            // The pick belonged to a workspace; it belongs to the session now, and is dropped.
+            assert.strictEqual(Object.values(rows).some((row: unknown) => JSON.stringify(row).includes('/w/b')), false);
+            assert.strictEqual(fs.existsSync(path.join(dir, 'workspace-roots.json')), false);
+            assert.strictEqual(fs.existsSync(path.join(dir, 'active-session.txt')), false);
+            assert.deepStrictEqual(lines.filter(line => line.includes('per-workspace row')), [
+                'Migration: kitt 3 per-workspace row(s) moved to workspaces.json',
             ]);
 
             const second = logger();

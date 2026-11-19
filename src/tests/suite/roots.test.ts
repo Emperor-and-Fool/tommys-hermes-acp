@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { NO_ROOTS, effectiveRoot, offeredRoots, reconcileRoots } from '../../host/workspace/cwd';
-import { ProfileRootsStore } from '../../host/workspace/store';
+import { ProfileWorkspaceStore } from '../../host/workspace/store';
+import { FoldersStore } from '../../host/store/folders';
 
 /**
  * The permission root: which folder Hermes works in when a workspace shows several. The rules are
@@ -54,47 +55,51 @@ describe('permission root: the rules', () => {
 });
 
 describe('permission root: the store', () => {
-    it('files the two roots under the workspace id, in the agent folder', () => {
+    it('files the default folder and the active session per workspace, in the agent folder', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-'));
-        const store = new ProfileRootsStore(dir, () => 'id-dev-vsc');
-        const workspaceId = 'w-1';
+        const store = new ProfileWorkspaceStore(dir, () => 'id-dev-vsc');
+        try {
+            assert.deepStrictEqual(store.row('w-1'), { defaultFolderId: '', activeSessionId: '' }, 'a workspace it has not seen');
+            store.setDefaultFolderId('w-1', 'f-a');
+            store.setActiveSessionId('w-1', 'tab-9');
+            store.setDefaultFolderId('w-2', 'f-b');
 
-        store.setRoots(workspaceId, { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-        assert.deepStrictEqual(store.roots(workspaceId), { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-
-        const written = JSON.parse(fs.readFileSync(store.path, 'utf-8'));
-        assert.deepStrictEqual(written[workspaceId], { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-        assert.strictEqual(store.path, path.join(dir, 'profiles', 'id-dev-vsc', 'workspace-roots.json'));
-
-        fs.rmSync(dir, { recursive: true, force: true });
+            const written = JSON.parse(fs.readFileSync(store.path, 'utf-8'));
+            assert.deepStrictEqual(written, {
+                'w-1': { defaultFolderId: 'f-a', activeSessionId: 'tab-9' },
+                'w-2': { defaultFolderId: 'f-b', activeSessionId: '' },
+            });
+            assert.strictEqual(store.path, path.join(dir, 'profiles', 'id-dev-vsc', 'workspaces.json'));
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
-    it('clears a root by writing an empty string, rather than leaving the old one behind', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-'));
-        const store = new ProfileRootsStore(dir, () => 'id-dev-vsc');
-        store.setRoots('w-1', { primaryRoot: '/w/a', permissionRoot: '/w/b' });
-        store.setRoots('w-1', { primaryRoot: '/w/a', permissionRoot: '' });
-
-        assert.deepStrictEqual(store.roots('w-1'), { primaryRoot: '/w/a', permissionRoot: '' });
-        const written = JSON.parse(fs.readFileSync(store.path, 'utf-8'));
-        assert.strictEqual('permissionRoot' in written['w-1'], true, 'the cleared root is written, not dropped');
-        assert.strictEqual(written['w-1'].permissionRoot, '');
-
-        fs.rmSync(dir, { recursive: true, force: true });
-    });
-
-    it('follows the profile it is asked about, and answers nothing for a workspace it has not seen', () => {
+    it('follows the profile it is asked about', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-'));
         let current = 'id-one';
-        const store = new ProfileRootsStore(dir, () => current);
-        store.setRoots('w-1', { primaryRoot: '/w/a', permissionRoot: '' });
-        current = 'id-two';
-        assert.deepStrictEqual(store.roots('w-1'), { primaryRoot: '', permissionRoot: '' });
-        assert.deepStrictEqual(store.roots(''), { primaryRoot: '', permissionRoot: '' });
+        const store = new ProfileWorkspaceStore(dir, () => current);
+        try {
+            store.setDefaultFolderId('w-1', 'f-a');
+            current = 'id-two';
+            assert.strictEqual(store.defaultFolderId('w-1'), '');
+            current = 'id-one';
+            assert.strictEqual(store.defaultFolderId('w-1'), 'f-a');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
 
-        current = 'id-one';
-        assert.deepStrictEqual(store.roots('w-1'), { primaryRoot: '/w/a', permissionRoot: '' });
-
-        fs.rmSync(dir, { recursive: true, force: true });
+    it('answers the roots port in paths while the cwd owner still asks in paths', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-'));
+        const store = new ProfileWorkspaceStore(dir, () => 'id-dev-vsc');
+        try {
+            store.setRoots('w-1', { primaryRoot: '/w/a', permissionRoot: '/w/b' });
+            // The pick belongs to the session now; only the default is this table's business.
+            assert.deepStrictEqual(store.roots('w-1'), { primaryRoot: '/w/a', permissionRoot: '' });
+            assert.strictEqual(store.defaultFolderId('w-1'), new FoldersStore(dir).folderFor('/w/a')!.id);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

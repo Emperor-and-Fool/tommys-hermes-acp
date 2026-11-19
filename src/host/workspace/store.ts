@@ -3,7 +3,6 @@ import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic, writeAtomicText } from '../store/connection';
-import { NO_ROOTS } from './cwd';
 import { FoldersStore } from '../store/folders';
 import type { RootState, RootsSource } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
@@ -184,22 +183,28 @@ export class WorkspaceStore {
     }
 }
 
-/** Where one agent's workspace roots live: beside its projects and tabs. */
-export function workspaceRootsPathFor(historyDir: string, sessionProfileId: string): string {
-    return path.join(profileDir(historyDir, sessionProfileId), 'workspace-roots.json');
+/** One agent's rows for one workspace: its default folder, and the session it was last on. */
+export interface ProfileWorkspaceRow {
+    defaultFolderId: string;
+    activeSessionId: string;
+}
+
+/** Where one agent's per-workspace rows live: beside its projects and tabs. */
+export function profileWorkspacesPathFor(historyDir: string, sessionProfileId: string): string {
+    return path.join(profileDir(historyDir, sessionProfileId), 'workspaces.json');
 }
 
 /**
- * The permission roots, per agent and per workspace.
+ * The profile_workspace table: per agent, per workspace (00.02 §2).
  *
- * They used to sit inside `workspaces.json` — one editor fact shared by every profile — so one
- * agent's pick was another's. A workspace keeps its identity in that registry; the roots belong to
- * the agent, are keyed by workspace id, and are read by whichever extension is on that agent.
+ * `defaultFolderId` is the folder a new session starts in — the first chosen folder, once
+ * `primaryRoot`. `activeSessionId` is the tab the agent was last on in that workspace, which used to
+ * be one pointer per agent (`active-session.txt`) and is now one per workspace.
  *
  * The key is a function: a profile switch changes which folder is meant, without rebuilding stores.
  */
-export class ProfileRootsStore implements RootsSource {
-    /** The folder tables: filled here, read by the cwd owner once the roots are ids (00.02). */
+export class ProfileWorkspaceStore implements RootsSource {
+    /** The folder tables: the paths this table answers in ids are minted and read there. */
     private readonly _folders: FoldersStore;
 
     constructor(
@@ -209,33 +214,73 @@ export class ProfileRootsStore implements RootsSource {
         this._folders = new FoldersStore(_historyDir);
     }
 
-    /** What the editor reports for a workspace: one folder row per path, one link per membership. */
+    get path(): string {
+        return profileWorkspacesPathFor(this._historyDir, this._sessionProfileId());
+    }
+
+    all(): Record<string, ProfileWorkspaceRow> {
+        return this._read();
+    }
+
+    /** One workspace's row. A workspace this agent has not seen answers with two empty ids. */
+    row(workspaceId: string): ProfileWorkspaceRow {
+        return this.all()[workspaceId] || { defaultFolderId: '', activeSessionId: '' };
+    }
+
+    /** What a new session in this workspace starts in. */
+    defaultFolderId(workspaceId: string): string {
+        return this.row(workspaceId).defaultFolderId;
+    }
+
+    setDefaultFolderId(workspaceId: string, folderId: string): void {
+        this._update(workspaceId, row => ({ ...row, defaultFolderId: folderId }));
+    }
+
+    /** The tab this agent was last on in this workspace. */
+    setActiveSessionId(workspaceId: string, sessionId: string): void {
+        this._update(workspaceId, row => ({ ...row, activeSessionId: sessionId }));
+    }
+
+    /**
+     * What the editor reports for a workspace: the folder tables, one row per path, one link per
+     * membership. Filled at window start and on every change (00.02 §2).
+     */
     record(workspaceId: string, paths: string[]): void {
         this._folders.record(workspaceId, paths);
     }
 
-    get path(): string {
-        return workspaceRootsPathFor(this._historyDir, this._sessionProfileId());
-    }
-
+    /**
+     * The roots a window works with, as ids resolved to paths.
+     *
+     * Kept for the cwd owner until step 5 hands it folder ids directly: `roots()` answers the
+     * agent's default folder as `primaryRoot`, and there is no per-workspace pick any more — a pick
+     * belongs to the session (`permissionRootFolderId`).
+     */
     roots(workspaceId: string): RootState {
-        if (!workspaceId) {
-            return { ...NO_ROOTS };
-        }
-        return this._read()[workspaceId] || { ...NO_ROOTS };
+        return { primaryRoot: this._folders.pathFor(this.defaultFolderId(workspaceId)), permissionRoot: '' };
     }
 
-    /** Write them. Absent roots are written as an empty string, never left stale (ST2). */
     setRoots(workspaceId: string, roots: RootState): void {
+        const folder = this._folders.folderFor(roots.primaryRoot);
+        if (folder) {
+            this.setDefaultFolderId(workspaceId, folder.id);
+        }
+    }
+
+    private _update(workspaceId: string, change: (row: ProfileWorkspaceRow) => ProfileWorkspaceRow): void {
         if (!workspaceId) {
             return;
         }
         const all = this._read();
-        all[workspaceId] = { primaryRoot: roots.primaryRoot || '', permissionRoot: roots.permissionRoot || '' };
+        const next = change(all[workspaceId] || { defaultFolderId: '', activeSessionId: '' });
+        if (JSON.stringify(all[workspaceId]) === JSON.stringify(next)) {
+            return;
+        }
+        all[workspaceId] = next;
         writeAtomic(this.path, all);
     }
 
-    private _read(): Record<string, RootState> {
+    private _read(): Record<string, ProfileWorkspaceRow> {
         try {
             const parsed = JSON.parse(fs.readFileSync(this.path, 'utf-8'));
             return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
-import { ProfileRootsStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
+import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
@@ -296,7 +296,7 @@ export class App implements vscode.WebviewViewProvider {
         const workspaces = new WorkspaceStore(this._historyDir);
         // The roots live with the workspace record, so the locator reads and writes them there;
         // the store only exists from here on, which is why the locator is built at this point.
-        this._cwd = new WorkspaceCwd(cwdSource, new ProfileRootsStore(this._historyDir, () => this._session.sessionProfileId));
+        this._cwd = new WorkspaceCwd(cwdSource, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
         // Permissions keeps its own record and its own deny backups, in the profile's folder.
         this._approvals = new Approvals(
             {
