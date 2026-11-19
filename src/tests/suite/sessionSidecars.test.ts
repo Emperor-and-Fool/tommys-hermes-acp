@@ -28,6 +28,16 @@ describe('sessions: the user sidecar', () => {
         session.activeId = 'tab-a';
     });
 
+    it('answers a tab\'s root folder id, and nothing for a tab it does not have', () => {
+        session.tabs = [
+            { id: 'tab-a', title: 'A', createdAt: 1, updatedAt: 1, permissionRootFolderId: 'f-a' },
+            { id: 'tab-b', title: 'B', createdAt: 1, updatedAt: 1 },
+        ];
+        assert.strictEqual(session.rootFolderIdOf('tab-a'), 'f-a');
+        assert.strictEqual(session.rootFolderIdOf('tab-b'), '', 'a tab that has not chosen one');
+        assert.strictEqual(session.rootFolderIdOf('no-such-tab'), '');
+    });
+
     afterEach(() => {
         fs.rmSync(dir, { recursive: true, force: true });
     });

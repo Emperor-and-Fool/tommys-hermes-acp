@@ -72,6 +72,15 @@ export class Sessions {
         this.ensureRegistered();
     }
 
+    /**
+     * A tab's permission root folder id: the folder Hermes works in for that session, or '' when it
+     * has not chosen one (and when there is no such tab). Finding a tab's root is tab logic, so it
+     * is answered here and not by whoever asks.
+     */
+    rootFolderIdOf(sessionId: string): string {
+        return this.tabs.find(tab => tab.id === sessionId)?.permissionRootFolderId || '';
+    }
+
     /** The tabs this window shows: the slice the pane gets, and the one a reader is given. */
     tabsInWindow(): SessionInfo[] {
         return tabsInWorkspace(this.tabs, this.host.currentWorkspaceId());
