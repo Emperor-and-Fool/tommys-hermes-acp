@@ -6,7 +6,13 @@ export interface RootFacts {
     profile: string;
     /** The offered folders whose welcome has not run out: drawn with the word "New". */
     newFolders?: string[];
-    notice?: 'lastRootRemoved' | 'appliesNextRun';
+    /** The offered folders that are not on disk: drawn dimmed, not choosable. */
+    missingFolders?: string[];
+    notice?: 'lastRootRemoved' | 'appliesNextRun' | 'moveRefused' | 'rootRemoved';
+    /** The folder a notice is about, when its text names one. */
+    noticeFolder?: string;
+    /** Where the session was before a move Hermes refused. */
+    noticePrevious?: string;
 }
 
 /**

@@ -48,6 +48,12 @@ export interface LocaleStrings {
     permissionRootLastRemoved: string;
     /** The word on a folder that just joined the workspace. */
     permissionRootNew: string;
+    /** The word on a folder whose path is gone. */
+    permissionRootMissing: string;
+    /** A move Hermes refused: {folder} is where it could not go, {previous} where it stays. */
+    permissionRootMoveRefused: string;
+    /** A root that left the workspace while the session ran: {folder} is the one that went. */
+    permissionRootRootRemoved: string;
     appliesNextRun: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */

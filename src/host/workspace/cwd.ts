@@ -187,6 +187,16 @@ export class WorkspaceCwd {
     }
 
     /**
+     * A folder's path by its id, live or not.
+     *
+     * `live()` drops the folders the editor no longer reports, and a notice about one of those has
+     * to name it: "… left the workspace" without the name says nothing.
+     */
+    folderPath(folderId: string): string {
+        return folderId ? this._roots.pathFor(folderId) : '';
+    }
+
+    /**
      * Watch the window's folders; returns the unsubscribe, or a no-op when the port cannot.
      *
      * The current list is recorded on subscribing and again on every change: the folder tables are

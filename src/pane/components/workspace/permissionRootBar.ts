@@ -59,7 +59,10 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
         offered: msg.offered,
         profile: msg.profile,
         newFolders: msg.newFolders || [],
+        missingFolders: msg.missingFolders || [],
         ...(msg.notice ? { notice: msg.notice } : {}),
+        ...(msg.noticeFolder ? { noticeFolder: msg.noticeFolder } : {}),
+        ...(msg.noticePrevious ? { noticePrevious: msg.noticePrevious } : {}),
     };
     // `open` is the host's automatic open, and it is only ever sent to a surface meant to show it.
     if (msg.open) {
@@ -94,13 +97,25 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
 
     const notice = byId('permissionRootNotice');
     if (notice) {
+        const folder = baseName(msg.noticeFolder || '');
+        const previous = baseName(msg.noticePrevious || '');
         const text = msg.notice === 'lastRootRemoved'
             ? (locale.permissionRootLastRemoved
                 || 'Last root removed: projects are no longer reachable from this window. Their '
                     + 'sessions stay untagged, available only through the Hermes TUI or by reopening the folder.')
             : msg.notice === 'appliesNextRun'
                 ? (locale.appliesNextRun || 'Applies from the next run.')
-                : '';
+                : msg.notice === 'moveRefused'
+                    ? (locale.permissionRootMoveRefused
+                        || 'Hermes could not move this session to {folder}. It stays in {previous}.')
+                        .replace('{folder}', folder)
+                        .replace('{previous}', previous)
+                    : msg.notice === 'rootRemoved'
+                        ? (locale.permissionRootRootRemoved
+                            || '{folder} left the workspace. This session still works there until '
+                                + 'you pick another root.')
+                            .replace('{folder}', folder)
+                        : '';
         notice.textContent = text;
         notice.hidden = !text;
     }
@@ -108,22 +123,35 @@ export function applyPermissionRootState(msg: RootFacts & { open: boolean }): vo
     const options = byId('permissionRootOptions');
     if (options) {
         const fresh = new Set(msg.newFolders || []);
+        const missing = new Set(msg.missingFolders || []);
         options.textContent = '';
         msg.offered.forEach(function (folder) {
             const isNew = fresh.has(folder);
+            const isMissing = missing.has(folder);
             const choice = document.createElement('button');
             choice.type = 'button';
             choice.className = 'permission-root-option' + (folder === msg.root ? ' is-current' : '')
-                + (isNew ? ' is-new' : '');
+                + (isNew ? ' is-new' : '')
+                + (isMissing ? ' is-missing' : '');
             choice.dataset.root = folder;
             choice.textContent = baseName(folder);
-            choice.title = folder;
+            choice.title = isMissing
+                ? `${folder} — ${locale.permissionRootMissing || 'missing'}`
+                : folder;
             choice.setAttribute('aria-pressed', folder === msg.root ? 'true' : 'false');
             if (isNew) {
                 // Behind the folder's own name: the word says what the colour means.
                 const badge = document.createElement('span');
                 badge.className = 'permission-root-new';
                 badge.textContent = locale.permissionRootNew || 'New';
+                choice.appendChild(badge);
+            }
+            if (isMissing) {
+                // Same place as "New": a folder whose path is gone cannot be worked in.
+                choice.disabled = true;
+                const badge = document.createElement('span');
+                badge.className = 'permission-root-missing';
+                badge.textContent = locale.permissionRootMissing || 'missing';
                 choice.appendChild(badge);
             }
             choice.addEventListener('click', function () {

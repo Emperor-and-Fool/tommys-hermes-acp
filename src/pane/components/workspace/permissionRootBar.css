@@ -84,6 +84,30 @@
     text-transform: uppercase;
 }
 
+/*
+ * A folder whose path is gone: still listed, because the row explains the workspace, but it cannot
+ * be worked in — so it does not flash, it dims, and it carries the word that says why.
+ */
+.permission-root-option.is-missing {
+    animation: none;
+    border-style: dashed;
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.permission-root-option.is-missing:hover {
+    background: transparent;
+}
+
+.permission-root-missing {
+    margin-left: 6px;
+    color: var(--vscode-errorForeground, #c9302c);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 @keyframes permission-root-new-flash {
     0%, 100% { box-shadow: 0 0 0 0 transparent; }
     50% { box-shadow: 0 0 0 2px var(--vscode-editorWarning-foreground, #d18616); }

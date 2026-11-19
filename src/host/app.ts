@@ -353,7 +353,10 @@ export class App implements vscode.WebviewViewProvider {
             cwd: this._cwd,
             activeSessionBusy: () => this._connection.acp?.status === 'prompting',
             // Hermes moves an idle session on load, so the reload is the move.
-            reloadActiveSession: () => this._lifecycle.resumeTabHermesSession(this._session.activeId).then(() => undefined),
+            // A tab with no Hermes session has nothing to move: the pick is stored and that is all.
+            reloadActiveSession: () => this._session.tabs.some(tab => tab.id === this._session.activeId && tab.hermesSessionId)
+                ? this._lifecycle.resumeTabHermesSession(this._session.activeId)
+                : Promise.resolve(true),
             sessionRootId: () => this._session.rootFolderIdOf(this._session.activeId),
             setSessionRoot: (folderId) => this._session.setPermissionRoot(this._session.activeId, folderId),
             profileLabel: () => this._profiles.resolveTarget().displayName,

@@ -41,8 +41,9 @@ export type HostToPane =
     /**
      * The permission root: the folder Hermes works in, the folders the window shows, and which of
      * them the picker offers. `open` asks the pane to show the dialog; `newFolders` are the offered
-     * folders whose welcome has not run out; `notice` says what just happened to the boundary (the
-     * last root went, or a pick that applies to the next run).
+     * folders whose welcome has not run out; `missingFolders` are the offered folders that are not
+     * on disk; `notice` says what just happened to the boundary, and `noticeFolder` /
+     * `noticePrevious` are the names its text fills in.
      */
     | {
         type: 'permissionRootState';
@@ -52,7 +53,10 @@ export type HostToPane =
         open: boolean;
         profile: string;
         newFolders?: string[];
-        notice?: 'lastRootRemoved' | 'appliesNextRun';
+        missingFolders?: string[];
+        notice?: 'lastRootRemoved' | 'appliesNextRun' | 'moveRefused' | 'rootRemoved';
+        noticeFolder?: string;
+        noticePrevious?: string;
     }
     /** The create path's answer: why nothing was made, or an empty message to clear it. */
     | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
