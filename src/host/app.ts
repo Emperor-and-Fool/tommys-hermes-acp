@@ -12,7 +12,6 @@ import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
-import { setting } from '../shared/extensionId';
 import type { ExtensionIdentity } from '../shared/extensionId';
 import type { PrimaryProfileSource } from './activate';
 import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
@@ -20,15 +19,18 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml, identityArtwork } from './webview/html';
+import { buildWebviewHtml, identityArtwork, mediaUri, webviewResources } from './webview/html';
 import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
 import { ChatFiles } from './chat/files';
+import { createEditorCommands } from './editor/commands';
+import { createEditorEnv } from './editor/env';
 import { createEditorFiles } from './editor/files';
 import { createEditorFolders } from './editor/folders';
 import { createEditorNotices } from './editor/notices';
 import { createEditorSettings } from './editor/settings';
+import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
 import type { ChatSurface } from './webview/surfaces';
@@ -83,10 +85,26 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
-    /** Fires when this extension's agent moves to another profile; the secondant listens. */
-    private readonly _profileChanged = new vscode.EventEmitter<string>();
+    /**
+     * Fires when this extension's agent moves to another profile; the secondant listens.
+     *
+     * A plain listener set, not `vscode.EventEmitter`: an emitter is a VS Code value, and the
+     * composition root holds no `vscode.*` of its own (F6). `{ dispose }` is all the extension
+     * API in `extension.ts` promises its callers.
+     */
+    private readonly _profileListeners = new Set<(name: string) => void>();
 
-    readonly onDidChangeProfile: vscode.Event<string> = this._profileChanged.event;
+    readonly onDidChangeProfile = (listener: (name: string) => void): { dispose(): void } => {
+        this._profileListeners.add(listener);
+        return { dispose: () => { this._profileListeners.delete(listener); } };
+    };
+
+    /** Tell every listener, each once: a listener added while firing hears the next change. */
+    private _fireProfileChanged(name: string): void {
+        for (const listener of Array.from(this._profileListeners)) {
+            listener(name);
+        }
+    }
 
     /**
      * The secondant may not share the primary's profile. Returns true when it had to let go, so
@@ -259,13 +277,19 @@ export class App implements vscode.WebviewViewProvider {
     /** What the user is told: the editor's toasts, never the pane's. */
     private readonly _notices = createEditorNotices();
 
+    /** The editor's own commands, by what the user asked for rather than by command id. */
+    private readonly _commands = createEditorCommands();
+
+    /** What the editor is: its name, its theme, the selection, our manifest, the log channel. */
+    private readonly _env = createEditorEnv();
+
     /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
     private readonly _rootPicker: RootPicker;
 
     /** The two panes trade drafts through one shared file; this is this side of the trade. */
     private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
 
-    private _output: vscode.OutputChannel;
+    private _output: EditorLog;
 
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
@@ -279,7 +303,7 @@ export class App implements vscode.WebviewViewProvider {
     ) {
         const context = this._context;
         this._extensionId = this._id.extensionId;
-        this._output = vscode.window.createOutputChannel(
+        this._output = this._env.outputChannel(
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
             'hermes-chat'
         );
@@ -348,9 +372,7 @@ export class App implements vscode.WebviewViewProvider {
             tabs: () => this._session.tabs,
             saveTabs: (next, options) => this._session.setTabs(next, options),
             activeTabId: () => this._session.activeId,
-            openWorkspace: (path) => {
-                void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
-            },
+            openWorkspace: (path) => this._commands.openFolder(path),
             currentWorkspacePath: () => this._cwd.workspaceIdentity(),
             onDidChangeWorkspaceFolders: (handler) => {
                 const unsubscribe = this._folders.onFoldersChanged(handler);
@@ -431,7 +453,7 @@ export class App implements vscode.WebviewViewProvider {
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
             profileChanged: (name) => {
-                this._profileChanged.fire(name);
+                this._fireProfileChanged(name);
                 // Push it up too: the primary's picker must stop offering this profile.
                 this._primary?.registerSiblingProfile?.(this.activeProfile);
             },
@@ -959,7 +981,7 @@ export class App implements vscode.WebviewViewProvider {
                     this._log(`openExternal refused: ${url.slice(0, 60)}`);
                     return;
                 }
-                void vscode.env.openExternal(vscode.Uri.parse(url));
+                this._env.openExternal(url);
             },
             ready: () => this._onWebviewReady(surface),
             enqueueChatOp: (op) => this._enqueueChatOp(op),
@@ -1040,24 +1062,21 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     private _postPluginInfo(): void {
-        const ext = vscode.extensions.getExtension(this._extensionId);
-        const pkg = ext?.packageJSON;
+        const info = this._env.extensionInfo(this._extensionId);
         let iconUri = '';
         const iconWebview = this._surfaces.iconWebview;
         if (iconWebview) {
             // The identity's own mark: the secondant is orange by definition, so this must not be
             // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
-            iconUri = iconWebview.asWebviewUri(
-                vscode.Uri.joinPath(this._extensionUri, 'media', identityArtwork(this._id.role))
-            ).toString();
+            iconUri = mediaUri(this._extensionUri, iconWebview, identityArtwork(this._id.role));
         }
         this._postMessage({
             type: 'pluginInfo',
-            displayName: pkg?.displayName || 'Tommys Hermes ACP',
-            version: pkg?.version || '',
-            publisher: pkg?.publisher || '',
-            description: pkg?.description || '',
-            repository: pkg?.repository?.url || pkg?.repository || '',
+            displayName: info.displayName || 'Tommys Hermes ACP',
+            version: info.version,
+            publisher: info.publisher,
+            description: info.description,
+            repository: info.repository,
             iconUri,
         });
     }
@@ -1066,13 +1085,8 @@ export class App implements vscode.WebviewViewProvider {
         const webview = target ?? this._surfaces.view?.webview;
         return buildWebviewHtml({
             htmlPath: path.join(this._extensionUri.fsPath, 'media', 'chat.html'),
-            resourceUri: webview
-                ? (relative: string) => webview
-                    .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', relative))
-                    .toString()
-                : undefined,
-            cspSource: webview ? webview.cspSource : undefined,
-            themeKind: vscode.window.activeColorTheme.kind,
+            ...webviewResources(this._extensionUri, webview),
+            themeKind: this._env.themeKind(),
             locale: getWebviewLocale(),
         });
     }
@@ -1376,7 +1390,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     public openSettings(): void {
-        void this._openSettings();
+        void this._commands.openSettings(this._extensionId);
     }
 
     public openLogs(): void {
@@ -1425,7 +1439,7 @@ export class App implements vscode.WebviewViewProvider {
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
         this._quiesceTurn();
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        await this._commands.reloadWindow();
     }
 
     /**
@@ -1443,31 +1457,7 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _checkForUpdate(): Promise<void> {
         this._log('Checking for extension updates');
-        await vscode.commands.executeCommand('workbench.extensions.action.checkForUpdates');
-        await vscode.commands.executeCommand(
-            'workbench.extensions.action.showExtensionsWithIds',
-            [this._extensionId]
-        );
-    }
-
-    private async _openSettings(): Promise<void> {
-        const preferJsonEditor = vscode.workspace
-            .getConfiguration('workbench.settings')
-            .get<string>('editor') === 'json';
-        const isCursor = /cursor/i.test(vscode.env.appName);
-
-        // Cursor: always open Settings UI (JSON editor command often does nothing visible).
-        if (preferJsonEditor && !isCursor) {
-            await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
-                revealSetting: { key: setting('path'), edit: false },
-            });
-            return;
-        }
-
-        await vscode.commands.executeCommand(
-            'workbench.action.openSettings',
-            `@ext:${this._extensionId}`,
-        );
+        await this._commands.checkForUpdate(this._extensionId);
     }
 
     public dispose(): void {
@@ -1481,7 +1471,7 @@ export class App implements vscode.WebviewViewProvider {
         this._mail?.inbox.dispose();
         this._mail?.presence.dispose();
         this._output.dispose();
-        this._profileChanged.dispose();
+        this._profileListeners.clear();
     }
 
 }

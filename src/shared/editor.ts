@@ -1,4 +1,67 @@
 /**
+ * The editor itself: what it is called, what it looks like, what it may open.
+ *
+ * The members are exactly the ones this codebase asks of `vscode.env`, `vscode.window` and the
+ * extension registry, named for the answer rather than for the call (F6).
+ */
+export interface EditorEnv {
+    /** `Visual Studio Code`, `VSCodium`, `Cursor`: the shell this extension is running in. */
+    appName(): string;
+    /** `vscode.ColorThemeKind` as a number: it decides which syntax sheet the pane loads. */
+    themeKind(): number;
+    /** The text selected in the active editor; undefined when nothing (or nothing selected). */
+    selection(): EditorSelection | undefined;
+    /** Open a URL in the user's browser. The caller decides which URLs may be opened. */
+    openExternal(url: string): void;
+    /** This extension's own manifest, as the About panel shows it. Absent fields are ''. */
+    extensionInfo(extensionId: string): EditorExtensionInfo;
+    /** A channel in the Output panel, held by whoever writes to it. */
+    outputChannel(name: string, id: string): EditorLog;
+}
+
+/** The text the user has selected: what "Send Selection to Hermes" hands over. */
+export interface EditorSelection {
+    text: string;
+    /** The file's full path, as the editor knows it. */
+    fileName: string;
+    /** 1-based, because a person reads it. */
+    line: number;
+}
+
+/** The fields of `package.json` the About panel draws. */
+export interface EditorExtensionInfo {
+    displayName: string;
+    version: string;
+    publisher: string;
+    description: string;
+    repository: string;
+}
+
+/** An Output-panel channel, as the log writer holds it. */
+export interface EditorLog {
+    appendLine(line: string): void;
+    dispose(): void;
+}
+
+/**
+ * The editor commands this extension runs by id.
+ *
+ * Each one is a named thing the user asked for, not a command string: callers say
+ * "reload the window", and this file is the only one that knows VS Code calls that
+ * `workbench.action.reloadWindow`.
+ */
+export interface EditorCommands {
+    /** Open another folder in this window, which replaces what is open. */
+    openFolder(folderPath: string): void;
+    /** Reload the window: how a changed extension takes effect. */
+    reloadWindow(): Promise<void>;
+    /** Ask the Marketplace for updates, then show this extension in the list. */
+    checkForUpdate(extensionId: string): Promise<void>;
+    /** Open this extension's settings, in whichever editor the user has chosen for them. */
+    openSettings(extensionId: string): Promise<void>;
+}
+
+/**
  * What the user is told, in the editor's own voice.
  *
  * Not the pane's: these are the editor's notifications, and they were always `vscode.window`'s.

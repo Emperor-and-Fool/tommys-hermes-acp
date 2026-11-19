@@ -1,11 +1,42 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
 import type { LocaleStrings } from '../../shared/i18n';
 import { identity } from '../../shared/extensionId';
 
-/** Everything the page needs as inputs; nothing here reads the provider or the vscode API. */
+/**
+ * A file in the extension's `media/`, as one webview may load it.
+ *
+ * Kept here rather than in `editor/`: the answer is per webview, and a webview is one of our own
+ * views, which is what this folder is for (F6).
+ */
+export function mediaUri(extensionUri: vscode.Uri, webview: vscode.Webview, relativeToMedia: string): string {
+    return webview
+        .asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', relativeToMedia))
+        .toString();
+}
+
+/**
+ * The two things a webview contributes to its own document: the origin its CSP names, and the
+ * function that turns a `media/` path into a URI it may load. Absent without a webview, which is
+ * why the document's slots stay unfilled then.
+ */
+export function webviewResources(
+    extensionUri: vscode.Uri,
+    webview?: vscode.Webview
+): Pick<WebviewHtmlInput, 'resourceUri' | 'cspSource'> {
+    if (!webview) {
+        return {};
+    }
+    return {
+        resourceUri: (relativeToMedia: string) => mediaUri(extensionUri, webview, relativeToMedia),
+        cspSource: webview.cspSource,
+    };
+}
+
+/** Everything the page needs as inputs; nothing here reads the provider's state. */
 export interface WebviewHtmlInput {
     /** Absolute path of `media/chat.html`, the template with the placeholder slots. */
     htmlPath: string;
