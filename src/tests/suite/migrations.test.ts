@@ -5,7 +5,6 @@ import * as path from 'path';
 import type { Project, SessionInfo } from '../../shared/chat';
 import { backupDataHome, backupStamp, runMigrations } from '../../host/store/migrations';
 import { ProfilesStore } from '../../host/store/profiles';
-import { activeSessionPathFor } from '../../host/store/paths';
 
 function tempHome(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-migrate-'));
@@ -109,13 +108,14 @@ describe('data home migrations', () => {
             runMigrations(home, resolver, first.log, '');
             assert.strictEqual(fs.existsSync(path.join(home, 'sessions.json')), false);
             const defaultId = new ProfilesStore(home).idFor('default');
-            assert.strictEqual(fs.readFileSync(activeSessionPathFor(home, defaultId), 'utf-8'), 'abc');
+            // The pointer names no tab of ours, so the active-pointer step drops it, once.
+            assert.strictEqual(fs.existsSync(path.join(home, 'profiles', defaultId, 'active-session.txt')), false);
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', '__default__')), false);
             assert.deepStrictEqual(first.lines, [
                 'Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' written',
                 'Migration: the root sessions.json moved into the default profile',
                 "Migration: profiles/__default__ moved to default's id folder",
-                'Migration: default active session "abc" names no workspace, left as it is',
+                'Migration: default active pointer "abc" names no workspace, dropped',
             ]);
 
             const second = logger();
@@ -123,7 +123,6 @@ describe('data home migrations', () => {
             assert.strictEqual(fs.existsSync(path.join(home, 'profiles', defaultId, 'sessions.json')), true);
             assert.deepStrictEqual(second.lines, [
                 'Backup: ' + path.basename(home) + '.backup-' + backupStamp() + ' exists, left as it is',
-                'Migration: default active session "abc" names no workspace, left as it is',
             ]);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
@@ -640,12 +639,40 @@ describe('data home migrations', () => {
             assert.strictEqual(fs.existsSync(path.join(dir, 'workspace-roots.json')), false);
             assert.strictEqual(fs.existsSync(path.join(dir, 'active-session.txt')), false);
             assert.deepStrictEqual(lines.filter(line => line.includes('per-workspace row')), [
-                'Migration: kitt 3 per-workspace row(s) moved to workspaces.json',
+                'Migration: kitt 2 per-workspace row(s) moved to workspaces.json',
+            ]);
+            // The pointer has its own step, and the ids it needs are already there.
+            assert.deepStrictEqual(lines.filter(line => line.includes('active')), [
+                'Migration: kitt active tab moved to its workspace',
             ]);
 
             const second = logger();
             runMigrations(home, () => undefined, second.log, '');
             assert.deepStrictEqual(second.lines, [`Backup: ${path.basename(home)}.backup-${backupStamp()} exists, left as it is`]);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });
+        }
+    });
+    it('lets a file written after the move win over the stale row, then removes it', () => {
+        const home = tempHome();
+        try {
+            const store = new ProfilesStore(home);
+            const kittId = store.idFor('kitt');
+            const dir = writeProfileFolder(home, kittId, [
+                tab({ id: 't2', hermesSessionId: 'h2', workspaceId: 'w1' }),
+            ]);
+            fs.writeFileSync(path.join(dir, 'workspaces.json'), JSON.stringify({
+                w1: { defaultFolderId: 'f1', activeSessionId: 't-old' },
+            }));
+            fs.writeFileSync(path.join(dir, 'active-session.txt'), 't2');
+
+            runMigrations(home, () => undefined, logger().log, '');
+
+            const rows = JSON.parse(fs.readFileSync(path.join(dir, 'workspaces.json'), 'utf-8'));
+            assert.strictEqual(rows.w1.activeSessionId, 't2', 'the file is the newer of the two');
+            assert.strictEqual(rows.w1.defaultFolderId, 'f1', 'the rest of the row is untouched');
+            assert.strictEqual(fs.existsSync(path.join(dir, 'active-session.txt')), false);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
             fs.rmSync(`${home}.backup-${backupStamp()}`, { recursive: true, force: true });

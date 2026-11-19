@@ -38,9 +38,12 @@ describe('session store: the catalog', () => {
             'nothing is dropped: the catalog is as long as the list it was given');
     });
 
-    it('round-trips the active id', () => {
-        store.writeActiveId('abc');
-        assert.strictEqual(store.readActiveId(), 'abc');
+    it('round-trips the active id per workspace, and keeps the workspaces apart', () => {
+        store.writeActiveId('w-1', 'abc');
+        store.writeActiveId('w-2', 'def');
+        assert.strictEqual(store.readActiveId('w-1'), 'abc');
+        assert.strictEqual(store.readActiveId('w-2'), 'def');
+        assert.strictEqual(store.readActiveId('w-3'), null);
     });
 
     it('returns an empty catalog when the file is missing', () => {

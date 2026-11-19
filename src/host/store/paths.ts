@@ -22,11 +22,6 @@ export function sessionsPathFor(historyDir: string, sessionProfileId: string): s
     return path.join(profileDir(historyDir, sessionProfileId), 'sessions.json');
 }
 
-/** The tab that profile was last on. */
-export function activeSessionPathFor(historyDir: string, sessionProfileId: string): string {
-    return path.join(profileDir(historyDir, sessionProfileId), 'active-session.txt');
-}
-
 /**
  * The workspace registry, above the profiles.
  *

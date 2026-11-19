@@ -3,7 +3,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Project, SessionInfo } from '../../shared/chat';
 import { legacySecondantHome, writeAtomic } from './connection';
-import { activeSessionPathFor, profileDir, sessionsPathFor } from './paths';
+import { profileDir, sessionsPathFor } from './paths';
 import { ProfilesStore, isSessionProfileId } from './profiles';
 import { FoldersStore } from './folders';
 
@@ -160,7 +160,7 @@ function migrateLegacySessionLayout(home: string, log: MigrationsLog): void {
     fs.renameSync(legacySessions, targetSessions);
     const legacyActive = path.join(home, 'active-session.txt');
     if (fs.existsSync(legacyActive)) {
-        fs.renameSync(legacyActive, activeSessionPathFor(home, defaultScopeKey));
+        fs.renameSync(legacyActive, path.join(profileDir(home, defaultScopeKey), 'active-session.txt'));
     }
     log('Migration: the root sessions.json moved into the default profile');
 }
@@ -639,22 +639,6 @@ function migrateProfileWorkspaces(home: string, store: ProfilesStore, folders: F
             moved += 1;
         }
 
-        const active = readText(activeFile).trim();
-        let activePlaced = true;
-        if (active) {
-            const tabs = readJson<SessionInfo[]>(path.join(dir, 'sessions.json'), []);
-            const tab = tabs.find(entry => entry && (entry.id === active || entry.hermesSessionId === active));
-            const workspaceId = tab?.workspaceId || '';
-            if (workspaceId) {
-                const row = existing[workspaceId] || { defaultFolderId: '', activeSessionId: '' };
-                existing[workspaceId] = { ...row, activeSessionId: active };
-                moved += 1;
-            } else {
-                activePlaced = false;
-                log(`Migration: ${agent} active session "${active}" names no workspace, left as it is`);
-            }
-        }
-
         if (moved > 0) {
             writeAtomic(target, existing);
             log(`Migration: ${agent} ${moved} per-workspace row(s) moved to workspaces.json`);
@@ -662,9 +646,45 @@ function migrateProfileWorkspaces(home: string, store: ProfilesStore, folders: F
         if (fs.existsSync(rootsFile)) {
             fs.rmSync(rootsFile, { force: true });
         }
-        if (active && activePlaced) {
-            fs.rmSync(activeFile, { force: true });
+    }
+}
+
+/**
+ * The active tab, out of `active-session.txt` — including files written after the first move.
+ *
+ * The pointer is per workspace now (`activeSessionId`), and `Sessions` writes it there. A file
+ * written by the build before this one is the newer of the two, so its id overwrites the row. A
+ * file whose session belongs to no workspace can be placed nowhere: it is dropped and said once —
+ * better a line at activation than a pointer nothing reads, rewritten forever.
+ */
+function migrateActivePointers(home: string, store: ProfilesStore, log: MigrationsLog): void {
+    for (const name of folderNames(path.join(home, 'profiles'))) {
+        if (!isSessionProfileId(name)) {
+            continue;
         }
+        const dir = path.join(home, 'profiles', name);
+        const activeFile = path.join(dir, 'active-session.txt');
+        const active = readText(activeFile).trim();
+        if (!active) {
+            continue;
+        }
+        const agent = store.nameFor(name) || name;
+        const tabs = readJson<SessionInfo[]>(path.join(dir, 'sessions.json'), []);
+        const tab = tabs.find(entry => entry && (entry.id === active || entry.hermesSessionId === active));
+        const workspaceId = tab?.workspaceId || '';
+        if (workspaceId) {
+            const rows = readJsonObject<Record<string, { defaultFolderId?: string; activeSessionId?: string }>>(
+                path.join(dir, 'workspaces.json'),
+                {},
+            );
+            const row = rows[workspaceId] || { defaultFolderId: '' };
+            rows[workspaceId] = { ...row, activeSessionId: active };
+            writeAtomic(path.join(dir, 'workspaces.json'), rows);
+            log(`Migration: ${agent} active tab moved to its workspace`);
+        } else {
+            log(`Migration: ${agent} active pointer "${active}" names no workspace, dropped`);
+        }
+        fs.rmSync(activeFile, { force: true });
     }
 }
 
@@ -707,6 +727,7 @@ export function runMigrations(
         const folders = new FoldersStore(home);
         migrateSessionFolders(home, store, folders, log);
         migrateProfileWorkspaces(home, store, folders, log);
+        migrateActivePointers(home, store, log);
     } finally {
         releaseLock(home);
     }

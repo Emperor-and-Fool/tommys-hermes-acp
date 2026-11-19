@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
-import { activeSessionPathFor, profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
-import { writeAtomic, writeAtomicText } from '../store/connection';
+import { profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
+import { writeAtomic } from '../store/connection';
 import { FoldersStore } from '../store/folders';
 import type { OfferedFolder, RootsSource } from './cwd';
 import type { TreeInput, TreePaths, TreeSnapshot } from './workSpace';
@@ -420,7 +420,12 @@ export class ProjectStore {
  * A tab the user stopped using leaves the catalog when the caller drops it, not at a count.
  */
 export class TabStore {
-    constructor(private _historyDir: string, private _sessionProfileId: string) {}
+    /** The per-agent rows: the active tab of a workspace is one of them. */
+    private readonly _profileWorkspaces: ProfileWorkspaceStore;
+
+    constructor(private _historyDir: string, private _sessionProfileId: string) {
+        this._profileWorkspaces = new ProfileWorkspaceStore(_historyDir, () => this._sessionProfileId);
+    }
 
     /** The catalog is per agent; the transcripts are not. */
     setProfile(sessionProfileId: string): void {
@@ -429,10 +434,6 @@ export class TabStore {
 
     get catalogPath(): string {
         return sessionsPathFor(this._historyDir, this._sessionProfileId);
-    }
-
-    get activeIdPath(): string {
-        return activeSessionPathFor(this._historyDir, this._sessionProfileId);
     }
 
     readCatalog(): SessionInfo[] {
@@ -470,18 +471,15 @@ export class TabStore {
         }
     }
 
-    readActiveId(): string | null {
-        try {
-            const id = fs.readFileSync(this.activeIdPath, 'utf-8').trim();
-            return id || null;
-        } catch {
-            return null;
-        }
+    /** The tab this agent was last on in a workspace: per workspace now (00.02 §2). */
+    readActiveId(workspaceId: string): string | null {
+        const id = this._profileWorkspaces.row(workspaceId).activeSessionId;
+        return id || null;
     }
 
-    writeActiveId(sessionId: string): boolean {
+    writeActiveId(workspaceId: string, sessionId: string): boolean {
         try {
-            writeAtomicText(this.activeIdPath, sessionId);
+            this._profileWorkspaces.setActiveSessionId(workspaceId, sessionId);
             return true;
         } catch {
             return false;

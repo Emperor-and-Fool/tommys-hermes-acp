@@ -79,7 +79,7 @@ export class Sessions {
 
     private restoreActive(): string {
         const visible = this.tabsInWindow();
-        const id = this.store.readActiveId();
+        const id = this.store.readActiveId(this.host.currentWorkspaceId());
         if (id && visible.some(s => s.id === id)) {
             return id;
         }
@@ -87,7 +87,7 @@ export class Sessions {
     }
 
     private saveActive(): void {
-        this.store.writeActiveId(this.activeId);
+        this.store.writeActiveId(this.host.currentWorkspaceId(), this.activeId);
     }
 
     /** The first user turn's opening words, or undefined while the tab has none. */
