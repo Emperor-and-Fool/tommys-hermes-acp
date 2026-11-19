@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
 import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
@@ -85,15 +85,10 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
-    /**
-     * Fires when this extension's agent moves to another profile; the secondant listens.
-     *
-     * A plain listener set, not `vscode.EventEmitter`: an emitter is a VS Code value, and the
-     * composition root holds no `vscode.*` of its own (F6). `{ dispose }` is all the extension
-     * API in `extension.ts` promises its callers.
-     */
+    /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
 
+    /** A plain set, not `vscode.EventEmitter`: the root holds no `vscode.*` value (F6). */
     readonly onDidChangeProfile = (listener: (name: string) => void): { dispose(): void } => {
         this._profileListeners.add(listener);
         return { dispose: () => { this._profileListeners.delete(listener); } };
@@ -912,6 +907,9 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.toggle();
     }
 
+    /** Show our side panel, unless it is already on screen: the rail lists the chats. */
+    public revealRail(): void { this._surfaces.revealRail(); }
+
     /** Called by the panel serializer so the tab comes back after a reload. */
     public restoreChatPanel(panel: vscode.WebviewPanel): void {
         this._surfaces.restorePanel(panel);
@@ -995,7 +993,9 @@ export class App implements vscode.WebviewViewProvider {
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),
-            tabs: this._lifecycle.commands,
+            // A session tab clicked in our panel arrives here; the rail follows it (Surfaces owns
+            // that rule). Every other tab command passes through untouched.
+            tabs: this._surfaces.tabCommands(this._lifecycle.commands),
             projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {

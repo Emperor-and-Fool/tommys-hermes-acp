@@ -255,6 +255,13 @@ export class Surfaces {
                 this._panel = undefined;
             }
         });
+        // The conversation is on screen in an editor tab: what is missing beside it is the list
+        // of chats, so the rail follows the panel into view.
+        panel.onDidChangeViewState(() => {
+            if (panel.active) {
+                this.revealRail();
+            }
+        });
         this.postRole(surface);
     }
 
@@ -274,5 +281,40 @@ export class Surfaces {
         try {
             this._panel.title = this._host.activeTabTitle();
         } catch { /* panel already disposed */ }
+    }
+
+    /**
+     * Show our side panel, unless the user is already looking at it.
+     *
+     * The one place that names the view container (`workbench.view.extension.<sidebarId>`). Three
+     * intents reach it: a command asking for the chat, our editor panel becoming the active tab,
+     * and a session tab clicked inside the panel — in every case the rail is where the other
+     * chats are.
+     *
+     * The guard is what keeps it from stealing focus: a visible view is already on screen, and
+     * revealing it again would pull focus out of whatever has it.
+     */
+    revealRail(): void {
+        if (this._view?.visible) {
+            return;
+        }
+        void vscode.commands.executeCommand(`workbench.view.extension.${identity().sidebarId}`);
+    }
+
+    /**
+     * The tab commands, with one addition: picking a session tab shows the rail.
+     *
+     * The message arrives as a tab command, and what the rail lists is a fact about the surfaces,
+     * so the wrapping lives here; the router host keeps one member, as it did (R2).
+     */
+    tabCommands<T extends { switchSession(sessionId: string, interrupt: boolean): void }>(commands: T): T {
+        const wrapped: T = {
+            ...commands,
+            switchSession: (sessionId: string, interrupt: boolean) => {
+                this.revealRail();
+                commands.switchSession(sessionId, interrupt);
+            },
+        };
+        return wrapped;
     }
 }

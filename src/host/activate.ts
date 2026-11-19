@@ -80,7 +80,7 @@ export function activateExtension(
 
     context.subscriptions.push(
         vscode.commands.registerCommand(id.cmd('openChat'), () => {
-            void vscode.commands.executeCommand(`workbench.view.extension.${id.sidebarId}`);
+            app.revealRail();
         })
     );
 
@@ -93,7 +93,7 @@ export function activateExtension(
             }
             const text = `At ${selection.fileName}:${selection.line}\n\`\`\`\n${selection.text}\n\`\`\``;
 
-            void vscode.commands.executeCommand(`workbench.view.extension.${id.sidebarId}`);
+            app.revealRail();
             app.insertIntoInput(text);
         })
     );
