@@ -57,6 +57,8 @@ export interface TabLifecycleHost {
     postTo(surface: ChatSurface, msg: HostToPane): void;
     log(line: string): void;
     resolveCwd(): string;
+    /** The cwd of one tab's session: its own root, else the agent's default. */
+    resolveCwdFor(sessionId: string): string;
     /** Our id for the agent this pane is talking to: attachments are keyed by it. */
     sessionProfileId(): string;
     attachments: AttachmentStore;
@@ -247,7 +249,7 @@ export class TabLifecycle {
         try {
             this._renderReplayOnLoad = true;
             try {
-                await acp.loadSession(this._host.resolveCwd(), bound);
+                await acp.loadSession(this._host.resolveCwdFor(sessionId), bound);
             } finally {
                 this._renderReplayOnLoad = false;
             }

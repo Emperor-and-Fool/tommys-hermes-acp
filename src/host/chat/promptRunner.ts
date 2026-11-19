@@ -19,6 +19,8 @@ export interface PromptHost {
     messages(): ChatMessage[];
     tabs(): SessionInfo[];
     resolveCwd(): string;
+    /** The cwd of one tab's session: its own root, else the agent's default. */
+    resolveCwdFor(sessionId: string): string;
     log(line: string): void;
     post(msg: HostToPane): void;
     otherSessionIsPrompting(): boolean;
@@ -309,7 +311,7 @@ export class PromptRunner {
         const bound = this.host.tabs().find((rec) => rec.id === sessionId)?.hermesSessionId;
         if (bound && acp.activeSessionId !== bound) {
             try {
-                await acp.loadSession(this.host.resolveCwd(), bound);
+                await acp.loadSession(this.host.resolveCwdFor(sessionId), bound);
                 this.host.log(`Switched Hermes session to ${bound}`);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -332,7 +334,7 @@ export class PromptRunner {
                 return { ok: false, notified: true };
             }
             // Blank tab: the first message is what creates its session.
-            await acp.newSession(this.host.resolveCwd());
+            await acp.newSession(this.host.resolveCwdFor(sessionId));
             if (this.host.acpStatus() !== 'ready') {
                 // `newSession` keeps the connection when the agent refuses and reports through
                 // the status; without this check the turn fell through as a success and the send
