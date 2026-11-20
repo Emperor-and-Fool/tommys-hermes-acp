@@ -71,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The extension survives Windows.** Five suspects were fixed before release, each with a test that
+  runs here by passing the platform in: one folder has one identity (`C:\Repo` and `c:\repo\` used to
+  make two rows, and a session's Hermes cwd could not be found again), a rename is retried while
+  another process holds the file (four windows share `folders.json`), a migration stops at the first
+  folder it cannot move instead of leaving the data split over two folders, `HERMES_HOME` is expanded
+  the way Hermes expands it (`~`, `%VAR%` on Windows, `$VAR` / `${VAR}` elsewhere) and
+  `HERMES_DATA_DIR_SUFFIX` is applied, and `state.db` is opened read-only so a lock while Hermes
+  writes is logged and skipped instead of thrown. **This release has not been run on Windows yet**:
+  the code paths are covered by tests here, the platform is not.
 - **A permission press made during a run now says what it did.** Commands follow at once, but Hermes
   freezes the session's edit mode for the run in flight, so the edit half waited in silence. The pane
   says "Applies from the next run." beside the answers — the same words the Hermes cwd uses, from one
