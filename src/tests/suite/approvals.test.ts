@@ -4,19 +4,44 @@ import { Approvals, editModeFor, type ApprovalsHost } from '../../host/permissio
 import type { HostToPane } from '../../shared/webview';
 
 /** The feature with a recording control, so the order of its writes is what the test checks. */
-function harness(options: { patterns?: string[]; backupFails?: boolean; reported?: string; echo?: boolean } = {}) {
+function harness(options: {
+    patterns?: string[];
+    backupFails?: boolean;
+    reported?: string;
+    echo?: boolean;
+    /** What the cache holds before any read: 'unknown' is a fresh switch. */
+    lastMode?: string;
+    /** What the CLI answers when a read does run. */
+    readReturns?: string;
+    /** Held open by a test that wants to watch the caller wait. */
+    readGate?: Promise<void>;
+} = {}) {
     const calls: string[] = [];
     const posts: HostToPane[] = [];
+    const logs: string[] = [];
     let openAccess = false;
+    let lasts = options.lastMode ?? 'smart';
     const control = {
-        last: () => 'smart',
+        last: () => lasts,
         lastDenyCount: () => 0,
-        read: async () => 'smart',
+        read: async () => {
+            calls.push('read');
+            if (options.readGate) {
+                await options.readGate;
+            }
+            lasts = options.readReturns ?? 'smart';
+            return lasts;
+        },
         readDenyCount: async () => 0,
         readDenyList: async () => options.patterns ?? [],
         write: async (_e: string, _p: string, mode: string) => {
             calls.push(`write:${mode}`);
             return true;
+        },
+        /** The agent switch: what the last read said is no longer this profile's answer. */
+        clear: () => {
+            calls.push('clear');
+            lasts = 'unknown';
         },
         clearDeny: async () => {
             calls.push('clearDeny');
@@ -64,7 +89,9 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
         post: (msg: HostToPane) => {
             posts.push(msg);
         },
-        log: () => {},
+        log: (line: string) => {
+            logs.push(line);
+        },
         profile: () => 'dev-vsc',
         executable: async () => '/usr/local/bin/hermes',
         acp: () => (sessionModes || true) ? (acp as never) : undefined,
@@ -87,6 +114,7 @@ function harness(options: { patterns?: string[]; backupFails?: boolean; reported
         approvals,
         calls,
         posts,
+        logs,
         sessionModes,
         isOpen: () => openAccess,
         setBusy: (value: boolean) => {
@@ -267,5 +295,66 @@ describe('permissions feature: the edit mode a first prompt waits for', () => {
         assert.deepStrictEqual(h.sessionModes, ['accept_edits']);
         const last = h.posts.filter(post => post.type === 'approvalMode').pop() as { notice?: string };
         assert.strictEqual(last.notice, undefined, 'and the notice is over');
+    });
+});
+
+/**
+ * An agent switch clears the cached mode, and Hermes then opens the session on `default`. Nothing
+ * used to read `approvals.mode` again, so the session ran Manual while the row said None.
+ */
+describe('permissions feature: an unknown mode is read, never skipped', () => {
+    it('after a switch, a session that reports default gets set_mode once the read answers off', async () => {
+        const h = harness({ lastMode: 'unknown', readReturns: 'off', reported: 'default' });
+        h.approvals.onProfileChanged();
+
+        await h.approvals.applyEdits();
+
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits'], 'None means accept_edits, not Manual');
+        assert.deepStrictEqual(h.calls.filter(call => call === 'read'), ['read'], 'one read, not a loop');
+        assert.strictEqual(h.reported(), 'accept_edits');
+    });
+
+    it('the first prompt of a blank chat waits for that read before a mode is set', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const h = harness({ lastMode: 'unknown', readReturns: 'off', reported: 'default', readGate: gate });
+        h.approvals.onProfileChanged();
+
+        let settled = false;
+        const pending = h.approvals.applyEdits().then(() => {
+            settled = true;
+        });
+        // promptRunner awaits this before the prompt goes out: nothing may be sent meanwhile.
+        await Promise.resolve();
+        assert.strictEqual(settled, false, 'the caller is still waiting');
+        assert.deepStrictEqual(h.sessionModes, [], 'no mode is sent before one is known');
+
+        release();
+        await pending;
+        assert.strictEqual(settled, true);
+        assert.deepStrictEqual(h.sessionModes, ['accept_edits'], 'one request, after the read');
+    });
+
+    it('a read that answers nothing is said out loud, and sends nothing', async () => {
+        const h = harness({ lastMode: 'unknown', readReturns: 'unknown', reported: 'default' });
+        h.approvals.onProfileChanged();
+
+        await h.approvals.applyEdits();
+
+        assert.deepStrictEqual(h.sessionModes, [], 'no mode is invented');
+        assert.ok(h.logs.some(line => line.includes('Edit mode unknown for profile "dev-vsc"')),
+            'the log says why nothing happened');
+    });
+
+    it('the read puts the row on the mode that was applied', async () => {
+        const h = harness({ lastMode: 'unknown', readReturns: 'off', reported: 'default' });
+        h.approvals.onProfileChanged();
+
+        await h.approvals.applyEdits();
+
+        const posts = h.posts.filter(msg => (msg as { type: string }).type === 'approvalMode') as Array<{ mode?: string }>;
+        assert.strictEqual(posts[posts.length - 1]?.mode, 'off', 'the row shows what the session was told');
     });
 });

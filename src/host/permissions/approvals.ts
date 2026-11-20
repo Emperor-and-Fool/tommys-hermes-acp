@@ -184,9 +184,23 @@ export class Approvals {
      */
     async applyEdits(): Promise<void> {
         const acp = this._host.acp();
-        const desired = this._desiredEditMode();
-        if (!acp || !acp.activeSessionId || !desired) {
+        if (!acp || !acp.activeSessionId) {
             return;
+        }
+        let desired = this._desiredEditMode();
+        if (!desired) {
+            // Nothing is remembered for this profile. An agent switch clears it, and Hermes then
+            // reports `default` on the session it opens, so a session would run Manual while the
+            // row says None — silently, until something else happens to read the mode. The mode
+            // lives in Hermes' own yaml: read it now, once, and let the row show what was applied.
+            const profile = this._host.profile();
+            await this._refresh(profile, this._control.last(profile), true);
+            desired = this._desiredEditMode();
+            if (!desired) {
+                // Still unknown: say so rather than leave a session on a mode nobody chose.
+                this._host.log(`Edit mode unknown for profile "${profile}" (session ${acp.activeSessionId}): nothing applied`);
+                return;
+            }
         }
         const sessionId = acp.activeSessionId;
         const inflight = this._settingMode;
