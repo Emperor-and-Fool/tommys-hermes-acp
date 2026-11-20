@@ -54,6 +54,17 @@ describe('the connect guarantee: a profile another window runs', () => {
         }
     });
 
+    it('announces nothing when it refuses: the signal the presence writes on stays quiet', async () => {
+        const h = harness([{ cliProfile: 'dev-vsc', holder: 'another window' }]);
+        let landed = 0;
+        h.connection.profileActive.on(() => {
+            landed += 1;
+        });
+
+        await h.connection.connect();
+        assert.strictEqual(landed, 0, 'a refused connect never says a profile became active');
+    });
+
     it('lets a profile no one else holds through to the next check', async () => {
         const h = harness([{ cliProfile: 'kitt', holder: 'the secondant' }]);
         await h.connection.connect();

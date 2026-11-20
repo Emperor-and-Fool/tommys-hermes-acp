@@ -30,17 +30,39 @@ export class ProfilePresence {
     /** What the last write said, so the log speaks only when the answer changes. */
     private _announcedProfile = '';
     private _announcing = false;
+    /**
+     * Whether this instance has connected to a profile at all.
+     *
+     * A picker that offers a taken profile is not a connection: the guarantee refuses it, and
+     * announcing it here would claim a profile another window is actually running. Only a connect
+     * that got past that guarantee says this instance is on a profile.
+     */
+    private _connected = false;
 
     constructor(private readonly _host: ProfilePresenceHost) {}
 
-    /** Say it now, then keep saying it. */
+    /** Say it now, then keep saying it. Nothing is announced until a connect has landed. */
     start(): void {
         this.beat();
         this._timer = setInterval(() => this.beat(), HEARTBEAT_MS);
     }
 
-    /** Say where this instance stands: on start, on a profile change, and on every beat. */
+    /**
+     * A connect got past the excluded-profile guarantee: this instance really is on that profile.
+     *
+     * From here the beat may announce it, and a refusal can no longer change it — a refused connect
+     * leaves the row as it was, which is what the other windows should keep reading.
+     */
+    connected(): void {
+        this._connected = true;
+        this.beat();
+    }
+
+    /** Say where this instance stands: on a connect, on a profile change, and on every beat. */
     beat(): void {
+        if (!this._connected) {
+            return;
+        }
         const cliProfile = this._host.profile();
         if (!cliProfile) {
             this._stopAnnouncing('no profile');

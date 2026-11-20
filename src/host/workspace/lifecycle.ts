@@ -180,7 +180,7 @@ export class TabLifecycle {
                 session.activeId = newest.id;
                 session.messages = [];
                 this._host.post({ type: 'newChat' });
-                if (!await this._loadForReplay(acp, cwd, newest.hermesSessionId, 'Adopt')) {
+                if (!await this._loadForReplay(acp, newest.id, newest.hermesSessionId, 'Adopt')) {
                     // The tab stays empty and this pane stays unbound: binding the throwaway would
                     // present a session Hermes never had, and letting the error escape would send
                     // it to Connection's catch, which disposes the whole client.
@@ -194,7 +194,7 @@ export class TabLifecycle {
             }
         }
         if (target && target !== acp.activeSessionId) {
-            if (await this._loadForReplay(acp, cwd, target, 'Resume')) {
+            if (await this._loadForReplay(acp, session.activeId, target, 'Resume')) {
                 this.bindHermesSessionId(target);
                 this._host.log(`Resumed Hermes session ${target}`);
                 return;
@@ -213,16 +213,23 @@ export class TabLifecycle {
         );
     }
 
-    /** Load one session with the replay allowed to paint; false, with a log line, when it fails. */
+    /**
+     * Load one session with the replay allowed to paint; false, with a log line, when it fails.
+     *
+     * The cwd is the tab's own folder, never the window's default: `session/load` with a different
+     * cwd **moves** the session (gateway_server.py:403-404), so the connect path used to drag a
+     * rooted session back to the default folder while the row kept showing the old one. Every other
+     * load already resolves his folder this way.
+     */
     private async _loadForReplay(
         acp: AcpClient,
-        cwd: string,
+        tabId: string,
         hermesSessionId: string,
         verb: string,
     ): Promise<boolean> {
         this._renderReplayOnLoad = true;
         try {
-            await acp.loadSession(cwd, hermesSessionId);
+            await acp.loadSession(this._host.resolveCwdFor(tabId), hermesSessionId);
             return true;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

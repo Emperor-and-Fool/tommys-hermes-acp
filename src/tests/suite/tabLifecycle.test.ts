@@ -146,3 +146,67 @@ describe('tab move: the workspace cwd decides, not the tab record', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+/**
+ * A reconnect used to load the tab with the window's default folder. `session/load` with another
+ * cwd **moves** the session (gateway_server.py:403-404), so a session rooted in `upstream` came
+ * back working in the default folder while the row still said upstream.
+ */
+describe('resumeOrAdopt: the load goes to the tab\'s own folder', () => {
+    it('loads with resolveCwdFor(the tab), never with the connect cwd', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-resume-'));
+        const session = new Sessions(dir, 'scope', {
+            post: () => {},
+            log: () => {},
+            updatePanelTitle: () => {},
+            modelLabel: () => undefined,
+            currentWorkspaceId: () => '',
+            knownWorkspaceIds: () => [],
+        }, new TabStore(dir, 'scope'));
+
+        const loaded: Array<{ cwd: string; sessionId: string }> = [];
+        const host = {
+            acp: () => ({
+                activeSessionId: 'hermes-throwaway',
+                status: 'ready',
+                listSessionCatalog: async () => ([
+                    { sessionId: 'hermes-rooted', title: 'Rooted', hidden: false, messageCount: 2, updatedAt: 1 },
+                ]),
+                loadSession: async (cwd: string, sessionId: string) => {
+                    loaded.push({ cwd, sessionId });
+                },
+            }),
+            session,
+            post: () => {},
+            postTo: () => {},
+            log: () => {},
+            resolveCwd: () => path.join(dir, 'window'),
+            resolveCwdFor: (tabId: string) => (tabId === session.activeId
+                ? path.join(dir, 'upstream')
+                : path.join(dir, 'window')),
+            profile: () => 'test',
+            attachments: { hydrateImages: () => [] },
+            promptSessionId: () => undefined,
+            detachActivePrompt: async () => {},
+            otherSessionIsPrompting: () => false,
+            syncModelStateForCurrentSession: async () => {},
+            syncPromptUiIfReturningToOwner: () => {},
+            snapshotModelFromProfile: () => {},
+            saveCatalog: () => true,
+            saveCurrent: () => {},
+            ensureRegistered: () => {},
+            postSessionList: () => {},
+            postHistoryState: () => {},
+            dropHistoryStage: () => {},
+            activate: () => {},
+            workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+        } as unknown as TabLifecycleHost;
+
+        await new TabLifecycle(host).resumeOrAdopt(path.join(dir, 'window'));
+
+        assert.deepStrictEqual(loaded, [
+            { cwd: path.join(dir, 'upstream'), sessionId: 'hermes-rooted' },
+        ], 'the session is loaded where the row says it is rooted');
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+});

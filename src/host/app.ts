@@ -487,6 +487,9 @@ export class App implements vscode.WebviewViewProvider {
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
         });
+        // The profile this window actually landed on, for the other windows to read: a connect that
+        // the exclusion guarantee refused never fires this, so it announces nothing.
+        this._connection.profileActive.on(() => this._presence.connected());
 
         context.subscriptions.push(
             this._projects.start(),
