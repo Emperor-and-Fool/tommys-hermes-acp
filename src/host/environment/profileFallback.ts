@@ -122,7 +122,11 @@ export function profileNameFromPreviousNames(staleName: string, hermesHome = res
  * the answer when no named profile holds one. A named profile that holds one wins over the default,
  * which is also the order the folders are read in.
  */
-export function profileNameHoldingSessions(sessionIds: string[], hermesHome = resolveHermesRoot()): string | undefined {
+export function profileNameHoldingSessions(
+    sessionIds: string[],
+    hermesHome = resolveHermesRoot(),
+    log: (line: string) => void = () => {},
+): string | undefined {
     const wanted = sessionIds.map(id => (id || '').trim()).filter(Boolean);
     if (wanted.length === 0) {
         return undefined;
@@ -133,11 +137,13 @@ export function profileNameHoldingSessions(sessionIds: string[], hermesHome = re
         if (!hasProfileState(dir)) {
             continue;
         }
-        if (holdsAny(path.join(dir, 'state.db'), wanted)) {
+        if (holdsAny(path.join(dir, 'state.db'), wanted, name, log)) {
             return name;
         }
     }
-    return holdsAny(path.join(hermesHome, 'state.db'), wanted) ? HERMES_DEFAULT_PROFILE : undefined;
+    return holdsAny(path.join(hermesHome, 'state.db'), wanted, HERMES_DEFAULT_PROFILE, log)
+        ? HERMES_DEFAULT_PROFILE
+        : undefined;
 }
 
 /**
@@ -184,19 +190,35 @@ function readText(target: string): string {
     }
 }
 
-/** Does this state.db hold any of the ids? A missing or unreadable database holds nothing. */
-function holdsAny(dbPath: string, sessionIds: string[]): boolean {
+/** A `code: message` line for a filesystem or driver error. */
+function describeError(error: unknown): string {
+    if (error instanceof Error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        return code ? `${code}: ${error.message}` : error.message;
+    }
+    return String(error);
+}
+
+/**
+ * Does this state.db hold any of the ids?
+ *
+ * Hermes writes this database while we read it, so a lock, a busy file or a half-written one is an
+ * ordinary answer, not a failure: the read is logged once, for this one database, and the search
+ * moves on to its next source. Nothing here throws.
+ */
+function holdsAny(dbPath: string, sessionIds: string[], label: string, log: (line: string) => void): boolean {
     if (!fs.existsSync(dbPath)) {
         return false;
     }
-    const db = openReadOnly(dbPath);
+    const db = openReadOnly(dbPath, label, log);
     if (!db) {
         return false;
     }
     try {
         const statement = db.prepare('select 1 as hit from sessions where id = ?');
         return sessionIds.some(id => statement.get(id) !== undefined);
-    } catch {
+    } catch (error) {
+        log(`Profile search: ${label} state.db could not be read (${describeError(error)}); skipped`);
         return false;
     } finally {
         try {
@@ -211,13 +233,15 @@ function holdsAny(dbPath: string, sessionIds: string[]): boolean {
  * `node:sqlite` ships with Node 22.5+ and VSCodium's runtime carries it (the installed build
  * answers `process.versions.node` 24.21.0, with `DatabaseSync` present), so a new dependency would
  * buy nothing. It is required lazily anyway: a host without the module loses the fallback, never
- * the extension.
+ * the extension. Opening read-only is what keeps a running Hermes out of our way — no journal we
+ * write, no lock we take.
  */
-function openReadOnly(dbPath: string): DatabaseSync | undefined {
+function openReadOnly(dbPath: string, label: string, log: (line: string) => void): DatabaseSync | undefined {
     try {
         const sqlite = require('node:sqlite') as typeof import('node:sqlite');
         return new sqlite.DatabaseSync(dbPath, { readOnly: true });
-    } catch {
+    } catch (error) {
+        log(`Profile search: ${label} state.db could not be opened read-only (${describeError(error)}); skipped`);
         return undefined;
     }
 }

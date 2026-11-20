@@ -7,7 +7,7 @@ import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { ensureDataHome } from './store/connection';
+import { ensureDataHome, onStoreWriteError } from './store/connection';
 import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
 import { PresenceStore } from './store/presence';
@@ -309,6 +309,8 @@ export class App implements vscode.WebviewViewProvider {
             this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
             'hermes-chat'
         );
+        // The one place a store write that never landed becomes visible: the output log (ST1).
+        onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
         // The profile table is built here, before the feature that resolves names to ids (C2): the

@@ -173,7 +173,9 @@ export class Profiles {
         if (known || isCurrentProfile(name)) {
             return name;
         }
-        return profileNameFromPreviousNames(name) || profileNameHoldingSessions(sessionIds);
+        return profileNameFromPreviousNames(name)
+            // The log goes through: an unreadable state.db is skipped, never silently.
+            || profileNameHoldingSessions(sessionIds, undefined, line => this._host.log(line));
     }
 
     /**
@@ -195,7 +197,8 @@ export class Profiles {
         if (!stored || isCurrentProfile(stored, hermesHome)) {
             return { target, missing: false };
         }
-        const found = profileNameFromPreviousNames(stored, hermesHome) || profileNameHoldingSessions(sessionIds, hermesHome);
+        const found = profileNameFromPreviousNames(stored, hermesHome)
+            || profileNameHoldingSessions(sessionIds, hermesHome, line => this._host.log(line));
         if (!found) {
             return { target, missing: hasProfilesRoot(hermesHome) };
         }

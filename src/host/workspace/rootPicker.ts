@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import { offeredRoots } from './cwd';
 import type { WorkspaceCwd } from './cwd';
 import type { HostToPane } from '../../shared/webview';
+import { sameFolderPath } from '../store/paths';
 
 /** How often the welcome ticks: one second of the thirty the store hands a new folder. */
 const TICK_MS = 1000;
@@ -439,7 +440,7 @@ export class RootPicker {
     async setRoot(folder: string): Promise<void> {
         const before = this._host.cwd.forSession(this._host.sessionRootId());
         const previousId = this._host.sessionRootId();
-        const chosen = this._host.cwd.live().find(entry => entry.path === folder);
+        const chosen = this._host.cwd.live().find(entry => sameFolderPath(entry.path, folder));
         if (!chosen || !this._host.setSessionRoot(chosen.folderId)) {
             this.state();
             return;

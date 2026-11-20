@@ -679,3 +679,49 @@ describe('data home migrations', () => {
         }
     });
 });
+
+describe('a move the filesystem refuses', () => {
+    it('stops that step and every step behind it, and the next start completes them', function () {
+        // A read-only target folder is what EPERM/EBUSY looks like from the writer's side, and it
+        // needs no patched `fs`. Root ignores the mode, so this case has nothing to test there —
+        // and neither does Windows, where `chmod` does not make a directory unrenameable: the move
+        // would succeed and the assertions below would fail for the wrong reason.
+        if (process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0)) {
+            this.skip();
+        }
+        const home = tempHome();
+        const target = path.join(home, 'profiles', '__default__');
+        try {
+            fs.writeFileSync(path.join(home, 'sessions.json'), JSON.stringify([tab({ id: 'a' })]));
+            // Work for a step that runs after the folders are moved: a legacy permission root.
+            fs.writeFileSync(
+                path.join(home, 'workspaces.json'),
+                JSON.stringify({ workspaces: [{ id: 'w1', permissionRoot: '/old/root' }] })
+            );
+            fs.mkdirSync(target, { recursive: true });
+            fs.chmodSync(target, 0o555);
+
+            const first = logger();
+            runMigrations(home, () => undefined, first.log);
+            const firstLog = first.lines.join('\n');
+            assert.ok(first.lines.some(line => line.includes('could not be moved')), firstLog);
+            assert.ok(first.lines.some(line => line.includes('the root session layout stopped')), firstLog);
+            assert.strictEqual(fs.existsSync(path.join(home, 'sessions.json')), true, 'still there, not half moved');
+            // The later steps write into profiles/<id>/: they must not have run beside the folder
+            // that could not be moved.
+            assert.ok(!firstLog.includes('workspace root'), `no later step ran:\n${firstLog}`);
+
+            // The next start, with the folder writable again: every step runs, this one included.
+            fs.chmodSync(target, 0o755);
+            const second = logger();
+            runMigrations(home, () => undefined, second.log);
+            const secondLog = second.lines.join('\n');
+            assert.strictEqual(fs.existsSync(path.join(home, 'sessions.json')), false);
+            assert.ok(second.lines.some(line => line.includes('moved into the default profile')), secondLog);
+            assert.ok(secondLog.includes('workspace root'), `the steps behind it ran too:\n${secondLog}`);
+        } finally {
+            try { fs.chmodSync(target, 0o755); } catch { /* already writable or gone */ }
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+});

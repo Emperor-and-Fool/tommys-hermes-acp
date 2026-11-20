@@ -23,12 +23,15 @@ function createStateDb(dbPath: string, sessionIds: string[]): void {
 function setup(
     settings: Record<string, unknown> = {},
     hermesHome?: string,
-    excluded: Array<{ cliProfile: string }> = []
+    excluded: Array<{ cliProfile: string }> = [],
+    logs: string[] = []
 ) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-profiles-target-'));
     const store = new ProfilesStore(home);
     const profiles = new Profiles({
-        log: () => undefined,
+        log: (line: string) => {
+            logs.push(line);
+        },
         post: () => undefined,
         globalState: {
             get: <T>(key: string) => (key === 'activeSelectionId' ? undefined as T | undefined : undefined as T | undefined),
@@ -194,6 +197,34 @@ describe('the exclusion list', () => {
             assert.deepStrictEqual(profiles.entries().map(entry => entry.id), ['B']);
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+});
+
+/**
+ * The search reads every profile's state.db while Hermes may be writing it, so a database that will
+ * not open, or will not answer, is an ordinary answer — but an answer that says so. `profileFallback`
+ * logs it through the caller; this is the caller.
+ */
+describe('the profile search says what it skipped', () => {
+    it('reports a state.db it could not read, through the host log', () => {
+        const hermesHome = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-home-broken-'));
+        try {
+            const broken = path.join(hermesHome, 'profiles', 'broken');
+            fs.mkdirSync(broken, { recursive: true });
+            fs.writeFileSync(path.join(broken, 'state.db'), 'this is not a database');
+            const logs: string[] = [];
+            const { home, store, profiles } = setup({ profile: 'gone-profile' }, hermesHome, [], logs);
+            store.idFor('gone-profile');
+
+            const target = profiles.connectTarget(undefined, ['session-1']);
+
+            assert.ok(logs.some(line => line.includes('state.db could not be')),
+                `the skip is logged, not silent: ${JSON.stringify(logs)}`);
+            assert.strictEqual(target.missing, true, 'and the name stays unresolved');
+            fs.rmSync(home, { recursive: true, force: true });
+        } finally {
+            fs.rmSync(hermesHome, { recursive: true, force: true });
         }
     });
 });

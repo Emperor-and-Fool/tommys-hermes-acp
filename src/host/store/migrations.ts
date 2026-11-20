@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { legacySecondantHome, writeAtomic } from './connection';
+import { legacySecondantHome, renameWithRetry, writeAtomic } from './connection';
 import { profileDir, sessionsPathFor } from './paths';
 import { ProfilesStore, isSessionProfileId } from './profiles';
 import { FoldersStore } from './folders';
@@ -107,6 +107,35 @@ function releaseLock(home: string): void {
     } catch { /* nothing left to remove */ }
 }
 
+/** One line for a failed filesystem call: the code is what a Windows reader needs. */
+function describeFsError(error: unknown): string {
+    if (error instanceof Error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        return code ? `${code}: ${error.message}` : error.message;
+    }
+    return String(error);
+}
+
+/**
+ * Move a folder, or say why not — and stop the step.
+ *
+ * A move fails on Windows while any file inside is open (`EPERM` / `EBUSY` / `EACCES`);
+ * `renameWithRetry` rides out the short ones, which is what a window closing looks like. A move that
+ * still fails has to stop everything behind it: the steps after this one write *into* the folder
+ * that was being moved, so a later step would create the target beside the old folder and the next
+ * start would find it already there, with the data split over both. The log line names the folder;
+ * `runMigrations` adds which step stopped. The backup stays, the steps already done stay done, and
+ * the next start runs them all again.
+ */
+function moveOrLog(from: string, to: string, log: MigrationsLog, label: string): void {
+    try {
+        renameWithRetry(from, to);
+    } catch (error) {
+        log(`Migration: ${label} could not be moved (${describeFsError(error)}); the next start tries again`);
+        throw error;
+    }
+}
+
 /**
  * Copy the whole data home to `<home>.backup-<yyyymmdd>`, once.
  *
@@ -157,10 +186,10 @@ function migrateLegacySessionLayout(home: string, log: MigrationsLog): void {
         return;
     }
     profileDir(home, defaultScopeKey);
-    fs.renameSync(legacySessions, targetSessions);
+    moveOrLog(legacySessions, targetSessions, log, 'the root sessions.json');
     const legacyActive = path.join(home, 'active-session.txt');
     if (fs.existsSync(legacyActive)) {
-        fs.renameSync(legacyActive, path.join(profileDir(home, defaultScopeKey), 'active-session.txt'));
+        moveOrLog(legacyActive, path.join(profileDir(home, defaultScopeKey), 'active-session.txt'), log, 'the root active-session.txt');
     }
     log('Migration: the root sessions.json moved into the default profile');
 }
@@ -199,7 +228,7 @@ function migrateProfileFolders(
         }
         const target = path.join(root, id);
         if (!fs.existsSync(target)) {
-            fs.renameSync(source, target);
+            moveOrLog(source, target, log, `profiles/${name}`);
             log(`Migration: profiles/${name} moved to ${agent}'s id folder`);
             continue;
         }
@@ -716,18 +745,36 @@ export function runMigrations(
             log('Migration: no backup was made, so nothing was migrated');
             return;
         }
-        migrateLegacySessionLayout(home, log);
+        // The steps depend on each other, in this order: "the profile folders" renames
+        // `profiles/<name>/` to `profiles/<id>/`, and every step after it writes into
+        // `profiles/<id>/`. One that cannot run therefore stops the ones behind it — a later step
+        // would create `profiles/<id>/` beside the folder that never moved, and the next start would
+        // find its target already there, with the data split over both. Each step can be repeated,
+        // so the next activation runs them all again; the backup and the lock stay as they are.
         const store = new ProfilesStore(home);
-        migrateProfileFolders(home, store, agentForScope, log);
-        migrateWorkspaceRoots(home, store, log);
-        if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
-            mergeSecondantHome(home, store, agentForScope, log, secondantHome);
-        }
-        migrateAttachmentsIndex(home, store, log);
         const folders = new FoldersStore(home);
-        migrateSessionFolders(home, store, folders, log);
-        migrateProfileWorkspaces(home, store, folders, log);
-        migrateActivePointers(home, store, log);
+        const steps: Array<[string, () => void]> = [
+            ['the root session layout', () => migrateLegacySessionLayout(home, log)],
+            ['the profile folders', () => migrateProfileFolders(home, store, agentForScope, log)],
+            ['the workspace roots', () => migrateWorkspaceRoots(home, store, log)],
+        ];
+        if (secondantHome && secondantHome !== home && fs.existsSync(secondantHome)) {
+            steps.push(['the secondant home', () => mergeSecondantHome(home, store, agentForScope, log, secondantHome)]);
+        }
+        steps.push(
+            ['the attachments index', () => migrateAttachmentsIndex(home, store, log)],
+            ['the session folders', () => migrateSessionFolders(home, store, folders, log)],
+            ['the per-workspace rows', () => migrateProfileWorkspaces(home, store, folders, log)],
+            ['the active pointers', () => migrateActivePointers(home, store, log)],
+        );
+        for (const [label, run] of steps) {
+            try {
+                run();
+            } catch (error) {
+                log(`Migration: ${label} stopped (${describeFsError(error)}); the next start tries every step again`);
+                break;
+            }
+        }
     } finally {
         releaseLock(home);
     }

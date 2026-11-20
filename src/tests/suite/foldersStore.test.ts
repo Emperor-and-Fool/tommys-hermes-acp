@@ -150,3 +150,33 @@ describe('the folder tables', () => {
         }
     });
 });
+
+describe('one folder, many spellings', () => {
+    it('mints one row for C:\\Repo and c:\\repo\\ on win32', () => {
+        const home = tempHome();
+        try {
+            const store = new FoldersStore(home, 'win32');
+            const first = store.folderFor('C:\\Repo')!;
+            assert.strictEqual(store.folderFor('c:\\repo\\')!.id, first.id, 'drive letter and trailing separator do not make a second row');
+            assert.strictEqual(store.rowFor('c:/repo')!.id, first.id, 'a forward-slash spelling is the same folder');
+            assert.strictEqual(first.path, 'C:\\Repo', 'the stored path is what the editor reported first');
+            const rows = JSON.parse(fs.readFileSync(foldersPathFor(home), 'utf-8')).folders;
+            assert.strictEqual(rows.length, 1);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps the same two strings apart on linux', () => {
+        const home = tempHome();
+        try {
+            const store = new FoldersStore(home, 'linux');
+            const first = store.folderFor('C:\\Repo')!;
+            assert.notStrictEqual(store.folderFor('c:\\repo\\')!.id, first.id, 'case and separators are the path here');
+            const rows = JSON.parse(fs.readFileSync(foldersPathFor(home), 'utf-8')).folders;
+            assert.strictEqual(rows.length, 2);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+});

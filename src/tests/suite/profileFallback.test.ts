@@ -10,6 +10,7 @@ import {
     profileNameHoldingSessions,
 } from '../../host/environment/profileFallback';
 import { resolveHermesRoot } from '../../host/environment/hermesPaths';
+import { HERMES_DEFAULT_PROFILE } from '../../host/environment/hermesProfile';
 
 function tempHome(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-home-'));
@@ -221,6 +222,27 @@ describe('profile fallback', () => {
             assert.deepStrictEqual(snapshot(hermesHome), before);
         } finally {
             fs.rmSync(hermesHome, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('a state.db that cannot be read', () => {
+    it('is logged once and the next source answers', () => {
+        const home = tempHome();
+        try {
+            const named = path.join(home, 'profiles', 'kitt');
+            fs.mkdirSync(named, { recursive: true });
+            fs.writeFileSync(path.join(named, 'state.db'), 'this is not a database');
+            createStateDb(path.join(home, 'state.db'), ['s1']);
+
+            const lines: string[] = [];
+            const found = profileNameHoldingSessions(['s1'], home, line => lines.push(line));
+
+            assert.strictEqual(found, HERMES_DEFAULT_PROFILE, 'the default profile holds the session');
+            assert.strictEqual(lines.length, 1, 'one line for one unreadable database');
+            assert.match(lines[0], /kitt state\.db could not be (opened|read)/);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
         }
     });
 });

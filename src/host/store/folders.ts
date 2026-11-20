@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { writeAtomic } from './connection';
+import { sameFolderPath } from './paths';
 
 /**
  * The folders a window shows, and which of them each workspace had.
@@ -91,7 +92,14 @@ interface WorkspaceFoldersFile {
  * last time, and should not touch the disk for it.
  */
 export class FoldersStore {
-    constructor(private readonly _dataHome: string) {}
+    /**
+     * `platform` decides how two paths are compared, never how they are stored: on Windows the same
+     * folder arrives as `C:\Repo` and `c:\repo\`, and one of them must not mint a second row.
+     */
+    constructor(
+        private readonly _dataHome: string,
+        private readonly _platform: NodeJS.Platform = process.platform,
+    ) {}
 
     get foldersPath(): string {
         return foldersPathFor(this._dataHome);
@@ -108,7 +116,7 @@ export class FoldersStore {
             return undefined;
         }
         const rows = this._readFolders();
-        const known = rows.find(row => row.path === wanted);
+        const known = rows.find(row => sameFolderPath(row.path, wanted, this._platform));
         if (known) {
             return known;
         }
@@ -120,7 +128,7 @@ export class FoldersStore {
     /** An existing row for a path, without minting one. */
     rowFor(folderPath: string): FolderRow | undefined {
         const wanted = (folderPath || '').trim();
-        return wanted ? this._readFolders().find(row => row.path === wanted) : undefined;
+        return wanted ? this._readFolders().find(row => sameFolderPath(row.path, wanted, this._platform)) : undefined;
     }
 
     /** A folder's path. '' when the id is not one of ours (or its row was lost). */

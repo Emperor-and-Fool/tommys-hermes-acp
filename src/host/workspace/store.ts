@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
-import { profileDir, sessionsPathFor, workspacesPathFor } from '../store/paths';
+import { profileDir, sameFolderPath, sessionsPathFor, workspacesPathFor } from '../store/paths';
 import { writeAtomic } from '../store/connection';
 import { FoldersStore } from '../store/folders';
 import type { OfferedFolder, RootsSource } from './cwd';
@@ -79,13 +79,13 @@ export class WorkspaceStore {
 
     /** The entry for a path, without recording it. What a tab needs when it is tagged. */
     entryFor(workspacePath: string): Workspace | undefined {
-        return this._read().workspaces.find(entry => entry.path === workspacePath);
+        return this._read().workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
     }
 
     /** The entry for a path, made if this is the first reference to it. For reading old files. */
     ensure(workspacePath: string): Workspace {
         const file = this._read();
-        const existing = file.workspaces.find(entry => entry.path === workspacePath);
+        const existing = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
         if (existing) {
             return existing;
         }
@@ -101,7 +101,7 @@ export class WorkspaceStore {
         if (!workspacePath) {
             return file.workspaces;
         }
-        const existing = file.workspaces.find(entry => entry.path === workspacePath);
+        const existing = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
         if (existing) {
             existing.lastSeen = Date.now();
         } else {

@@ -36,3 +36,36 @@ export function workspacesPathFor(historyDir: string): string {
 export function profileStatePathFor(historyDir: string, sessionProfileId: string): string {
     return path.join(profileDir(historyDir, sessionProfileId), 'profile-state.json');
 }
+
+/**
+ * The identity of a folder path: what makes two reports name the same folder.
+ *
+ * Windows has many spellings for one folder — the drive letter arrives as `C:` or `c:`, and the same
+ * folder comes with or without a trailing separator — so a keyed comparison has to fold both. On
+ * every other platform a path is compared exactly, after `normalize`. The stored path is never
+ * rewritten: this is the key two reports are matched on, and the row keeps the string the editor
+ * reported first, for display.
+ *
+ * The platform is a parameter, not `process.platform`, so the Windows cases run as tests on Linux.
+ */
+export function folderPathKey(folderPath: string, platform: NodeJS.Platform = process.platform): string {
+    const trimmed = (folderPath || '').trim();
+    if (!trimmed) {
+        return '';
+    }
+    if (platform === 'win32') {
+        let normalized = path.win32.normalize(trimmed);
+        // `C:\` is a root; anything longer that ends in a separator is the same folder without it.
+        if (normalized.length > 3 && normalized.endsWith('\\')) {
+            normalized = normalized.replace(/\\+$/, '');
+        }
+        return normalized.toLowerCase();
+    }
+    return path.normalize(trimmed);
+}
+
+/** Do two reports name the same folder? */
+export function sameFolderPath(left: string, right: string, platform: NodeJS.Platform = process.platform): boolean {
+    const key = folderPathKey(left, platform);
+    return key !== '' && key === folderPathKey(right, platform);
+}
