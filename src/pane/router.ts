@@ -1,29 +1,31 @@
 import type { HostToPane } from '../shared/webview';
-import { maybeFocusInputAfterResponse, setInputMode } from './components/composer/composer';
-import { applyHistoryCleared, applyHistoryStaged, renderHistorySessionList } from './components/composer/historyAttach';
-import { positionFilePreview, previewRequests, renderFilePickerItems, showFilePreview } from './components/composer/fileMention';
-import { offerUndeliveredMessage } from './components/composer/replyQuote';
-import { closeConfigureEnvModal, finishConfigureEnvDetect, hideConfigureEnvDetectProgress, openConfigureEnvModal, setConfigureEnvDetecting, showConfigureEnvDetectPanel, updateConfigureEnvDetectProgress, updateConfigureEnvPathClearVisibility } from './components/environment/configureModal';
-import { finishDetectEnvironmentPanel, initDetectEnvironmentStart, setDetectEnvIcon, updateDetectEnvironmentStep } from './components/environment/detectPanel';
-import { downloadSessionMarkdown, scheduleSessionMarkdownRender } from './components/messages/markdown';
-import { applyOtherPaneProfile, insertIntoInput } from './components/messages/messageActions';
-import { applyPeerState } from './components/messages/messageList';
-import { appendMessage, insertBeforeLastUser, isMessageForActiveSession, maybeScrollToBottom, newChat, resetAutoScrollFollow, restoreHistory } from './components/messages/messageList';
-import { applyApprovalMode, disarmSessionAnswer, dismissPermissionRequest, showPermissionRequest } from './components/messages/permissionCard';
-import { finalizeAssistantBubble, finalizeThoughtSegment, finishStreaming } from './components/messages/streaming';
-import { handleToolMessage, resetToolAggregation, setAuxMessageLive, setAuxiliaryContent } from './components/messages/toolCards';
-import { renderAboutContent } from './components/modals/info';
-import { renderLogContent } from './components/modals/logViewer';
-import { isLogModalOpen, openLogModal, showModal } from './components/modals/modal';
-import { clearSwitchQueued } from './components/modals/switchSession';
-import { renderClosedList } from './components/pickers/closedSessions';
-import { renderModelList } from './components/pickers/modelPicker';
-import { openProfilePicker, renderProfileList } from './components/pickers/profilePicker';
-import { applyInputPlaceholder, bindConnectionErrorActions, buildConnectionErrorPlaceholder, updateLoadProgress, updateStatus } from './components/status/statusBar';
-import { updateTokenUsage } from './components/status/tokenMeter';
-import { applyProjectFocus, showProjectNotice } from './components/workspace/projectGrouped';
-import { renderSessionTabs } from './components/workspace/sessionTab';
-import { afterHistoryRestored, applyViewerSurfaceRole, showViewerEmpty, showViewerFetchFailed } from './components/viewer/historyViewer';
+import * as composer from './components/composer/composer';
+import * as historyAttach from './components/composer/historyAttach';
+import * as fileMention from './components/composer/fileMention';
+import * as replyQuote from './components/composer/replyQuote';
+import * as configureModal from './components/environment/configureModal';
+import * as detectPanel from './components/environment/detectPanel';
+import * as markdown from './components/messages/markdown';
+import * as messageActions from './components/messages/messageActions';
+import * as messageList from './components/messages/messageList';
+import * as permissionCard from './components/permissions/permissionCard';
+import * as permissionRootBar from './components/workspace/permissionRootBar';
+import * as approvalModeSwitch from './components/permissions/approvalModeSwitch';
+import * as permissionModeBar from './components/permissions/permissionModeBar';
+import * as streaming from './components/messages/streaming';
+import * as toolCards from './components/messages/toolCards';
+import * as info from './components/modals/info';
+import * as logViewer from './components/modals/logViewer';
+import * as modal from './components/modals/modal';
+import * as switchSession from './components/modals/switchSession';
+import * as closedSessions from './components/pickers/closedSessions';
+import * as modelPicker from './components/pickers/modelPicker';
+import * as profilePicker from './components/pickers/profilePicker';
+import * as statusBar from './components/status/statusBar';
+import * as tokenMeter from './components/status/tokenMeter';
+import * as workSpace from './components/workspace/workSpace';
+import * as historyViewer from './components/viewer/historyViewer';
+
 import { aboutModal, configureEnvDetectCompactIcon, configureEnvDetectCompactText, configureEnvPathInput, faqModal, filePickerEl, helpModal, inputEl, required } from './dom';
 import { applyLocale, refreshRoleLabels } from './i18n';
 import { state } from './state';
@@ -34,23 +36,23 @@ export function init(): void {
         const msg = event.data as HostToPane;
         switch (msg.type) {
             case 'addMessage':
-                if (!isMessageForActiveSession(msg)) {
+                if (!messageList.isMessageForActiveSession(msg)) {
                     break;
                 }
                 if (msg.role === 'history') {
                     // The card belongs above the question it was attached to, which is where the
                     // stored transcript puts it; appending would read differently after a reload.
-                    insertBeforeLastUser('history', msg.text, { history: msg.history });
+                    messageList.insertBeforeLastUser('history', msg.text, { history: msg.history });
                     break;
                 }
                 if (msg.role === 'peer') {
-                    appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history, peerMessages: msg.messages });
+                    messageList.appendMessage('peer', msg.text, { peer: msg.peer, peerState: msg.peerState, history: msg.history, peerMessages: msg.messages });
                     break;
                 }
                 if (msg.role === 'assistant') {
-                    appendMessage('assistant', msg.text);
+                    messageList.appendMessage('assistant', msg.text);
                 } else if (msg.role === 'tool' && msg.toolCallId) {
-                    handleToolMessage(msg.text, msg.toolCallId);
+                    toolCards.handleToolMessage(msg.text, msg.toolCallId);
                 } else if (msg.role === 'thought') {
                     // ACP interleaves tool traffic with thinking, so a thought chunk that
                     // continues what is on screen updates the card; one that does not is a new
@@ -61,101 +63,102 @@ export function init(): void {
                         const continues = !!aux && typeof msg.text === 'string'
                             && msg.text.startsWith(aux.rawText || '');
                         if (el && continues) {
-                            setAuxMessageLive(el, true);
-                            setAuxiliaryContent(el, msg.text);
-                            maybeScrollToBottom();
+                            toolCards.setAuxMessageLive(el, true);
+                            toolCards.setAuxiliaryContent(el, msg.text);
+                            messageList.maybeScrollToBottom();
                             break;
                         }
-                        finalizeThoughtSegment();
+                        streaming.finalizeThoughtSegment();
                     }
-                    const id = appendMessage('thought', msg.text);
+                    const id = messageList.appendMessage('thought', msg.text);
                     state.thoughtMsgId = id;
                     const liveGroup = document.getElementById(id);
-                    if (liveGroup) setAuxMessageLive(liveGroup, true);
+                    if (liveGroup) toolCards.setAuxMessageLive(liveGroup, true);
                 } else {
-                    appendMessage(msg.role, msg.text, { steer: msg.steer === true });
+                    messageList.appendMessage(msg.role, msg.text, { steer: msg.steer === true });
                 }
                 break;
 
             case 'loadProgress':
-                if (!isMessageForActiveSession(msg)) {
+                if (!messageList.isMessageForActiveSession(msg)) {
                     break;
                 }
-                updateLoadProgress(msg.received);
+                statusBar.updateLoadProgress(msg.received);
                 break;
 
             case 'status':
-                if (!isMessageForActiveSession(msg)) {
+                if (!messageList.isMessageForActiveSession(msg)) {
                     break;
                 }
                 if (msg.status === 'connecting') {
                     state.connectionAttempted = true;
                 }
-                updateStatus(msg.status, msg.message);
+                statusBar.updateStatus(msg.status, msg.message);
                 if (msg.status === 'ready') {
                     state.isPrompting = false;
                     state.awaitingFirstChunk = false;
-                    // canSend first: finishStreaming derives the input mode from it, so setting
-                    // it afterwards left finishStreaming computing 'disabled' and needing a
-                    // second setInputMode('send') to correct it.
+                    // canSend first: streaming.finishStreaming derives the input mode from it, so setting
+                    // it afterwards left streaming.finishStreaming computing 'disabled' and needing a
+                    // second composer.setInputMode('send') to correct it.
                     state.canSend = true;
-                    resetToolAggregation();
-                    finishStreaming();
+                    toolCards.resetToolAggregation();
+                    streaming.finishStreaming();
                     inputEl.disabled = false;
                     state.placeholder.style.display = 'none';
                     if (!window._hermesRendered) {
-                        scheduleSessionMarkdownRender();
+                        markdown.scheduleSessionMarkdownRender();
                     }
-                    maybeFocusInputAfterResponse();
+                    composer.maybeFocusInputAfterResponse();
                     // Last action of a run: everything above the end has just shrunk (the final
                     // markdown pass, a thought squashing), so without this the answer stops
                     // short of the bottom by however much those cards lost.
-                    maybeScrollToBottom();
+                    messageList.maybeScrollToBottom();
                 } else if (msg.status === 'prompting') {
                     state.isPrompting = true;
-                    resetAutoScrollFollow();
+                    messageList.resetAutoScrollFollow();
                     state.canSend = false;
                     // Deliberately not disabling the textarea: the busy look comes from
                     // .input-composite-shell.waiting and the Send/Stop swap, not from a
                     // blurred input.
                     if (!state.awaitingFirstChunk) {
-                        setInputMode('stop');
+                        composer.setInputMode('stop');
                     }
                 } else if (msg.status === 'error') {
                     state.isPrompting = false;
                     state.awaitingFirstChunk = false;
                     state.canSend = false;
                     inputEl.disabled = true;
-                    finishStreaming();
-                    setInputMode('disabled');
-                    updateTokenUsage(0, 0);
+                    streaming.finishStreaming();
+                    composer.setInputMode('disabled');
+                    tokenMeter.updateTokenUsage(0, 0);
                     const errText = msg.message || locale.connectionError;
-                    state.placeholder.innerHTML = buildConnectionErrorPlaceholder(errText);
-                    bindConnectionErrorActions();
+                    state.placeholder.innerHTML = statusBar.buildConnectionErrorPlaceholder(errText);
+                    statusBar.bindConnectionErrorActions();
                     state.placeholder.style.display = 'block';
                 } else if (msg.status === 'idle') {
                     state.isPrompting = false;
                     state.awaitingFirstChunk = false;
                     state.canSend = false;
                     inputEl.disabled = true;
-                    finishStreaming();
-                    setInputMode('disabled');
-                    updateTokenUsage(0, 0);
+                    streaming.finishStreaming();
+                    composer.setInputMode('disabled');
+                    tokenMeter.updateTokenUsage(0, 0);
                 }
                 break;
 
             case 'tokenUsage':
-                updateTokenUsage(msg.used, msg.size);
+                tokenMeter.updateTokenUsage(msg.used, msg.size);
                 break;
 
             case 'newChat':
                 state.paneHintText = '';
-                newChat();
+                state.blankChat = msg.sessionId ? { id: msg.sessionId, project: msg.project || '' } : null;
+                messageList.newChat();
                 break;
 
             case 'surfaceRole':
                 if (msg.role === 'viewer') {
-                    applyViewerSurfaceRole();
+                    historyViewer.applyViewerSurfaceRole();
                     break;
                 }
                 document.body.classList.toggle('surface-rail', msg.role === 'rail');
@@ -166,15 +169,15 @@ export function init(): void {
                 break;
 
             case 'peerActionResult':
-                applyPeerState(msg.envelopeId, msg.state, msg.text);
+                messageList.applyPeerState(msg.envelopeId, msg.state, msg.text);
                 break;
 
             case 'setOtherPaneLive':
-                applyOtherPaneProfile(msg.profile, msg.live);
+                messageActions.applyOtherPaneProfile(msg.profile, msg.live);
                 break;
 
             case 'openProfilePicker':
-                openProfilePicker();
+                profilePicker.openProfilePicker();
                 break;
 
             case 'focusComposer':
@@ -183,80 +186,83 @@ export function init(): void {
 
             case 'noActiveTab':
                 state.paneHintText = locale.noActiveTabHint;
-                newChat();
+                messageList.newChat();
                 break;
 
             case 'insertInput':
-                insertIntoInput(msg.text || '');
+                messageActions.insertIntoInput(msg.text || '');
+                break;
+
+            case 'permissionRootState':
+                permissionRootBar.applyPermissionRootState(msg);
                 break;
 
             case 'restoreHistory':
-                disarmSessionAnswer();
-                restoreHistory(msg.messages, msg.localHistoryOnly);
-                afterHistoryRestored(msg.messages, msg.sessionId);
+                messageList.restoreHistory(msg.messages, msg.localHistoryOnly);
+                historyViewer.afterHistoryRestored(msg.messages, msg.sessionId);
                 break;
 
             case 'historyFetchEmpty':
-                showViewerEmpty();
+                historyViewer.showViewerEmpty();
                 break;
 
             case 'historyFetchFailed':
-                showViewerFetchFailed(msg.reason);
+                historyViewer.showViewerFetchFailed(msg.reason);
                 break;
 
             case 'detectEnvironmentStart':
-                initDetectEnvironmentStart(msg.mode || 'manual');
+                detectPanel.initDetectEnvironmentStart(msg.mode || 'manual');
                 if (state.placeholder) state.placeholder.style.display = 'none';
                 break;
 
             case 'detectEnvironmentProgress':
-                updateDetectEnvironmentStep(msg);
+                detectPanel.updateDetectEnvironmentStep(msg);
                 break;
 
             case 'detectEnvironmentEnd':
-                finishDetectEnvironmentPanel(msg);
+                detectPanel.finishDetectEnvironmentPanel(msg);
                 break;
 
             case 'configureEnvironmentOpen':
-                openConfigureEnvModal(msg.currentPath || '', msg.systemEnvVar, msg.systemEnvTarget);
+                configureModal.openConfigureEnvModal(msg.currentPath || '', msg.systemEnvVar, msg.systemEnvTarget);
                 break;
 
             case 'configureEnvironmentDetectStart':
-                setConfigureEnvDetecting(true);
+                configureModal.setConfigureEnvDetecting(true);
                 break;
 
             case 'configureEnvironmentDetectProgress':
-                updateConfigureEnvDetectProgress(msg);
+                configureModal.updateConfigureEnvDetectProgress(msg);
                 break;
 
             case 'configureEnvironmentDetectEnd':
-                finishConfigureEnvDetect(msg);
+                configureModal.finishConfigureEnvDetect(msg);
                 break;
 
             case 'configureEnvironmentDetectClosed':
-                hideConfigureEnvDetectProgress();
-                setConfigureEnvDetecting(false);
+                configureModal.hideConfigureEnvDetectProgress();
+                configureModal.setConfigureEnvDetecting(false);
                 break;
 
             case 'configureEnvironmentBrowseResult':
                 if (msg.path && configureEnvPathInput) {
                     configureEnvPathInput.value = msg.path;
                     state.configureEnvSelectedPath = msg.path;
-                    updateConfigureEnvPathClearVisibility();
+                    configureModal.updateConfigureEnvPathClearVisibility();
                 } else if (msg.error && configureEnvDetectCompactText) {
-                    showConfigureEnvDetectPanel();
+                    configureModal.showConfigureEnvDetectPanel();
                     configureEnvDetectCompactText.textContent = msg.error;
-                    setDetectEnvIcon(configureEnvDetectCompactIcon, 'fail');
+                    detectPanel.setDetectEnvIcon(configureEnvDetectCompactIcon, 'fail');
                 }
                 break;
 
             case 'configureEnvironmentSaveResult':
                 if (msg.ok) {
-                    closeConfigureEnvModal();
+                    configureModal.closeConfigureEnvModal();
                 } else if (msg.error && configureEnvDetectCompactText) {
-                    showConfigureEnvDetectPanel();
+                    configureModal.showConfigureEnvDetectPanel();
                     configureEnvDetectCompactText.textContent = msg.error;
-                    setDetectEnvIcon(configureEnvDetectCompactIcon, 'fail');
+                    detectPanel.setDetectEnvIcon(configureEnvDetectCompactIcon, 'fail');
                 }
                 break;
 
@@ -265,94 +271,78 @@ export function init(): void {
                     locale = msg.locale;
                     applyLocale();
                     if (state.lastSessions.length > 0) {
-                        renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
+                        workSpace.renderTree(state.lastSessions, state.lastActiveSessionId);
                     }
                 }
                 break;
 
             case 'undeliveredMessage':
-                offerUndeliveredMessage(msg.text);
+                replyQuote.offerUndeliveredMessage(msg.text);
                 break;
 
             case 'sessionList':
-                if ((msg.sessions || []).length) state.paneHintText = '';
-                state.activeSessionId = msg.activeSessionId || state.activeSessionId;
-                state.lastSessions = msg.sessions || [];
-                state.lastActiveSessionId = state.activeSessionId;
-                applyProjectFocus();
-                renderSessionTabs(msg.sessions, msg.activeSessionId);
-                renderHistorySessionList();
-                if (state.switchQueuedFor && msg.activeSessionId === state.switchQueuedFor) {
-                    clearSwitchQueued();
-                }
+                // Four features share this message: each is handed it in turn, and each decides for
+                // itself what part is its own. The order is the order of the effects it replaces.
+                statusBar.onSessionList(msg);
+                workSpace.onSessionList(msg);
+                historyAttach.renderHistorySessionList();
+                switchSession.onSessionList(msg);
                 break;
 
             case 'projectList':
-                // The tree is its own message: the strip redraws from what it already holds.
-                state.lastWorkspaces = msg.workspaces || [];
-                state.lastProjects = msg.projects || [];
-                renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
-                // A list that arrived is itself the answer: whatever was refused is settled.
-                showProjectNotice('');
+                workSpace.onProjectList(msg);
                 break;
 
             case 'projectNotice':
-                showProjectNotice(msg.message);
+                workSpace.onProjectNotice(msg);
                 break;
 
             case 'sessionExport':
                 if (msg.action === 'copy' && msg.markdown) {
                     copyToClipboard(msg.markdown);
                 } else if (msg.action === 'export' && msg.markdown) {
-                    downloadSessionMarkdown(msg.markdown, msg.filename);
+                    markdown.downloadSessionMarkdown(msg.markdown, msg.filename);
                 }
                 break;
 
             case 'profileList':
-                renderProfileList(msg.profiles);
+                profilePicker.renderProfileList(msg.profiles);
                 break;
 
             case 'hiddenSessions':
-                state.closedSessions = Array.isArray(msg.sessions) ? msg.sessions : [];
-                if (state.pendingOpenSessionId !== null && !state.closedSessions.some(function(s) { return s.sessionId === state.pendingOpenSessionId; })) {
-                    // It was opened or deleted elsewhere; drop the stale pick.
-                    state.pendingOpenSessionId = null;
-                    state.pendingOpenTitle = '';
-                    state.pendingOpenCount = 0;
-                }
-                renderClosedList();
-                renderHistorySessionList();
+                closedSessions.onHiddenSessions(msg);
+                historyAttach.renderHistorySessionList();
                 break;
 
             case 'modelList':
-                renderModelList(msg);
+                modelPicker.renderModelList(msg);
                 break;
 
             case 'log':
                 if (msg.level === 'error' || msg.level === 'warning') {
                     state.logs.push({ line: msg.line, level: msg.level });
                     if (state.logs.length > 500) state.logs = state.logs.slice(-500);
-                    if (isLogModalOpen()) {
-                        renderLogContent();
+                    if (modal.isLogModalOpen()) {
+                        logViewer.renderLogContent();
                     }
                 }
                 break;
 
             case 'openLogs':
-                openLogModal();
+                modal.openLogModal();
                 break;
 
             case 'openAbout':
-                renderAboutContent();
-                showModal(aboutModal);
+                info.renderAboutContent();
+                modal.showModal(aboutModal);
                 break;
 
             case 'openHelp':
-                showModal(helpModal);
+                modal.showModal(helpModal);
                 break;
 
             case 'openFaq':
-                showModal(faqModal);
+                modal.showModal(faqModal);
                 break;
 
             case 'config':
@@ -371,58 +361,60 @@ export function init(): void {
                 if (msg.name) {
                     required('profileLabel').textContent = msg.name;
                     refreshRoleLabels();
-                    applyInputPlaceholder();
+                    statusBar.applyInputPlaceholder();
                 }
                 break;
 
             case 'pluginInfo':
                 state.pluginInfo = msg;
-                renderAboutContent();
+                info.renderAboutContent();
                 break;
 
             case 'fileList':
                 if (filePickerEl.dataset.requestId === msg.requestId) {
-                    renderFilePickerItems(msg.files || []);
+                    fileMention.renderFilePickerItems(msg.files || []);
                 }
                 break;
 
             case 'filePreview':
-                if (previewRequests.has(msg.requestId)) {
-                    const anchor = previewRequests.get(msg.requestId);
-                    previewRequests.delete(msg.requestId);
-                    showFilePreview(msg.path || '', msg.content || '', msg.error);
-                    if (anchor) positionFilePreview(anchor);
+                if (fileMention.previewRequests.has(msg.requestId)) {
+                    const anchor = fileMention.previewRequests.get(msg.requestId);
+                    fileMention.previewRequests.delete(msg.requestId);
+                    fileMention.showFilePreview(msg.path || '', msg.content || '', msg.error);
+                    if (anchor) fileMention.positionFilePreview(anchor);
                 }
                 break;
 
             case 'finishAssistantBubble':
-                if (!isMessageForActiveSession(msg)) {
+                if (!messageList.isMessageForActiveSession(msg)) {
                     break;
                 }
-                finalizeAssistantBubble();
+                streaming.finalizeAssistantBubble();
                 if (state.isPrompting && !state.awaitingFirstChunk) {
-                    setInputMode('stop');
+                    composer.setInputMode('stop');
                 }
                 break;
 
             case 'permissionRequest':
-                showPermissionRequest(msg);
+                permissionCard.showPermissionRequest(msg);
                 break;
 
             case 'permissionDismiss':
-                dismissPermissionRequest(msg.id, locale.permissionCancelled);
+                permissionCard.dismissPermissionRequest(msg.id, locale.permissionCancelled);
                 break;
 
             case 'approvalMode':
-                applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup, msg.openAccess);
+                approvalModeSwitch.applyApprovalMode(msg.mode, msg.error, msg.denyCount, msg.denyBackup,
+                    msg.openAccess, msg.notice, msg.noticeSessionId);
+                permissionModeBar.syncPermissionModeNotice();
                 break;
 
             case 'historyStaged':
-                applyHistoryStaged(msg.ref, msg.pending === true);
+                historyAttach.applyHistoryStaged(msg.ref, msg.pending === true);
                 break;
 
             case 'historyCleared':
-                applyHistoryCleared();
+                historyAttach.applyHistoryCleared();
                 break;
 
         }

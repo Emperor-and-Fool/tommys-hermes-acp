@@ -1,16 +1,21 @@
-import * as vscode from 'vscode';
 import { t } from '../i18n';
-import { settingsSection } from '../../shared/extensionId';
 import type { HostToPane } from '../../shared/webview';
-import { normalizeHermesCliProfile, scopeKeyForCliProfile } from './hermesProfile';
+import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
-import { sanitizeProfileScopeKey } from '../cache/profileStorage';
+import {
+    hasProfilesRoot,
+    isCurrentProfile,
+    profileNameFromPreviousNames,
+    profileNameHoldingSessions,
+} from './profileFallback';
+import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
+import { resolveHermesRoot } from './hermesPaths';
+import type { ProfilesStore } from '../store/profiles';
 
 export interface HermesAgentConfig {
     name: string;
     path?: string;
     profile?: string;
-    cwd?: string;
 }
 
 export interface ProfileListEntry {
@@ -19,29 +24,93 @@ export interface ProfileListEntry {
 }
 
 export interface ConnectionTarget {
-    scopeKey: string;
+    /** Our id for the agent: the key of every per-agent record, and the folder they live in. */
+    sessionProfileId: string;
+    /** Hermes' name for the profile today: what `--profile`, pane mail and the user use. */
+    agentName: string;
     selectionId: string;
     displayName: string;
     cliProfile: string;
     configPath?: string;
-    configCwd?: string;
+}
+
+/**
+ * What the editor's per-window store offers this feature: read one key, write one key.
+ *
+ * Declared here rather than importing `vscode.Memento`, so this file stays editor-free (F6). The
+ * composition root hands it `context.globalState`, which fits without a cast.
+ */
+export interface KeyValueState {
+    get<T>(key: string): T | undefined;
+    update(key: string, value: unknown): PromiseLike<void>;
+}
+
+/** The settings this feature reads, behind the same rule: the editor is not imported here (F6). */
+export interface SettingsReader {
+    get<T>(key: string): T | undefined;
+}
+
+/** A profile this instance may not run on, and who holds it. The holder is for the log line. */
+export interface ExcludedProfile {
+    cliProfile: string;
+    holder: string;
+}
+
+/**
+ * The exclusion list the picker and the connect guarantee share.
+ *
+ * In this window the two extensions withhold each other's profile through their junction; in any
+ * other window each instance announces its own in the presence table (`store/presence.ts`).
+ * Normalised here, once: the comparison is on the CLI profile, never on the label an agent
+ * happens to be called.
+ */
+export function excludedProfiles(input: {
+    /** The primary's profile, as the secondant is told it. */
+    primary?: string;
+    /** The secondant's profile, as the primary is told it. */
+    sibling?: string;
+    /** Every row another running instance announced, with its profile. */
+    elsewhere: Array<{ cliProfile: string }>;
+}): ExcludedProfile[] {
+    const list: ExcludedProfile[] = [];
+    if (input.primary) {
+        list.push({ cliProfile: normalizeHermesCliProfile(input.primary), holder: 'the primary' });
+    }
+    if (input.sibling) {
+        list.push({ cliProfile: normalizeHermesCliProfile(input.sibling), holder: 'the secondant' });
+    }
+    for (const row of input.elsewhere) {
+        if (row.cliProfile) {
+            list.push({ cliProfile: normalizeHermesCliProfile(row.cliProfile), holder: 'another window' });
+        }
+    }
+    return list.filter(entry => !!entry.cliProfile);
 }
 
 /** What the profile selector needs from the provider. */
 export interface ProfilesHost {
     log(line: string): void;
     post(msg: HostToPane): void;
-    globalState: vscode.Memento;
-    /** The profile the picker must not offer: the primary's, when this is the secondant. */
-    excludedProfile?: () => string | undefined;
+    globalState: KeyValueState;
+    settings: SettingsReader;
+    /** The profile table: names to the ids our records will hang off (host/store/profiles.ts). */
+    store: ProfilesStore;
+    /**
+     * The profiles the picker must not offer: the sibling's in this window, and every profile a
+     * running instance announced in another window. Named by the CLI profile, the value the agent
+     * actually runs on.
+     */
+    excludedProfiles?: () => Array<{ cliProfile: string }>;
+    /** Where Hermes keeps its profiles. Absent means the real home; a test passes a temp one. */
+    hermesHome?: () => string;
 }
 
 /**
  * Which Hermes profile/agent we connect to, and which ones the picker offers.
  *
- * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.cwd`,
- * `tommys.profile`, `tommys.agents`), the agent list, discovery of profiles on disk, and the
- * selection that survives a window.
+ * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`,
+ * `tommys.agents`), the agent list, discovery of profiles on disk, and the selection that survives a
+ * window. The working folder is not a profile question: the cwd owner answers that.
  */
 export class Profiles {
     /** Agent name or CLI profile id used for reconnect / switch. */
@@ -73,35 +142,104 @@ export class Profiles {
         return target;
     }
 
+    /**
+     * Give every profile we already know a row in the table, once per extension load.
+     *
+     * Two sources, and neither changes anything on disk: the folders our data home already holds
+     * (the names from before a rename included — nothing is renamed, moved or re-keyed) and the
+     * profiles Hermes lists. Discovery costs a CLI call and runs in the background, so the folder
+     * rows are written first and the discovery answer is seeded when it arrives; the default
+     * profile is `default`.
+     */
+    seedStore(): void {
+        const store = this._host.store;
+        store.seed(store.localScopes().map(cliProfileForScopeKey));
+        void this.ensureDiscovered().then(() => {
+            store.seed(this.discovered ?? []);
+        });
+    }
+
+    /**
+     * The agent a folder in our data home belongs to.
+     *
+     * The folder was written under a name, and a name is the one thing about a profile that changes.
+     * Three questions, in order: is that name Hermes' name for a profile today (then it is the
+     * answer); does some profile.yaml hold it under `previous_names`; whose state.db holds the tabs
+     * the folder has. Nothing found is an answer too — the caller leaves the folder where it is.
+     */
+    agentForScope(scopeKey: string, sessionIds: string[]): string | undefined {
+        const name = cliProfileForScopeKey(scopeKey);
+        const known = this._host.store.all().some(row => row.agentName === name);
+        if (known || isCurrentProfile(name)) {
+            return name;
+        }
+        return profileNameFromPreviousNames(name)
+            // The log goes through: an unreadable state.db is skipped, never silently.
+            || profileNameHoldingSessions(sessionIds, undefined, line => this._host.log(line));
+    }
+
+    /**
+     * The target to connect with, after repairing a name Hermes no longer has.
+     *
+     * Tier 1 is the name the table holds. When Hermes does not have that profile any more, the two
+     * fallbacks look for it — the profile.yaml whose `previous_names` holds the name, then the
+     * profile whose state.db holds the tabs we have open — and the row is renamed to what they
+     * found. The id stays; only the name it answers to moves, which is exactly what a Hermes rename
+     * is. Nothing found leaves the row and every folder untouched, and `missing` says so for the
+     * pane, but only where Hermes' own profiles folder exists: on a machine Hermes never ran on,
+     * every name is missing and that means nothing.
+     */
+    connectTarget(selectionId: string | undefined, sessionIds: string[]): { target: ConnectionTarget; missing: boolean } {
+        const target = this.resolveTarget(selectionId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : resolveHermesRoot();
+        // A configured agent's key is its display name, not one of our ids: there is nothing to repair.
+        const stored = this._host.store.nameFor(target.sessionProfileId);
+        if (!stored || isCurrentProfile(stored, hermesHome)) {
+            return { target, missing: false };
+        }
+        const found = profileNameFromPreviousNames(stored, hermesHome)
+            || profileNameHoldingSessions(sessionIds, hermesHome, line => this._host.log(line));
+        if (!found) {
+            return { target, missing: hasProfilesRoot(hermesHome) };
+        }
+        if (found !== stored) {
+            this._host.store.rename(target.sessionProfileId, found);
+            this._host.log(`Profile renamed outside the extension: "${stored}" -> "${found}"`);
+        }
+        return { target: this.resolveTarget(found), missing: false };
+    }
+
     resolveTarget(selectionId?: string): ConnectionTarget {
-        const config = vscode.workspace.getConfiguration(settingsSection());
-        const configPath = config.get<string>('path') || undefined;
-        const configCwd = config.get<string>('cwd') || undefined;
-        const configProfile = config.get<string>('profile') || undefined;
+        const configPath = this._host.settings.get<string>('path') || undefined;
+        const configProfile = this._host.settings.get<string>('profile') || undefined;
         const agents = this.readAgentConfigs();
 
         if (agents.length > 0) {
             const resolvedId = selectionId || this.selectionId || agents[0].name;
             const agent = agents.find(a => a.name === resolvedId) || agents[0];
             return {
-                scopeKey: sanitizeProfileScopeKey(agent.name),
+                // A configured agent is not a Hermes profile, so it keeps the display-name key it
+                // has always had; nothing but a real profile has an id of ours.
+                sessionProfileId: sanitizeProfileScopeKey(agent.name),
+                agentName: agent.name,
                 selectionId: agent.name,
                 displayName: agent.name,
                 cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
                 configPath: agent.path || configPath,
-                configCwd: agent.cwd || configCwd,
             };
         }
 
         const resolvedId = selectionId || this.selectionId || normalizeHermesCliProfile(configProfile);
         const cliProfile = normalizeHermesCliProfile(resolvedId);
         return {
-            scopeKey: scopeKeyForCliProfile(cliProfile),
+            // The name is translated here and nowhere else: the id names the folder, the name is
+            // what Hermes is told. A name nobody has seen yet mints its row on first use.
+            sessionProfileId: this._host.store.idFor(cliProfile),
+            agentName: cliProfile,
             selectionId: cliProfile,
             displayName: this.labelFor(cliProfile),
             cliProfile,
             configPath,
-            configCwd,
         };
     }
 
@@ -124,8 +262,7 @@ export class Profiles {
             return;
         }
         this.discovery = (async () => {
-            const config = vscode.workspace.getConfiguration(settingsSection());
-            const hermesPath = config.get<string>('path') || undefined;
+            const hermesPath = this._host.settings.get<string>('path') || undefined;
             try {
                 this.discovered = await discoverHermesProfiles(hermesPath);
             } catch (err) {
@@ -147,20 +284,20 @@ export class Profiles {
             ? agents.map(a => ({ id: a.name, label: a.name }))
             : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
 
-        // The secondant may not offer the profile the primary is on: it is not a preference,
-        // it is the rule the two extensions live by. Compare what the agent will run on
-        // (`cliProfile`), not the id or label an agent happens to be called.
-        const excluded = this._host.excludedProfile?.();
-        if (!excluded) {
+        // The rule the extensions live by: two panes may not run on one profile, in this window or
+        // in any other. Compare what the agent will run on (`cliProfile`), not the id or label an
+        // agent happens to be called.
+        const excluded = (this._host.excludedProfiles?.() || [])
+            .map(entry => normalizeHermesCliProfile(entry.cliProfile))
+            .filter(Boolean);
+        if (excluded.length === 0) {
             return list;
         }
-        const excludedCli = normalizeHermesCliProfile(excluded);
-        return list.filter(entry => this.resolveTarget(entry.id).cliProfile !== excludedCli);
+        return list.filter(entry => !excluded.includes(this.resolveTarget(entry.id).cliProfile));
     }
 
     readAgentConfigs(): HermesAgentConfig[] {
-        const config = vscode.workspace.getConfiguration(settingsSection());
-        const raw = config.get<unknown>('agents');
+        const raw = this._host.settings.get<unknown>('agents');
         if (!Array.isArray(raw)) {
             return [];
         }

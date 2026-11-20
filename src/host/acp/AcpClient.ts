@@ -17,14 +17,13 @@ import {
     shouldUseHermesSetModel,
     type ModelListState
 } from '../models/modelConfig';
-import type { SessionMcpServer } from './mcpConfig';
 import { normalizeHermesCliProfile } from '../environment/hermesProfile';
 import { findHermesExecutableOrThrow } from '../environment/profileDiscovery';
 import type { AcpModelOptionsResponse } from '../models/acpModelCatalog';
 import { extractTextFromContentBlock } from './contentText';
 import { extractChunkMeta, extractToolMeta } from './replayChunkMeta';
-import { sliceTextByLines } from './fsRead';
 import { shouldReportReplay } from './replayProgress';
+import { sessionModeFrom } from './sessionMode';
 import { acpTraceEnabled, appendAcpTrace } from './acpTrace';
 import { resolveDefaultHermesHome } from '../environment/hermesPaths';
 import {
@@ -55,62 +54,12 @@ export interface PermissionRequest {
 /** Resolves with the selected optionId, or null when cancelled. */
 export type PermissionHandler = (request: PermissionRequest) => Promise<string | null>;
 export type ConnectionLostHandler = () => void;
-export type FileSystemHandler = {
-    readTextFile: (path: string) => Promise<string>;
-    writeTextFile: (path: string, content: string) => Promise<void>;
-};
-export type TerminalHandler = (command: string, args: string[], cwd: string) => void;
 export type LogHandler = (text: string) => void;
 export type TokenUsage = { used: number; size: number };
 export type UsageHandler = (usage: TokenUsage) => void;
 /** Resolves MCP servers for ACP session/new (from editor mcp.json). */
-export type McpServersResolver = (cwd: string) => SessionMcpServer[];
 /** Called when an assistant/thought segment ends (tool call, permission, etc.). */
 export type SegmentEndHandler = () => void;
-
-interface TerminalInstance {
-    process: ChildProcess;
-    stdout: string;
-    stderr: string;
-    exitCode: number | null;
-    exitSignal: string | null;
-    exited: Promise<void>;
-    resolveExit: () => void;
-    /** Asked for at create time; null means keep everything. */
-    outputByteLimit?: number;
-    /** True once any output was dropped, so a read can say so. */
-    truncated: boolean;
-}
-
-/** Keep the newest `limit` bytes: the tail is what a reader is looking for. */
-function trimToByteLimit(text: string, limit: number | undefined): { text: string; dropped: boolean } {
-    if (!limit || limit <= 0) {
-        return { text, dropped: false };
-    }
-    const bytes = Buffer.from(text, 'utf-8');
-    if (bytes.length <= limit) {
-        return { text, dropped: false };
-    }
-    return { text: bytes.subarray(bytes.length - limit).toString('utf-8'), dropped: true };
-}
-
-/** ACP sends terminal env as a list of {name, value} pairs; Node wants one object. */
-function terminalEnv(requested: unknown): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    if (Array.isArray(requested)) {
-        for (const entry of requested) {
-            const pair = entry as { name?: unknown; value?: unknown };
-            if (pair && typeof pair.name === 'string' && pair.name) {
-                env[pair.name] = typeof pair.value === 'string' ? pair.value : String(pair.value ?? '');
-            }
-        }
-        return env;
-    }
-    if (requested && typeof requested === 'object') {
-        Object.assign(env, requested as NodeJS.ProcessEnv);
-    }
-    return env;
-}
 
 function readTextFromContentBlock(block: unknown): string {
     if (!block || typeof block !== 'object') {
@@ -222,12 +171,8 @@ export class AcpClient {
     private _onStatus: StatusHandler;
     private _onPermission: PermissionHandler;
     private _onConnectionLost: ConnectionLostHandler;
-    private _onFileSystem: FileSystemHandler;
-    private _onTerminal: TerminalHandler;
     private _onLog: LogHandler;
     private _onSteerNotice: SteerNoticeHandler = () => {};
-    private _terminals: Map<string, TerminalInstance> = new Map();
-    private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
     /** Steers awaiting Hermes' answer; only then can a chunk be a steer notice. */
     private _steersInFlight: number = 0;
@@ -236,12 +181,15 @@ export class AcpClient {
     private _modelListState: ModelListState | null = null;
     /** Model id last applied to the live ACP session (not UI preference alone). */
     private _runtimeModelId: string = '';
+    /** The edit mode Hermes reports for the active session: `` until it says. */
+    private _sessionMode: string = '';
+    /** Told whenever Hermes reports a mode, including on a session we just opened. */
+    private _onSessionMode: (mode: string) => void = () => {};
     /** Raw Hermes ``models`` payload; preserved across empty config_option updates. */
     private _hermesModelsRaw: unknown = null;
     private _onModelsChanged: ModelsChangedHandler;
     private _onUsage: UsageHandler;
     private _onSegmentEnd: SegmentEndHandler;
-    private _resolveMcpServers: McpServersResolver;
     private _onHistoryReplay: HistoryReplayHandler;
     private _onReplayProgress: ReplayProgressHandler = () => {};
     /** Monotonic id so stale prompt rejections after cancel are ignored. */
@@ -275,31 +223,22 @@ export class AcpClient {
     constructor(
         onMessage: MessageHandler,
         onStatus: StatusHandler,
-        onPermission?: PermissionHandler,
+        /** Required: a client with no answer must not invent one. */
+        onPermission: PermissionHandler,
         onConnectionLost?: ConnectionLostHandler,
-        onFileSystem?: FileSystemHandler,
-        onTerminal?: TerminalHandler,
         onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler,
         onSegmentEnd?: SegmentEndHandler,
-        resolveMcpServers?: McpServersResolver,
         onHistoryReplay?: HistoryReplayHandler
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
-        this._onPermission = onPermission || (async (request) => {
-            const allow = request.options.find(o =>
-                o.kind?.startsWith('allow') || o.optionId.startsWith('allow'));
-            return allow?.optionId ?? request.options[0]?.optionId ?? null;
-        });
+        this._onPermission = onPermission;
         this._onConnectionLost = onConnectionLost || (() => {});
-        this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
-        this._onTerminal = onTerminal || (() => {});
         this._onLog = () => {};
         this._onUsage = onUsage || (() => {});
         this._onModelsChanged = onModelsChanged || (() => {});
         this._onSegmentEnd = onSegmentEnd || (() => {});
-        this._resolveMcpServers = resolveMcpServers || (() => []);
         this._onHistoryReplay = onHistoryReplay || (() => {});
     }
 
@@ -378,7 +317,13 @@ export class AcpClient {
         return this._status;
     }
 
-    async start(cwd: string = process.cwd(), hermesPath?: string, hermesProfile?: string): Promise<void> {
+    /**
+     * Start Hermes for one cwd.
+     *
+     * The cwd is required: a session belongs to a folder of the window, and defaulting to the
+     * process's own directory started agents in a place the user never chose.
+     */
+    async start(cwd: string, hermesPath?: string, hermesProfile?: string): Promise<void> {
         this._traceProfile = hermesProfile || '';
         if (!this._transitionTo('connecting', 'Loading profile & session...')) {
             return;
@@ -439,11 +384,6 @@ export class AcpClient {
                     this._conn = null;
                     this._app = null;
                     this._process = null;
-                    // Kill terminal children
-                    for (const [, t] of this._terminals) {
-                        try { t.process.kill(); } catch { /* ignore */ }
-                    }
-                    this._terminals.clear();
                     this._transitionTo('error', `Process exited (code: ${code}, signal: ${signal})`);
                     this._onConnectionLost();
                 }
@@ -492,47 +432,15 @@ export class AcpClient {
                 this._handleSessionUpdate(params);
             });
 
-            // Register fs capability handlers
-            this._app.onRequest(methods.client.fs.readTextFile as any, async ({ params }: any) => {
-                const content = await this._onFileSystem.readTextFile(params.path);
-                return { content: sliceTextByLines(content, params.line, params.limit) };
-            });
-
-            this._app.onRequest(methods.client.fs.writeTextFile as any, async ({ params }: any) => {
-                await this._onFileSystem.writeTextFile(params.path, params.content);
-                return {};
-            });
-
-            // Register terminal capability handlers
-            this._app.onRequest(methods.client.terminal.create as any, async ({ params }: any) => {
-                return this._handleTerminalCreate(params);
-            });
-            this._app.onRequest(methods.client.terminal.output as any, async ({ params }: any) => {
-                return this._handleTerminalOutput(params);
-            });
-            this._app.onRequest(methods.client.terminal.waitForExit as any, async ({ params }: any) => {
-                return this._handleTerminalWaitForExit(params);
-            });
-            this._app.onRequest(methods.client.terminal.release as any, async ({ params }: any) => {
-                return this._handleTerminalRelease(params);
-            });
-            this._app.onRequest(methods.client.terminal.kill as any, async ({ params }: any) => {
-                return this._handleTerminalKill(params);
-            });
-
             this._conn = this._app.connect(stream);
             const ctx = this._conn.agent;
 
             await ctx.request(methods.agent.initialize, {
                 protocolVersion: PROTOCOL_VERSION,
-                clientCapabilities: {
-                    fs: { readTextFile: true, writeTextFile: true },
-                    terminal: true
-                }
+                clientCapabilities: {}
             } as any);
-            // Note: `as any` is needed because ClientContext.request() type
-            // doesn't include the fs/terminal capability fields in its schema type.
-            // When ACP SDK schema updates, this cast can be removed.
+            // `as any` because ClientContext.request()'s schema type carries no
+            // clientCapabilities field at all; the cast goes when the SDK types it.
 
             // No session/new here. Connecting used to create one immediately and then
             // `_resumeOrAdoptSession` loaded the tab's real session on top of it, leaving an
@@ -711,6 +619,49 @@ export class AcpClient {
             // best-effort
         }
         await promptPromise.catch(() => {});
+    }
+
+    /** What Hermes last reported as this session's edit mode. */
+    get currentSessionMode(): string {
+        return this._sessionMode;
+    }
+
+    set onSessionMode(handler: (mode: string) => void) {
+        this._onSessionMode = handler;
+    }
+
+    /**
+     * Ask Hermes to switch this session's edit mode (`session/set_mode`).
+     *
+     * Idle only: the owner fences a change while a run is in flight and answers `session_busy`,
+     * which the caller turns into "applies from the next run". The mode is remembered from what
+     * Hermes reports back, never from what we asked for.
+     */
+    async setSessionMode(modeId: string): Promise<void> {
+        if (!this._conn || !this._activeSessionId) {
+            throw new Error('Not connected');
+        }
+        if (this._status === 'prompting') {
+            throw new Error('Cannot change the edit mode while Hermes is responding');
+        }
+        this._onLog(`session/set_mode → ${modeId}`);
+        await this._conn.agent.request('session/set_mode', {
+            sessionId: this._activeSessionId,
+            modeId,
+        } as any);
+    }
+
+    /** Take the mode Hermes reported, and say it out loud when it is news. */
+    private _syncSessionMode(source: unknown): void {
+        const mode = sessionModeFrom(source);
+        if (!mode) {
+            return;
+        }
+        if (mode !== this._sessionMode) {
+            this._sessionMode = mode;
+            this._onLog(`session mode → ${mode}`);
+            this._onSessionMode(mode);
+        }
     }
 
     async setModel(configId: string, valueId: string): Promise<void> {
@@ -930,6 +881,9 @@ export class AcpClient {
         try {
             this._syncSessionModels(response as any);
         } catch { /* load responses may omit the model block */ }
+        try {
+            this._syncSessionMode(response);
+        } catch { /* a load response may omit the modes block too */ }
         this._transitionTo('ready');
         if (replay.length > 0) {
             this._onLog(`Replayed ${replay.length} history update(s) for session ${sessionId}`);
@@ -979,6 +933,9 @@ export class AcpClient {
             this._activeSessionId = this._session.sessionId;
             this._loadedSessionId = '';
             this._syncSessionModels(this._session.newSessionResponse);
+            try {
+                this._syncSessionMode(this._session.newSessionResponse);
+            } catch { /* a session that reports no modes is on the default */ }
             this._transitionTo('ready');
         } catch (err) {
             // A failed session/new says nothing about the connection: Hermes is still there, and
@@ -1002,10 +959,6 @@ export class AcpClient {
         this._session = null;
         this._activeSessionId = '';
         this._loadedSessionId = '';
-        for (const [, term] of this._terminals) {
-            try { term.process.kill(); } catch { /* ignore */ }
-        }
-        this._terminals.clear();
         this._toolCallTracker.clear();
         this._modelOptionsKnownUnsupported = false;
         this._hermesSetModelKnownUnsupported = false;
@@ -1026,98 +979,6 @@ export class AcpClient {
         this.stop();
     }
 
-    // ---- Terminal handlers ----
-
-    private _handleTerminalCreate(params: any): any {
-        const id = `term_${this._nextTerminalId++}`;
-        const cmd = params.command;
-        const args = params.args || [];
-        const cwd = params.cwd || process.cwd();
-        const env = terminalEnv(params.env);
-        const outputByteLimit = typeof params.outputByteLimit === 'number' ? params.outputByteLimit : undefined;
-
-        this._onTerminal(cmd, args, cwd); // mirror to VS Code terminal
-
-        let resolveExit: () => void = () => {};
-        const exited = new Promise<void>((r) => { resolveExit = r; });
-
-        const proc = spawn(cmd, args, {
-            cwd,
-            shell: args.length === 0,
-            env,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        const term: TerminalInstance = {
-            process: proc,
-            stdout: '',
-            stderr: '',
-            exitCode: null,
-            exitSignal: null,
-            exited,
-            resolveExit,
-            outputByteLimit,
-            truncated: false,
-        };
-
-        const append = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
-            const capped = trimToByteLimit(term[stream] + chunk.toString(), term.outputByteLimit);
-            term[stream] = capped.text;
-            term.truncated = term.truncated || capped.dropped;
-        };
-        proc.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
-        proc.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
-        proc.on('exit', (code, sig) => {
-            term.exitCode = code;
-            term.exitSignal = sig === null ? null : sig;
-            resolveExit();
-        });
-        // An unknown executable raises 'error' and never 'exit'. Without this the request waiting
-        // on `exited` never resolves, and the host logs an unhandled error event.
-        proc.on('error', (err) => {
-            append('stderr', Buffer.from(`\n${err.message}`));
-            term.exitCode = term.exitCode ?? 127;
-            resolveExit();
-        });
-
-        this._terminals.set(id, term);
-        return { terminalId: id };
-    }
-
-    private _handleTerminalOutput(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (!term) return { output: '', truncated: false, exitStatus: {} };
-        const combined = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
-        const capped = trimToByteLimit(combined, term.outputByteLimit);
-        return {
-            output: capped.text,
-            truncated: term.truncated || capped.dropped,
-            exitStatus: term.exitCode !== null ? { exitCode: term.exitCode } : undefined,
-        };
-    }
-
-    private async _handleTerminalWaitForExit(params: any): Promise<any> {
-        const term = this._terminals.get(params.terminalId);
-        if (!term) return { signal: undefined, exitCode: undefined };
-        await term.exited;
-        return { exitCode: term.exitCode, signal: term.exitSignal };
-    }
-
-    private _handleTerminalRelease(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (term) {
-            term.process.kill();
-            this._terminals.delete(params.terminalId);
-        }
-    }
-
-    private _handleTerminalKill(params: any): any {
-        const term = this._terminals.get(params.terminalId);
-        if (term) {
-            term.process.kill();
-        }
-    }
-
     // ---- ACP session update handler ----
 
     private _handleSessionUpdate(notification: any): void {
@@ -1130,6 +991,11 @@ export class AcpClient {
         }
         const update = notification.update;
         const kind = update.sessionUpdate;
+
+        // Hermes reports the edit mode whenever it changes it — including when it refuses ours.
+        if (kind === 'current_mode_update') {
+            this._syncSessionMode(update);
+        }
 
         // An update that is not replay is the agent answering the prompt we sent: that is the
         // receipt. One call per prompt, so the guard file for the turn can be released at once.
@@ -1365,10 +1231,12 @@ export class AcpClient {
         }
     }
 
-    private _buildNewSessionRequest(cwd: string): { cwd: string; mcpServers: SessionMcpServer[] } {
-        const mcpServers = this._resolveMcpServers(cwd);
-        this._onLog(`session/new cwd=${cwd} mcpServers=${mcpServers.length}`);
-        return { cwd, mcpServers };
+    private _buildNewSessionRequest(cwd: string): { cwd: string; mcpServers: never[] } {
+        // Always empty, by choice. ACP requires the field, and Hermes would add editor-supplied MCP servers
+        // to the session next to the profile's own (gateway_server.py new_session). We opt out of that
+        // duplicate source: MCP servers are managed in the Hermes profile (config.yaml mcp_servers) only.
+        this._onLog(`session/new cwd=${cwd} mcpServers=0`);
+        return { cwd, mcpServers: [] };
     }
 
     private _transitionTo(status: AcpStatus, message?: string): boolean {

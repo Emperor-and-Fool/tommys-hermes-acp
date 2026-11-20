@@ -1,6 +1,5 @@
-import * as vscode from 'vscode';
+import { Signal } from './signal';
 import { AcpClient, TokenUsage } from '../acp/AcpClient';
-import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { tryResolveHermesQuick } from '../environment/profileDiscovery';
 import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { localizeStatusMessage, t } from '../i18n';
@@ -8,11 +7,20 @@ import { classifyLogLevel, LogLevel } from '../logLevel';
 import type { HostToPane } from '../../shared/webview';
 import type { Profiles } from '../environment/profiles';
 import type { EnvironmentDetection } from '../environment/detection';
-import type { WorkspaceFiles } from '../workspace/files';
-import type { Sessions } from '../cache/sessions';
+import type { Sessions } from '../workspace/sessions';
 import type { ModelState } from '../models/modelState';
 import type { PromptRunner } from './promptRunner';
-import type { TabLifecycle } from '../tabs/lifecycle';
+import type { TabLifecycle } from '../workspace/lifecycle';
+
+/**
+ * A pane's view, as the connection needs it.
+ *
+ * The connection reads one thing of it: whether this window has one — a view that was disposed has
+ * nothing to reconnect. No member is used, so this is the presence token itself rather than an
+ * interface of invented members; the alternative was importing `vscode.WebviewView`, which is what
+ * F6 keeps out of a feature file.
+ */
+export type PaneSurface = object;
 
 /**
  * What the connection needs from the provider. Module instances where the moved code calls an
@@ -27,7 +35,8 @@ export interface ConnectionHost {
     turn: PromptRunner;
     models: ModelState;
     detection: EnvironmentDetection;
-    files: WorkspaceFiles;
+    /** This window's cwd, or '' when it opened no folder. */
+    resolveCwd(): string;
     lifecycle: TabLifecycle;
     post(msg: HostToPane): void;
     log(line: string): void;
@@ -36,11 +45,11 @@ export interface ConnectionHost {
     steerNotice(text: string): void;
     /** A switch completed: the new profile's display name. */
     profileChanged(name: string): void;
-    /** The profile this extension may not use: the primary's, seen from the secondant. */
-    excludedProfile?: () => string | undefined;
+    /** The profile this extension may not use: the sibling's, or one live in another window. */
+    excludedProfiles?: () => Array<{ cliProfile: string; holder: string }>;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
-    surfaceView(): vscode.WebviewView | undefined;
+    surfaceView(): PaneSurface | undefined;
 }
 
 /**
@@ -121,20 +130,33 @@ export class Connection {
     private async connectInner(selectionId?: string): Promise<void> {
         const generation = ++this._generation;
         const abandoned = (): boolean => generation !== this._generation;
-        const target = this._host.profiles.resolveTarget(selectionId);
-        if (target.scopeKey !== this._host.session.scopeKey) {
-            this._host.session.bindProfileScope(target.scopeKey);
-            this._host.projects.bindProfileScope(target.scopeKey);
+        // Tier 1: connect by the name the table holds, repaired through the fallbacks when Hermes
+        // renamed the profile outside this extension.
+        const resolved = this._host.profiles.connectTarget(
+            selectionId,
+            this._host.session.tabs.map(tab => tab.hermesSessionId || '').filter(Boolean),
+        );
+        const target = resolved.target;
+        if (resolved.missing) {
+            this._host.log(`Connect stopped: no profile answers for "${target.agentName}"`);
+            this._host.post({ type: 'status', status: 'error', message: t('profileMissing', target.displayName) });
+            this._host.post({ type: 'openProfilePicker' });
+            return;
+        }
+        if (target.sessionProfileId !== this._host.session.sessionProfileId) {
+            this._host.session.bindProfileScope(target.sessionProfileId);
+            this._host.projects.bindProfileScope(target.sessionProfileId);
         }
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
 
-        // The rule the two extensions live by: the secondant never runs on the primary's
-        // profile. Checked here, on every path that connects, because a picker that hides it is
-        // a preference while this is the guarantee.
-        const excluded = this._host.excludedProfile?.();
-        if (excluded && target.cliProfile === excluded) {
-            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to the primary`);
+        // The rule the extensions live by: two panes never run on one profile — not the sibling in
+        // this window, and not an instance in another one. Checked here, on every path that
+        // connects, because a picker that hides them is a preference while this is the guarantee.
+        const excluded = (this._host.excludedProfiles?.() || []).filter(entry => !!entry.cliProfile);
+        const refusedBy = excluded.find(entry => entry.cliProfile === target.cliProfile);
+        if (refusedBy) {
+            this._host.log(`Refusing profile "${target.cliProfile}": it belongs to ${refusedBy.holder}`);
             this._host.post({
                 type: 'status',
                 status: 'error',
@@ -147,7 +169,14 @@ export class Connection {
         this._host.log(`Connecting as ${target.displayName} (profile=${target.cliProfile})...`);
         this._host.post({ type: 'activeAgent', name: target.displayName });
 
-        const cwd = this._host.files.resolveCwd(target.configCwd);
+        const cwd = this._host.resolveCwd();
+        if (!cwd) {
+            // No folder open is not a working area: there is no cwd to hand Hermes, so no session.
+            this._host.log('No folder open: not starting Hermes');
+            this._host.post({ type: 'status', status: 'idle', message: t('noFolderOpen') });
+            return;
+        }
+
 
         this._host.post({
             type: 'status',
@@ -250,6 +279,8 @@ export class Connection {
                     }
                     this._host.turn.clearText();
                     this._host.turn.promptSessionId = undefined;
+                    // The run is over: whatever was refused while it ran acts now.
+                    this.runEnded.fire();
                 }
                 if (status === 'prompting') {
                     this._host.turn.clearText();
@@ -270,18 +301,6 @@ export class Connection {
                 });
                 void this.reconnectAfterLoss();
             },
-            {
-                readTextFile: (p: string) => this._host.files.readTextFile(p),
-                writeTextFile: (p: string, content: string) => this._host.files.writeTextFile(p, content),
-            },
-            (cmd: string, args: string[], cwd: string) => {
-                // Showing a command must not run it. This callback used to open a VS Code
-                // terminal and `sendText()` the same command the ACP terminal had already
-                // spawned: every tool call could execute twice, and the second copy lost its
-                // argument quoting in `args.join(' ')`. The log keeps the visible record.
-                const fullCmd = args.length > 0 ? `${cmd} ${args.join(' ')}` : cmd;
-                this._host.log(`Terminal (${cwd}): ${fullCmd.slice(0, 200)}`);
-            },
             (usage) => {
                 if (!this._host.isViewingPromptSession()) {
                     return;
@@ -299,19 +318,20 @@ export class Connection {
                 this._host.turn.flushThought();
                 this._host.post({ type: 'finishAssistantBubble', sessionId: this._host.session.activeId });
             },
-            (cwd) => {
-                const servers = resolveMcpServersForSession(cwd, (line) => this._host.log(line));
-                if (servers.length > 0) {
-                    this._host.log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
-                }
-                return servers;
-            },
             (sessionId, messages) => {
                 this._host.lifecycle.handleHistoryReplay(sessionId, messages);
             }
         );
         this.acp!.onPromptAccepted = () => this._host.session.settlePendingTurn();
+        this.acp!.onSessionMode = (mode: string) => {
+            for (const handler of [...this._sessionModeListeners]) {
+                handler(mode);
+            }
+        };
         this.acp!.onLog = (line: string) => {
+            // The output channel is where a live check reads this: every ACP line goes there, and
+            // the ones that are errors or warnings also reach the pane's log viewer.
+            this._host.log(line);
             const level = classifyLogLevel(line);
             if (level) {
                 this._host.postWebviewLog(line, level);
@@ -335,6 +355,8 @@ export class Connection {
             if (abandoned()) {
                 return;
             }
+            // The catalog has just been applied, counts and all: this profile is active now.
+            this.profileActive.fire();
             await this._host.models.sync({ skipModelOptions: true });
             if (abandoned()) {
                 return;
@@ -421,8 +443,8 @@ export class Connection {
         this._resetClient();
         this._host.turn.promptSessionId = undefined;
         this._host.setBoundSessionId('');
-        this._host.session.bindProfileScope(target.scopeKey);
-        this._host.projects.bindProfileScope(target.scopeKey);
+        this._host.session.bindProfileScope(target.sessionProfileId);
+        this._host.projects.bindProfileScope(target.sessionProfileId);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
         this._host.profiles.persistSelection(target.selectionId);
@@ -435,6 +457,27 @@ export class Connection {
         this._host.profileChanged(target.displayName);
         await this.connect(target.selectionId);
         this._host.lifecycle.restoreMessages();
+    }
+
+    /** Said whenever a run ends: the features that were refused while it ran act on it. */
+    readonly runEnded = new Signal();
+
+    /**
+     * Said whenever a profile becomes active: the agent connected and its sessions are on screen.
+     *
+     * Fired where the catalog has just been applied (`connectInner`, after `resumeOrAdopt`), which
+     * is app start, a profile switch and a workspace switch — never a tab switch.
+     */
+    readonly profileActive = new Signal();
+
+    /** Listeners for the mode Hermes reports: the permissions feature brings edits in line. */
+    private readonly _sessionModeListeners = new Set<(mode: string) => void>();
+
+    onSessionMode(handler: (mode: string) => void): () => void {
+        this._sessionModeListeners.add(handler);
+        return () => {
+            this._sessionModeListeners.delete(handler);
+        };
     }
 
     postTokenUsage(): void {

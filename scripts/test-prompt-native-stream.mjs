@@ -45,7 +45,8 @@ try {
     const result = await app.connectWith(stream, async (agent) => {
         await agent.request(methods.agent.initialize, {
             protocolVersion: PROTOCOL_VERSION,
-            clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+            // Nothing advertised: the client the extension ships has no fs or terminal capability.
+            clientCapabilities: {},
         });
         return agent.buildSession(process.cwd()).withSession(async (session) => {
             console.log('[session]', session.sessionId);

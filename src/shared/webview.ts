@@ -38,11 +38,31 @@ export type HostToPane =
 
     // The conversation.
     | { type: 'status'; status: string; message?: string; sessionId?: string }
+    /**
+     * The permission root: the folder Hermes works in, the folders the window shows, and which of
+     * them the picker offers. `open` asks the pane to show the dialog; `newFolders` are the offered
+     * folders whose welcome has not run out; `missingFolders` are the offered folders that are not
+     * on disk; `notice` says what just happened to the boundary, and `noticeFolder` /
+     * `noticePrevious` are the names its text fills in.
+     */
+    | {
+        type: 'permissionRootState';
+        root: string;
+        folders: string[];
+        offered: string[];
+        open: boolean;
+        profile: string;
+        newFolders?: string[];
+        missingFolders?: string[];
+        notice?: 'lastRootRemoved' | 'appliesNextRun' | 'moveRefused' | 'rootRemoved';
+        noticeFolder?: string;
+        noticePrevious?: string;
+    }
     /** The create path's answer: why nothing was made, or an empty message to clear it. */
     | { type: 'projectNotice'; level: 'error' | 'info'; message: string }
     /** Replay progress while a session loads: a chunk count to show, never a gate on the load. */
     | { type: 'loadProgress'; received: number; sessionId?: string }
-    | { type: 'newChat' }
+    | { type: 'newChat'; sessionId?: string; project?: string }
     | { type: 'noActiveTab' }
     | { type: 'restoreHistory'; messages: ChatMessage[]; localHistoryOnly: boolean; sessionId?: string }
     | { type: 'addMessage'; role: string; text: string; toolCallId?: string; sessionId?: string; history?: HistoryRef; steer?: boolean; peer?: PeerRef; peerState?: PeerState; messages?: Array<{ text: string; sentBy?: string; sourceMessageId?: string }> }
@@ -67,7 +87,11 @@ export type HostToPane =
     | { type: 'permissionRequest'; id: string; title: string; detail?: string; options: PermissionOption[] }
     | { type: 'permissionDismiss'; id: string }
     /** The approval mode the pending cards offer, and why a change did not take. */
-    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean }
+    /**
+     * The button's state. `notice` is set while an edit mode waits for the run in flight: commands
+     * follow the button at once, edits only when that run ends.
+     */
+    | { type: 'approvalMode'; mode: ApprovalMode; error?: string; denyCount?: number; denyBackup?: string; openAccess?: boolean; notice?: 'appliesNextRun'; noticeSessionId?: string }
 
     // Session memory: the staged pick, and its disappearance after a send.
     | { type: 'historyStaged'; ref: HistoryRef; pending: boolean }
@@ -182,6 +206,12 @@ export type PaneToHost =
     | { type: 'setOpenAccess' }
     /** Put the last saved deny list back. */
     | { type: 'restoreDeny' }
+    /** The pane picked a folder: Hermes works there, and the session moves if it is idle. */
+    | { type: 'setPermissionRoot'; root: string }
+    /** The pane wants the dialog: the answer is a `permissionRootState` with `open`. */
+    | { type: 'openPermissionRoot' }
+    /** The pane closed the dialog: the new folders' countdown stops and keeps what is left. */
+    | { type: 'permissionRootClose' }
 
     // The read-only history viewer: ticks from another session's transcript, or a cancel.
     // `indices` are the pane's `dataset.sessionIndex` of the ticked groups.

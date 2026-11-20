@@ -25,6 +25,7 @@ export const en: LocaleStrings = {
     sessionReplayFailed: 'This conversation could not be loaded from Hermes. Reopen it from Open, or reload the window.',
     sessionNotWritable: 'This chat is not connected to a Hermes session, so nothing was sent. Reopen it from the closed chats.',
     profileExcluded: '"{0}" is the profile the primary agent is using. Pick another one for this pane.',
+    profileMissing: '"{0}" is not a profile Hermes has any more. Pick another one; nothing was moved or deleted.',
     modelSwitchIncomplete: 'The model did not change to {0}. The chat was left as it was.',
     openTab: 'Open',
     chooseChat: 'Closed Sessions',
@@ -38,7 +39,22 @@ export const en: LocaleStrings = {
     permissionModeBtnTooltip: 'To allow session permissions mode must be manual',
     permissionModeTitle: 'Permission mode',
     permissionModeClose: 'Close',
-    permissionOpenTooltip: 'DANGER! (only critical actions blocked)',
+    permissionOpenTooltip: 'DANGER! Everything runs, deny rules cleared. Edits: free everywhere. '
+        + 'Sensitive files always ask.',
+    permissionEditHint: 'Edits ask here because of the button, the permission root or a protected file. '
+        + 'Change the button or the root; it applies from the next run.',
+    permissionRootLabel: 'Permission root',
+    permissionRootTitle: 'Permission root',
+    permissionRootBody: 'This workspace opens {folders} folders side by side. Hermes can work in one of them. '
+        + 'Choose the folder {profile} works in; outside it, edits ask for permission.',
+    permissionRootNew: 'New',
+    permissionRootMissing: 'missing',
+    permissionRootMoveRefused: 'Hermes could not move this session to {folder}. It stays in {previous}.',
+    permissionRootRootRemoved: '{folder} left the workspace. This session still works there until you pick another root.',
+    permissionRootLastRemoved: 'Last root removed: projects are no longer reachable from this window. '
+        + 'Their sessions stay untagged, available only through the Hermes TUI or by reopening the folder.',
+    appliesNextRun: 'Applies from the next run.',
+    noFolderOpen: 'Open a folder or workspace to start',
     permissionOpenConfirm: 'Press again: approvals off and approvals.deny cleared. The deny patterns are kept in a JSON backup.',
     permissionRestoreLabel: 'Restore deny rules',
     noClosedSessions: 'No closed sessions',
@@ -205,7 +221,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <ul>
                 <li><code>tommys.path</code> — path to the Hermes executable (empty = auto-detect)</li>
                 <li><code>tommys.profile</code> — maps to <code>--profile</code></li>
-                <li><code>tommys.cwd</code> — agent working directory (defaults to workspace root)</li>
             </ul>
             <p>Open <strong>More → Settings</strong> from the view title bar; connection-related changes <strong>take effect immediately</strong> (reconnects automatically).</p>
 
@@ -292,9 +307,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     permissionAllowOnce: 'Allow once',
     permissionAllowAlways: 'Always allow',
     permissionAllowSession: 'Allow for session',
-    permissionSessionNeedsManual: 'For session, set to manual',
-    permissionSessionArmed: 'Allow once — the session answer is set for the next request',
-    permissionSessionArmedHint: 'Allow once now, and answer the next request for the session',
     permissionRejectOnce: 'Reject once',
     permissionRejectAlways: 'Always deny',
     permissionDeny: 'Deny',
@@ -396,7 +408,13 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeSmart: 'Smart',
     approvalModeOff: 'None',
 
-    approvalModeTooltip: "Choosing 'None' will only ask permission for Hermes manipulation",
+    approvalModeManualTip: 'Commands and edits ask first.',
+    approvalModeSmartTip: 'Commands: Hermes judges, risky ones ask. Edits: free inside the permission '
+        + 'root, ask outside.',
+    approvalModeNoneTip: 'Commands run, except your deny rules. Edits: free inside the permission '
+        + 'root, ask outside.',
+    approvalModeSensitiveTip: 'Sensitive files (.git, .ssh, .env, keys, agent instruction files) '
+        + 'always ask.',
     approvalModeFailed: 'Could not change the approval mode.',
     steer: 'Steer',
     steerHint: 'Send this as guidance into the running turn',

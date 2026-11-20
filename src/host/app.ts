@@ -1,17 +1,19 @@
-import * as vscode from 'vscode';
-import * as fs from 'fs';
+import type * as vscode from 'vscode';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
-import { TreeCache } from './workspace/treeCache';
+import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
+import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
 import { EnvironmentDetection } from './environment/detection';
-import { migrateLegacySessionStorage, profileDir } from './cache/profileStorage';
+import { ensureDataHome, onStoreWriteError } from './store/connection';
+import { runMigrations } from './store/migrations';
+import { ProfilesStore } from './store/profiles';
+import { PresenceStore } from './store/presence';
+import { ProfilePresence } from './environment/presence';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
-import { resolvePermissionOptionLabel } from './i18n/permissionOptions';
 import { SupportedLocale } from '../shared/i18n';
-import { setting, settingsSection } from '../shared/extensionId';
 import type { ExtensionIdentity } from '../shared/extensionId';
 import type { PrimaryProfileSource } from './activate';
 import { PaneMailInbox, PaneMailOutbox, PaneMailPresence, newEnvelope } from './chat/paneMail';
@@ -19,27 +21,35 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml, identityArtwork } from './webview/html';
+import { buildWebviewHtml, identityArtwork, mediaUri, webviewResources } from './webview/html';
 import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
-import { WorkspaceFiles } from './workspace/files';
-import type { ChatSurface } from './webview/surfaces';
+import { ChatFiles } from './chat/files';
+import { createEditorCommands } from './editor/commands';
+import { createEditorEnv } from './editor/env';
+import { createEditorFiles } from './editor/files';
+import { createEditorFolders } from './editor/folders';
+import { createEditorNotices } from './editor/notices';
+import { createEditorSettings } from './editor/settings';
+import type { EditorLog } from '../shared/editor';
+import { WorkspaceCwd } from './workspace/cwd';
+import { RootPicker } from './workspace/rootPicker';
+import type { ChatSurface, RevealTrigger } from './webview/surfaces';
 import type { HostToPane, PaneToHost } from '../shared/webview';
 import { handleWebviewMessage } from './webview/router';
 import type { RouterHost } from './webview/router';
-import { Sessions } from './cache/sessions';
-import { Profiles } from './environment/profiles';
+import { Sessions } from './workspace/sessions';
+import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
-import { TabLifecycle } from './tabs/lifecycle';
+import { TabLifecycle } from './workspace/lifecycle';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
 import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
 import { findHermesExecutable } from './environment/profileDiscovery';
-import { isSettableApprovalMode } from './permissions/approvalModeRules';
-import { ApprovalModeControl } from './permissions/approvalModeControl';
-import type { ApprovalMode } from '../shared/webview';
+import { Approvals } from './permissions/approvals';
+import { PermissionsStore } from './permissions/store';
 import type { HistoryPick } from './webview/historyViewer';
 import { classifyLogLevel, LogLevel } from './logLevel';
 
@@ -78,9 +88,20 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
-    private readonly _profileChanged = new vscode.EventEmitter<string>();
+    private readonly _profileListeners = new Set<(name: string) => void>();
 
-    readonly onDidChangeProfile: vscode.Event<string> = this._profileChanged.event;
+    /** A plain set, not `vscode.EventEmitter`: the root holds no `vscode.*` value (F6). */
+    readonly onDidChangeProfile = (listener: (name: string) => void): { dispose(): void } => {
+        this._profileListeners.add(listener);
+        return { dispose: () => { this._profileListeners.delete(listener); } };
+    };
+
+    /** Tell every listener, each once: a listener added while firing hears the next change. */
+    private _fireProfileChanged(name: string): void {
+        for (const listener of Array.from(this._profileListeners)) {
+            listener(name);
+        }
+    }
 
     /**
      * The secondant may not share the primary's profile. Returns true when it had to let go, so
@@ -103,7 +124,7 @@ export class App implements vscode.WebviewViewProvider {
     private _attachments: AttachmentStore;
     /** The project group: workspaces, the projects named against them, and tab membership. */
     private _projects: Projects;
-    private _trees?: TreeCache;
+    private _trees?: TreeStore;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -128,7 +149,8 @@ export class App implements vscode.WebviewViewProvider {
         sessionId: () => this._session.activeId,
         messages: () => this._session.messages,
         tabs: () => this._session.tabs,
-        resolveCwd: () => this._files.resolveCwd(),
+        resolveCwd: () => this._cwd.defaultFolderPath(),
+        resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -139,15 +161,12 @@ export class App implements vscode.WebviewViewProvider {
         detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
         bindHermesSessionId: (id) => this._lifecycle.bindHermesSessionId(id),
         applySessionModelPreference: () => this._models.applySessionPreference(),
+        applySessionEditMode: () => this._approvals.applyEdits(),
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._session.saveMessage(role, text),
         savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
         resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
-        permissionOptionLabel: (id, optionId) => {
-            const stored = this._session.messages.find(m => m.permissionId === id && m.role === 'permission');
-            const opt = stored?.options?.find(o => o.optionId === optionId);
-            return opt ? resolvePermissionOptionLabel(getWebviewLocale(), opt) : undefined;
-        },
+        permissionOptionLabel: (id, optionId) => this._approvals.optionLabel(id, optionId),
     });
 
     /** Hermes: process, link, events, teardown. */
@@ -156,6 +175,9 @@ export class App implements vscode.WebviewViewProvider {
 
     /** Which profile/agent we connect to, and which the picker offers. */
     private readonly _profiles: Profiles;
+
+    /** This window's row in the cross-window presence table: who runs what, for every picker. */
+    private readonly _presence: ProfilePresence;
 
     /** This tab's own messages offered to the picker; not an earlier session. */
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
@@ -174,7 +196,7 @@ export class App implements vscode.WebviewViewProvider {
         tabs: () => this._session.tabs,
         sessionId: () => this._session.activeId,
         saveCatalog: () => this._session.saveCatalog(),
-        profileScope: () => ({ historyDir: this._historyDir, scopeKey: this._session.scopeKey }),
+        profileScope: () => ({ historyDir: this._historyDir, sessionProfileId: this._session.sessionProfileId }),
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -196,6 +218,7 @@ export class App implements vscode.WebviewViewProvider {
         onViewResolved: () => { this._webviewLocale = getLocale(); },
         onViewVisible: () => {
             this._syncWebviewLocale();
+            this._rootPicker.railShown();
             if (!this._connection.acp) {
                 this._connection.connect();
             }
@@ -231,22 +254,44 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _historyStages: HistoryStages = new HistoryStages();
 
     /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
-    private readonly _approvalModeControl = new ApprovalModeControl();
-    /** Bumped by every mode write: an open-access sequence checks it before turning approvals off. */
-    private _openAccessToken = 0;
+
+    /** Permissions: the profile's approval mode and the red action, with its own store. */
+    private readonly _approvals: Approvals;
 
     private readonly _extensionId: string;
 
-    /** The workspace as the pane and the agent may touch it: paths, picker, previews, fs. */
-    private readonly _files: WorkspaceFiles = new WorkspaceFiles({
+    /** The pane's file actions: the '@' picker, previews, opening a file, inserting text. */
+    private readonly _files: ChatFiles = new ChatFiles({
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
+        editor: createEditorFiles(),
     });
+
+    /** Which folder this window works in, and which window it is: one owner, one answer. */
+    private readonly _cwd: WorkspaceCwd;
+
+    /** The window's folders, behind the port the cwd owner and the project group both ask. */
+    private readonly _folders = createEditorFolders();
+
+    /** Our own settings, by bare key, and the news that one changed. */
+    private readonly _settings = createEditorSettings();
+
+    /** What the user is told: the editor's toasts, never the pane's. */
+    private readonly _notices = createEditorNotices();
+
+    /** The editor's own commands, by what the user asked for rather than by command id. */
+    private readonly _commands = createEditorCommands();
+
+    /** What the editor is: its name, its theme, the selection, our manifest, the log channel. */
+    private readonly _env = createEditorEnv();
+
+    /** The permission root: which of a multi-folder workspace's folders Hermes works in. */
+    private readonly _rootPicker: RootPicker;
 
     /** The two panes trade drafts through one shared file; this is this side of the trade. */
     private _mail?: { outbox: PaneMailOutbox; inbox: PaneMailInbox; presence: PaneMailPresence };
 
-    private _output: vscode.OutputChannel;
+    private _output: EditorLog;
 
     /** Serializes webview send so rapid sends cannot overlap. */
     private _chatOpChain: Promise<void> = Promise.resolve();
@@ -260,46 +305,116 @@ export class App implements vscode.WebviewViewProvider {
     ) {
         const context = this._context;
         this._extensionId = this._id.extensionId;
+        this._output = this._env.outputChannel(
+            this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
+            'hermes-chat'
+        );
+        // The one place a store write that never landed becomes visible: the output log (ST1).
+        onStoreWriteError(line => this._log(`Store: ${line}`));
+        const storagePath = ensureDataHome();
+        this._historyDir = storagePath;
+        // The profile table is built here, before the feature that resolves names to ids (C2): the
+        // seed is the first thing the window does with it.
         this._profiles = new Profiles({
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
             globalState: context.globalState,
-            excludedProfile: () => this._primary?.activeProfile || this._siblingProfile || undefined,
+            settings: this._settings,
+            store: new ProfilesStore(storagePath),
+            excludedProfiles: () => excludedProfiles({
+                primary: this._primary?.activeProfile || '',
+                sibling: this._siblingProfile,
+                elsewhere: this._presence.live(),
+            }),
         });
-        this._output = vscode.window.createOutputChannel(
-            this._id.role === 'primary' ? 'Hermes Chat' : 'Hermes Chat (Secondant)',
-            'hermes-chat'
-        );
-        const storagePath = context.globalStorageUri.fsPath;
-        fs.mkdirSync(storagePath, { recursive: true });
-        this._historyDir = storagePath;
+        this._profiles.seedStore();
+        // Announced before anything asks who may run what: the pickers read the other windows'
+        // rows through `_presence.live()`, and this instance's own row is what they see there.
+        this._presence = new ProfilePresence({
+            store: new PresenceStore(storagePath),
+            role: this._id.role,
+            profile: () => this._profiles.resolveTarget().cliProfile,
+            live: () => !!this._connection.acp,
+            log: (line) => this._log(line),
+        });
+        this._presence.start();
         this._attachments = new AttachmentStore(this._historyDir);
-        migrateLegacySessionStorage(this._historyDir, '__default__');
+        runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
         const initialTarget = this._profiles.seed();
-        this._projects = new Projects(this._historyDir, initialTarget.scopeKey, {
+        // The workspace feature's three stores: built once, here, and handed to the two
+        // features that use them (C2). A profile switch reaches them through those
+        // features' bindProfileScope, so nothing below builds a store of its own.
+        const workspaces = new WorkspaceStore(this._historyDir);
+        // The roots live with the workspace record, so the locator reads and writes them there;
+        // the store only exists from here on, which is why the locator is built at this point.
+        this._cwd = new WorkspaceCwd(this._folders, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
+        // Permissions keeps its own record and its own deny backups, in the profile's folder.
+        this._approvals = new Approvals(
+            {
+                post: (msg) => this._postMessage(msg),
+                log: (line) => this._log(line),
+                profile: () => this._profiles.resolveTarget().cliProfile,
+                executable: () => this._resolveHermesExecutable(),
+                acp: () => this._connection.acp,
+                activeSessionBusy: () => this._connection.acp?.status === 'prompting',
+                onRunEnded: (handler) => this._connection.runEnded.on(handler),
+                onSessionMode: (handler) => this._connection.onSessionMode(handler),
+                respondToPermission: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
+                storedPermissionOption: (id, optionId) => {
+                    const stored = this._session.messages.find(m => m.permissionId === id && m.role === 'permission');
+                    return stored?.options?.find(o => o.optionId === optionId);
+                },
+                locale: () => getWebviewLocale(),
+            },
+            new PermissionsStore(this._historyDir, () => this._session.sessionProfileId),
+        );
+        this._rootPicker = new RootPicker({
+            post: (msg) => this._postMessage(msg),
+            log: (line) => this._log(line),
+            cwd: this._cwd,
+            activeSessionBusy: () => this._connection.acp?.status === 'prompting',
+            // Hermes moves an idle session on load, so the reload is the move.
+            // A tab with no Hermes session has nothing to move: the pick is stored and that is all.
+            reloadActiveSession: () => this._session.tabs.some(tab => tab.id === this._session.activeId && tab.hermesSessionId)
+                ? this._lifecycle.resumeTabHermesSession(this._session.activeId)
+                : Promise.resolve(true),
+            sessionRootId: () => this._session.rootFolderIdOf(this._session.activeId),
+            setSessionRoot: (folderId) => this._session.setPermissionRoot(this._session.activeId, folderId),
+            profileLabel: () => this._profiles.resolveTarget().displayName,
+            onRunEnded: (handler) => this._connection.runEnded.on(handler),
+            onProfileActive: (handler) => this._connection.profileActive.on(handler),
+            railInView: () => this._surfaces.railVisible,
+            postToRail: (msg) => this._surfaces.postToRole('rail', msg),
+        });
+        const agentProjects = new ProjectStore(this._historyDir, initialTarget.sessionProfileId, workspaces);
+        const tabs = new TabStore(this._historyDir, initialTarget.sessionProfileId);
+        this._projects = new Projects(workspaces, agentProjects, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             tabs: () => this._session.tabs,
             saveTabs: (next, options) => this._session.setTabs(next, options),
             activeTabId: () => this._session.activeId,
-            openWorkspace: (path) => {
-                void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), { forceNewWindow: false });
+            openWorkspace: (path) => this._commands.openFolder(path),
+            currentWorkspacePath: () => this._cwd.workspaceIdentity(),
+            onDidChangeWorkspaceFolders: (handler) => {
+                const unsubscribe = this._folders.onFoldersChanged(handler);
+                return { dispose: unsubscribe };
             },
         });
-        this._session = new Sessions(this._historyDir, initialTarget.scopeKey, {
+        this._session = new Sessions(this._historyDir, initialTarget.sessionProfileId, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             updatePanelTitle: () => this._surfaces.updatePanelTitle(),
             modelLabel: () => this._models.currentLabel,
             currentWorkspaceId: () => this._projects.currentId(),
-            workspaceIdForCwd: (cwd) => this._projects.workspaceIdForCwd(cwd),
             knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
-        });
+        }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
-        this._trees = new TreeCache(this._historyDir, line => this._log(line), () => ({
-            profile: this._projects.scopeKey,
+        this._trees = new TreeStore(this._historyDir, line => this._log(line), () => ({
+            sessionProfileId: this._projects.sessionProfileId,
+            profile: this._profiles.resolveTarget().agentName,
             workspacePath: this._projects.current(),
             workspaceId: this._projects.currentId(),
             activeSessionId: this._session.activeId,
@@ -314,10 +429,11 @@ export class App implements vscode.WebviewViewProvider {
             post: (msg) => this._postMessage(msg),
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
-            resolveCwd: () => this._files.resolveCwd(),
+            resolveCwd: () => this._cwd.defaultFolderPath(),
+            resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
-            profile: () => this._profiles.resolveTarget().cliProfile,
+            sessionProfileId: () => this._session.sessionProfileId,
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
@@ -331,7 +447,20 @@ export class App implements vscode.WebviewViewProvider {
             dropHistoryStage: (tabId) => this._historyStages.drop(tabId),
             activate: (id, options) => this._session.activate(id, options),
             reinjectOpenPeers: () => this._mail?.inbox.reinjectOpen(),
+            enqueueChatOp: (op) => this._enqueueChatOp(op),
+            openSessionSurface: () => {
+                if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
+                    this._surfaces.openPanel();
+                }
+            },
             workspaceState: context.workspaceState,
+            debugTabSwitch: () => {
+                try {
+                    return this._settings.get<boolean>('debugTabSwitch', false) === true;
+                } catch {
+                    return false;
+                }
+            },
         });
         this._connection = new Connection({
             profiles: this._profiles,
@@ -340,36 +469,40 @@ export class App implements vscode.WebviewViewProvider {
             turn: this._turn,
             models: this._models,
             detection: this._detection,
-            files: this._files,
+            resolveCwd: () => this._cwd.defaultFolderPath(),
             lifecycle: this._lifecycle,
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
             postWebviewLog: (line, level) => this._postWebviewLog(line, level),
             steerNotice: (text) => this._log(text),
             profileChanged: (name) => {
-                this._profileChanged.fire(name);
+                this._fireProfileChanged(name);
+                // Presence is not written here: a switch only sets the selection, and a profile the
+                // guarantee refuses must not be announced. The connect that lands writes it.
                 // Push it up too: the primary's picker must stop offering this profile.
                 this._primary?.registerSiblingProfile?.(this.activeProfile);
             },
-            excludedProfile: () => this._primary?.activeProfile || undefined,
+            excludedProfiles: () => excludedProfiles({
+                primary: this._primary?.activeProfile || '',
+                elsewhere: this._presence.live(),
+            }),
             isViewingPromptSession: () => this._isViewingPromptSession(),
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
         });
+        // The profile this window actually landed on, for the other windows to read: a connect that
+        // the exclusion guarantee refused never fires this, so it announces nothing.
+        this._connection.profileActive.on(() => this._presence.connected());
 
         context.subscriptions.push(
             this._projects.start(),
-            vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration(settingsSection())) {
-                    void this._onConfigurationChanged(e);
-                }
+            { dispose: this._rootPicker.start() },
+            { dispose: this._approvals.start() },
+            this._settings.onDidChange(affects => {
+                void this._onConfigurationChanged(affects);
             })
         );
     }
-
-
-
-
 
     private _resolvePermissionHistory(
         id: string,
@@ -379,22 +512,6 @@ export class App implements vscode.WebviewViewProvider {
     ): void {
         this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     private _isViewingPromptSession(): boolean {
         return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
@@ -502,7 +619,7 @@ export class App implements vscode.WebviewViewProvider {
             this._attachments.indexAttachments(
                 {
                     sessionId: record?.hermesSessionId || tabId,
-                    profile: this._profiles.resolveTarget().cliProfile,
+                    sessionProfileId: this._session.sessionProfileId,
                 },
                 imageRefs,
                 text,
@@ -529,7 +646,7 @@ export class App implements vscode.WebviewViewProvider {
         // First turn in this session and workspace: say where the tree file is. Sent as its own
         // block, so the transcript still shows only what was typed.
         const treeBlock = this._trees
-            ? this._trees.noticeBlock(this._projects.scopeKey, this._projects.currentId(), tabId)
+            ? this._trees.noticeBlock(this._projects.sessionProfileId, this._projects.currentId(), tabId)
             : '';
         if (imageCount > 0 || historyBlock || treeBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,
@@ -607,15 +724,15 @@ export class App implements vscode.WebviewViewProvider {
         await this._connection.awaitSessionReady();
         await this._models.awaitSwitch();
         if (!this._connection.acp) {
-            vscode.window.showWarningMessage(t('hermesNotConnectedConnecting'));
+            this._notices.warn(t('hermesNotConnectedConnecting'));
             await this._connection.connect();
         }
         if (!this._connection.acp) {
-            vscode.window.showWarningMessage(t('hermesNotConnected'));
+            this._notices.warn(t('hermesNotConnected'));
             return;
         }
         if (this._session.tabs.length === 0) {
-            vscode.window.showWarningMessage(t('noActiveTabHint'));
+            this._notices.warn(t('noActiveTabHint'));
             return;
         }
         this._enqueueChatOp(async () => {
@@ -633,29 +750,28 @@ export class App implements vscode.WebviewViewProvider {
         this._detection.configureEnvironment();
     }
 
-    private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
-        if (e.affectsConfiguration(setting('showThoughts')) || e.affectsConfiguration(setting('showToolCalls'))) {
+    private async _onConfigurationChanged(affects: (key: string) => boolean): Promise<void> {
+        if (affects('showThoughts') || affects('showToolCalls')) {
             this._postConfig();
         }
-        if (e.affectsConfiguration(setting('models')) || e.affectsConfiguration(setting('defaultModel'))) {
+        if (affects('models') || affects('defaultModel')) {
             if (!this._models.isRuntimeSource()) {
                 this._models.reset();
             }
             void this._models.sync();
         }
-        if (e.affectsConfiguration(setting('agents'))) {
+        if (affects('agents')) {
             this._profiles.forgetDiscovered();
             this._profiles.postList();
         }
-        const reconnectKeys = [setting('path'), setting('cwd'), setting('profile')];
-        if (e.affectsConfiguration(setting('profile'))) {
+        const reconnectKeys = ['path', 'profile'];
+        if (affects('profile')) {
             // Another profile means another approvals.mode.
-            this._approvalModeControl.clear();
+            this._approvals.onProfileChanged();
         }
-        if (reconnectKeys.some(k => e.affectsConfiguration(k))) {
-            if (e.affectsConfiguration(setting('profile')) && this._profiles.readAgentConfigs().length === 0) {
-                const config = vscode.workspace.getConfiguration(settingsSection());
-                this._profiles.selectionId = normalizeHermesCliProfile(config.get<string>('profile'));
+        if (reconnectKeys.some(key => affects(key))) {
+            if (affects('profile') && this._profiles.readAgentConfigs().length === 0) {
+                this._profiles.selectionId = normalizeHermesCliProfile(this._settings.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();
         }
@@ -787,7 +903,7 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The executable the connection would start: the configured path first, then the search. */
     private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
+        const configured = this._settings.get<string>('path');
         const quick = await tryResolveHermesQuick(configured);
         if (quick) {
             return quick;
@@ -827,6 +943,9 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.toggle();
     }
 
+    /** Show our side panel, unless it is already on screen: the rail lists the chats. */
+    public revealRail(trigger: RevealTrigger): void { this._surfaces.revealRail(trigger); }
+
     /** Called by the panel serializer so the tab comes back after a reload. */
     public restoreChatPanel(panel: vscode.WebviewPanel): void {
         this._surfaces.restorePanel(panel);
@@ -851,6 +970,8 @@ export class App implements vscode.WebviewViewProvider {
         // The tree is its own message and nothing else re-sends it: a fresh pane that never
         // hears it draws every tab on the plane.
         this._projects.postList();
+        // A dialog that came due while this pane was hidden is said again now.
+        this._rootPicker.republish();
         this._profiles.postList();
         this._session.postHidden();
         this._postConfig();
@@ -894,7 +1015,7 @@ export class App implements vscode.WebviewViewProvider {
                     this._log(`openExternal refused: ${url.slice(0, 60)}`);
                     return;
                 }
-                void vscode.env.openExternal(vscode.Uri.parse(url));
+                this._env.openExternal(url);
             },
             ready: () => this._onWebviewReady(surface),
             enqueueChatOp: (op) => this._enqueueChatOp(op),
@@ -904,26 +1025,18 @@ export class App implements vscode.WebviewViewProvider {
             ),
             handleCancel: () => this._turn.cancel(),
             handleSteer: (text) => this._handleSteer(text),
+            permissionRoot: this._rootPicker.commands,
             handleOpenFile: (path) => this._files.openFile(path),
             handleListFiles: (query, requestId) => this._files.listFiles(query, requestId),
             handlePreviewFile: (path, requestId) => this._files.previewFile(path, requestId),
-            postHiddenSessions: () => this._session.postHidden(),
-            handleOpenTab: (sessionId) => this._lifecycle.openTab(sessionId),
-            handleReorderSessions: (ids) => this._session.handleReorderSessions(ids),
-            handleCloseSessions: (sessionId, mode) => this._lifecycle.closeSessions(sessionId, mode),
-            handleRenameSession: (sessionId, title) => this._lifecycle.renameTab(sessionId, title),
-            handleToggleStickySession: (sessionId) => this._session.handleToggleStickySession(sessionId),
+            // A session tab clicked in our panel arrives here; the rail follows it (Surfaces owns
+            // that rule). Every other tab command passes through untouched.
+            tabs: this._surfaces.tabCommands(this._lifecycle.commands),
             projects: this._projects.commands,
             handleSessionExport: (sessionId, action, indices) => this._session.handleSessionExport(sessionId, action, indices),
             handleSwitchAgent: (name) => {
-                this._approvalModeControl.clear();
+                this._approvals.onProfileChanged();
                 this._connection.switchProfile(name);
-            },
-            handleSwitchSession: (sessionId, interrupt) => {
-                if (this._surfaces.mode === 'editor' && !this._surfaces.hasPanel) {
-                    this._surfaces.openPanel();
-                }
-                this._enqueueChatOp(() => this._lifecycle.switchTo(sessionId, { interrupt }));
             },
             switchModel: (configId, valueId) => this._models.switchModel(configId, valueId),
             syncModels: () => this._models.sync(),
@@ -934,11 +1047,7 @@ export class App implements vscode.WebviewViewProvider {
             deliverAllPeers: () => this.deliverAllPeers(),
             dismissAllPeers: () => this.dismissAllPeers(),
             retry: () => this._connection.retry(),
-            handlePermissionResponse: (id, optionId) => this._turn.handlePermissionResponse(id, optionId),
-            setApprovalMode: (mode) => this.setApprovalMode(mode),
-            requestApprovalMode: () => this.requestApprovalMode(),
-            setOpenAccess: () => this.setOpenAccess(),
-            restoreDeny: () => this.restoreDeny(),
+            permissions: this._approvals.commands,
             handleInsertEditor: (text) => this._files.insertEditor(text),
             handleDeleteMessages: (indices) => this._session.handleDeleteMessages(indices),
             openHistoryViewer: (sessionId, title) => this.openHistoryViewer(sessionId, title),
@@ -976,277 +1085,34 @@ export class App implements vscode.WebviewViewProvider {
         }
         if (msg.type === 'permissionRequest') {
             // The card is about to ask for a decision; its switch needs the current mode now.
-            this._postApprovalMode();
+            this._approvals.post();
         }
-    }
-
-    /** Asked from the pane: re-read and answer even when the answer is unchanged. */
-    public requestApprovalMode(): void {
-        this._postApprovalMode(true);
-    }
-
-    /** The switch's state: the cache first, the CLI in the background, a second post if it moved. */
-    private _postApprovalMode(force = false): void {
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const cached = this._approvalModeControl.last(profile);
-        this._postMessage({
-            type: 'approvalMode',
-            mode: cached,
-            denyCount: this._approvalModeControl.lastDenyCount(profile),
-            openAccess: this._isOpenAccess(),
-        });
-        void this._refreshApprovalMode(profile, cached, force);
-    }
-
-    private async _refreshApprovalMode(profile: string, previous: ApprovalMode, force = false): Promise<void> {
-        const executable = await this._resolveHermesExecutable();
-        if (!executable) {
-            return;
-        }
-        const mode = await this._approvalModeControl.read(executable, profile);
-        const denyCount = await this._approvalModeControl.readDenyCount(executable, profile);
-        if (force || mode !== previous) {
-            this._postMessage({ type: 'approvalMode', mode, denyCount, openAccess: this._isOpenAccess() });
-        }
-    }
-
-    /**
-     * Whether the red action is engaged. Recorded, not inferred: `mode off` with an empty deny
-     * list is None (rules still default-block), and only the red press makes it ALL.
-     */
-    private _openAccess: boolean | null = null;
-
-    /** Where the last cleared deny list was saved, per profile. */
-    private readonly _denyBackups = new Map<string, string>();
-
-    private _permissionsStatePath(): string {
-        return path.join(profileDir(this._historyDir, this._session.scopeKey), 'permissions-state.json');
-    }
-
-    /** Read once, then kept in memory: the file only changes through this class. */
-    private _isOpenAccess(): boolean {
-        if (this._openAccess === null) {
-            try {
-                const raw = JSON.parse(fs.readFileSync(this._permissionsStatePath(), 'utf8'));
-                this._openAccess = raw.openAccess === true;
-            } catch {
-                this._openAccess = false;
-            }
-        }
-        return this._openAccess;
-    }
-
-    private _setOpenAccessFlag(next: boolean): void {
-        this._openAccess = next;
-        try {
-            fs.mkdirSync(path.dirname(this._permissionsStatePath()), { recursive: true });
-            fs.writeFileSync(
-                this._permissionsStatePath(),
-                JSON.stringify({ openAccess: next, updatedAt: new Date().toISOString() }, null, 2) + '\n',
-                'utf8',
-            );
-        } catch (e) {
-            this._log(`Permissions state could not be written: ${String(e)}`);
-        }
-    }
-
-    /**
-     * Save the deny list before it is cleared, and say whether that worked.
-     *
-     * The file sits with the profile's own data, not in a temp directory: a backup that is pruned
-     * overnight is not a backup. The caller aborts the clear when this returns false.
-     */
-    private _saveDenyBackup(profile: string, patterns: string[]): boolean {
-        try {
-            const dir = profileDir(this._historyDir, this._session.scopeKey);
-            fs.mkdirSync(dir, { recursive: true });
-            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const file = path.join(dir, `deny-backup-${stamp}.json`);
-            fs.writeFileSync(
-                file,
-                JSON.stringify({ profile, savedAt: new Date().toISOString(), patterns }, null, 2) + '\n',
-                'utf8',
-            );
-            this._denyBackups.set(profile, file);
-            this._log(`Deny list saved before clearing: ${file}`);
-            return true;
-        } catch (e) {
-            this._log(`Deny list backup failed: ${String(e)}`);
-            return false;
-        }
-    }
-
-    /** Newest saved deny list for a profile, when this process no longer remembers it. */
-    private _newestDenyBackup(): string | undefined {
-        try {
-            const dir = profileDir(this._historyDir, this._session.scopeKey);
-            const files = fs.readdirSync(dir)
-                .filter(name => name.startsWith('deny-backup-') && name.endsWith('.json'))
-                .sort();
-            const last = files[files.length - 1];
-            return last ? path.join(dir, last) : undefined;
-        } catch {
-            return undefined;
-        }
-    }
-
-    /** Put the saved deny list back — the other half of the red action. */
-    public async restoreDeny(): Promise<void> {
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const file = this._denyBackups.get(profile) ?? this._newestDenyBackup();
-        const executable = await this._resolveHermesExecutable();
-        if (!executable || !file) {
-            this._log(`Deny restore skipped (executable=${!!executable}, backup=${file ?? 'none'})`);
-            this._postMessage({
-                type: 'approvalMode',
-                mode: this._approvalModeControl.last(profile),
-                denyCount: this._approvalModeControl.lastDenyCount(profile),
-                error: t('approvalModeFailed'),
-            });
-            return;
-        }
-        let patterns: string[] = [];
-        try {
-            const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-            patterns = Array.isArray(parsed.patterns) ? parsed.patterns.filter((p: unknown) => typeof p === 'string') : [];
-        } catch (e) {
-            this._log(`Deny restore could not read ${file}: ${String(e)}`);
-            patterns = [];
-        }
-        const restored = await this._approvalModeControl.writeDenyList(executable, profile, patterns);
-        this._setOpenAccessFlag(false);
-        this._log(`Deny restore: ${patterns.length} pattern(s) from ${file} — ${restored ? 'written' : 'failed'}`);
-        this._denyBackups.set(profile, file);
-        this._postMessage({
-            type: 'approvalMode',
-            mode: this._approvalModeControl.last(profile),
-            denyCount: this._approvalModeControl.lastDenyCount(profile),
-            denyBackup: file,
-            openAccess: false,
-            ...(restored ? {} : { error: t('approvalModeFailed') }),
-        });
-    }
-
-    /**
-     * The red action: save the deny list, clear it, then turn approvals off for the profile.
-     *
-     * Order matters — the deny list is the only copy of those patterns, so a failed save stops
-     * everything, and the mode write is skipped when a second press arrived meanwhile.
-     */
-    public async setOpenAccess(): Promise<void> {
-        const token = ++this._openAccessToken;
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const executable = await this._resolveHermesExecutable();
-        if (!executable) {
-            this._log('Open access not set: no Hermes executable found');
-            this._postMessage({ type: 'approvalMode', mode: this._approvalModeControl.last(profile), error: t('approvalModeFailed') });
-            return;
-        }
-        const patterns = await this._approvalModeControl.readDenyList(executable, profile);
-        let backup = this._denyBackups.get(profile);
-        if (patterns.length > 0) {
-            if (!this._saveDenyBackup(profile, patterns)) {
-                this._postMessage({
-                    type: 'approvalMode',
-                    mode: this._approvalModeControl.last(profile),
-                    denyCount: patterns.length,
-                    error: t('approvalModeFailed'),
-                });
-                return;
-            }
-            backup = this._denyBackups.get(profile);
-        }
-        if (!await this._approvalModeControl.clearDeny(executable, profile)) {
-            this._log(`Open access: clearing approvals.deny failed (profile=${profile})`);
-            this._postMessage({
-                type: 'approvalMode',
-                mode: this._approvalModeControl.last(profile),
-                denyCount: this._approvalModeControl.lastDenyCount(profile),
-                denyBackup: backup,
-                error: t('approvalModeFailed'),
-            });
-            return;
-        }
-        if (token !== this._openAccessToken) {
-            // Stopped while clearing the deny list: do not turn approvals off behind the user.
-            this._log(`Open access cancelled before the mode write (profile=${profile})`);
-            this._setOpenAccessFlag(false);
-            this._postMessage({
-                type: 'approvalMode',
-                mode: this._approvalModeControl.last(profile),
-                denyCount: this._approvalModeControl.lastDenyCount(profile),
-                denyBackup: backup,
-                openAccess: false,
-            });
-            return;
-        }
-        const wrote = await this._approvalModeControl.write(executable, profile, 'off');
-        this._setOpenAccessFlag(wrote);
-        this._log(`Open access: deny cleared, mode ${wrote ? 'set to off' : 'write failed'} (profile=${profile})`);
-        this._postMessage({
-            type: 'approvalMode',
-            mode: this._approvalModeControl.last(profile),
-            denyCount: this._approvalModeControl.lastDenyCount(profile),
-            denyBackup: backup,
-            openAccess: wrote,
-            ...(wrote ? {} : { error: t('approvalModeFailed') }),
-        });
-    }
-
-    /** The switch was used: write it to the profile, and say so (or put the old value back). */
-    public async setApprovalMode(mode: ApprovalMode): Promise<void> {
-        this._openAccessToken += 1;
-        if (!isSettableApprovalMode(mode)) {
-            this._log(`Approval mode ignored: ${String(mode)}`);
-            return;
-        }
-        const profile = this._profiles.resolveTarget().cliProfile;
-        const previous = this._approvalModeControl.last(profile);
-        const executable = await this._resolveHermesExecutable();
-        if (!executable) {
-            this._log('Approval mode not set: no Hermes executable found');
-            this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
-            return;
-        }
-        if (await this._approvalModeControl.write(executable, profile, mode)) {
-            // Any deliberate choice ends the ALL state, choosing None included.
-            this._setOpenAccessFlag(false);
-            this._postMessage({ type: 'approvalMode', mode, openAccess: false });
-            this._log(`Approval mode set to ${mode} (profile=${profile})`);
-            return;
-        }
-        this._log(`Approval mode write failed: ${mode} (profile=${profile})`);
-        this._postMessage({ type: 'approvalMode', mode: previous, error: t('approvalModeFailed') });
     }
 
     private _postConfig(): void {
-        const config = vscode.workspace.getConfiguration(settingsSection());
         this._postMessage({
             type: 'config',
-            showThoughts: config.get<boolean>('showThoughts', true),
-            showToolCalls: config.get<boolean>('showToolCalls', true),
+            showThoughts: this._settings.get<boolean>('showThoughts', true),
+            showToolCalls: this._settings.get<boolean>('showToolCalls', true),
         });
     }
 
     private _postPluginInfo(): void {
-        const ext = vscode.extensions.getExtension(this._extensionId);
-        const pkg = ext?.packageJSON;
+        const info = this._env.extensionInfo(this._extensionId);
         let iconUri = '';
         const iconWebview = this._surfaces.iconWebview;
         if (iconWebview) {
             // The identity's own mark: the secondant is orange by definition, so this must not be
             // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
-            iconUri = iconWebview.asWebviewUri(
-                vscode.Uri.joinPath(this._extensionUri, 'media', identityArtwork(this._id.role))
-            ).toString();
+            iconUri = mediaUri(this._extensionUri, iconWebview, identityArtwork(this._id.role));
         }
         this._postMessage({
             type: 'pluginInfo',
-            displayName: pkg?.displayName || 'Tommys Hermes ACP',
-            version: pkg?.version || '',
-            publisher: pkg?.publisher || '',
-            description: pkg?.description || '',
-            repository: pkg?.repository?.url || pkg?.repository || '',
+            displayName: info.displayName || 'Tommys Hermes ACP',
+            version: info.version,
+            publisher: info.publisher,
+            description: info.description,
+            repository: info.repository,
             iconUri,
         });
     }
@@ -1255,13 +1121,8 @@ export class App implements vscode.WebviewViewProvider {
         const webview = target ?? this._surfaces.view?.webview;
         return buildWebviewHtml({
             htmlPath: path.join(this._extensionUri.fsPath, 'media', 'chat.html'),
-            resourceUri: webview
-                ? (relative: string) => webview
-                    .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', relative))
-                    .toString()
-                : undefined,
-            cspSource: webview ? webview.cspSource : undefined,
-            themeKind: vscode.window.activeColorTheme.kind,
+            ...webviewResources(this._extensionUri, webview),
+            themeKind: this._env.themeKind(),
             locale: getWebviewLocale(),
         });
     }
@@ -1309,7 +1170,7 @@ export class App implements vscode.WebviewViewProvider {
         }
         const other = this._mail.presence.other();
         if (!other) {
-            void vscode.window.showInformationMessage(t('otherPaneNotLive'));
+            this._notices.info(t('otherPaneNotLive'));
             return;
         }
         const sent = this._mail.outbox.send(
@@ -1331,7 +1192,7 @@ export class App implements vscode.WebviewViewProvider {
             })
         );
         if (sent) {
-            void vscode.window.showInformationMessage(`Forwarded to ${other.profile}`);
+            this._notices.info(`Forwarded to ${other.profile}`);
         }
     }
 
@@ -1565,7 +1426,7 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     public openSettings(): void {
-        void this._openSettings();
+        void this._commands.openSettings(this._extensionId);
     }
 
     public openLogs(): void {
@@ -1614,7 +1475,7 @@ export class App implements vscode.WebviewViewProvider {
     private async _handleReloadExtension(): Promise<void> {
         this._log('Reload extension requested');
         this._quiesceTurn();
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        await this._commands.reloadWindow();
     }
 
     /**
@@ -1632,31 +1493,7 @@ export class App implements vscode.WebviewViewProvider {
 
     private async _checkForUpdate(): Promise<void> {
         this._log('Checking for extension updates');
-        await vscode.commands.executeCommand('workbench.extensions.action.checkForUpdates');
-        await vscode.commands.executeCommand(
-            'workbench.extensions.action.showExtensionsWithIds',
-            [this._extensionId]
-        );
-    }
-
-    private async _openSettings(): Promise<void> {
-        const preferJsonEditor = vscode.workspace
-            .getConfiguration('workbench.settings')
-            .get<string>('editor') === 'json';
-        const isCursor = /cursor/i.test(vscode.env.appName);
-
-        // Cursor: always open Settings UI (JSON editor command often does nothing visible).
-        if (preferJsonEditor && !isCursor) {
-            await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
-                revealSetting: { key: setting('path'), edit: false },
-            });
-            return;
-        }
-
-        await vscode.commands.executeCommand(
-            'workbench.action.openSettings',
-            `@ext:${this._extensionId}`,
-        );
+        await this._commands.checkForUpdate(this._extensionId);
     }
 
     public dispose(): void {
@@ -1670,7 +1507,8 @@ export class App implements vscode.WebviewViewProvider {
         this._mail?.inbox.dispose();
         this._mail?.presence.dispose();
         this._output.dispose();
-        this._profileChanged.dispose();
+        this._profileListeners.clear();
+        this._presence.dispose();
     }
 
 }

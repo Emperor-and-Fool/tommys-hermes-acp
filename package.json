@@ -2,7 +2,7 @@
   "name": "tommys-hermes-acp",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "2.3.1",
+  "version": "2.5.0",
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",
@@ -250,11 +250,6 @@
           "default": "",
           "description": "%configuration.tommys.path.description%"
         },
-        "tommys.cwd": {
-          "type": "string",
-          "default": "",
-          "description": "%configuration.tommys.cwd.description%"
-        },
         "tommys.profile": {
           "type": "string",
           "default": "",
@@ -311,9 +306,6 @@
                 "type": "string"
               },
               "profile": {
-                "type": "string"
-              },
-              "cwd": {
                 "type": "string"
               }
             },

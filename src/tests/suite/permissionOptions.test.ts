@@ -2,7 +2,7 @@ import { describe, it } from 'mocha';
 import assert from 'assert';
 import { en } from '../../host/i18n/locales/en';
 import { zhCn } from '../../host/i18n/locales/zh-cn';
-import { resolvePermissionOptionLabel } from '../../host/i18n/permissionOptions';
+import { resolvePermissionOptionLabel } from '../../host/permissions/permissionOptions';
 
 describe('permissionOptions', () => {
     it('maps standard ACP kinds to locale labels', () => {

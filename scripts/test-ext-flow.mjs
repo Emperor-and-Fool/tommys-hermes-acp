@@ -1,6 +1,5 @@
 import { spawn } from 'child_process';
 import { client, ndJsonStream, methods, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
-import { resolveMcpServersForSession } from '../out/host/acp/mcpConfig.js';
 
 function makeStream(proc) {
     const childInput = new WritableStream({
@@ -17,8 +16,9 @@ function makeStream(proc) {
 }
 
 const cwd = process.cwd();
-const mcpServers = resolveMcpServersForSession(cwd);
-console.log('[mcp]', mcpServers.map(s => s.name).join(', ') || '(none)');
+// mcpServers is always empty now: the resolver was removed with mcpConfig.ts.
+const mcpServers = [];
+console.log('[mcp]', '(none)');
 
 const proc = spawn('hermes', ['acp', '--profile', 'default'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
 proc.stderr.on('data', (d) => process.stderr.write('[stderr] ' + d.toString()));
@@ -60,7 +60,8 @@ const timeout = setTimeout(() => {
 try {
     await conn.agent.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+        // Nothing advertised, as the extension's own client does.
+        clientCapabilities: {},
     });
     let session = await conn.agent.buildSession({ cwd, mcpServers }).start();
     console.log('[session1]', session.sessionId);

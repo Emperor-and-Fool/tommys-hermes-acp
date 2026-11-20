@@ -9,6 +9,8 @@
 import * as vscode from 'vscode';
 import { App } from './app';
 import { initI18n, t } from './i18n';
+import { createEditorEnv } from './editor/env';
+import { createEditorNotices } from './editor/notices';
 import type { ExtensionIdentity } from '../shared/extensionId';
 
 /** What the secondant may ask the primary: only which profile it is on. */
@@ -45,6 +47,11 @@ export function activateExtension(
     initI18n();
     console.log(`Tommys Hermes (${id.role}) activating...`);
 
+    const notices = createEditorNotices();
+    const env = createEditorEnv();
+
+    // The App builds its own adapters for the editor (`editor/`, F6): `vscode` is reached there,
+    // not here, so this side only names what it needs.
     const app = new App(id, context.extensionUri, context, primary);
 
     const bind = (command: string, run: (app: App) => void | Promise<void>): void => {
@@ -73,23 +80,20 @@ export function activateExtension(
 
     context.subscriptions.push(
         vscode.commands.registerCommand(id.cmd('openChat'), () => {
-            void vscode.commands.executeCommand(`workbench.view.extension.${id.sidebarId}`);
+            app.revealRail('openChat');
         })
     );
 
     context.subscriptions.push(
         vscode.commands.registerCommand(id.cmd('sendSelection'), () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.selection.isEmpty) {
-                void vscode.window.showInformationMessage(t('selectCodeFirst'));
+            const selection = env.selection();
+            if (!selection) {
+                notices.info(t('selectCodeFirst'));
                 return;
             }
-            const selection = editor.document.getText(editor.selection);
-            const fileName = editor.document.fileName;
-            const line = editor.selection.start.line + 1;
-            const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
+            const text = `At ${selection.fileName}:${selection.line}\n\`\`\`\n${selection.text}\n\`\`\``;
 
-            void vscode.commands.executeCommand(`workbench.view.extension.${id.sidebarId}`);
+            app.revealRail('sendSelection');
             app.insertIntoInput(text);
         })
     );

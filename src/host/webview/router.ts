@@ -9,11 +9,14 @@
  * Typing the contract is its own piece of work — this file is where that type will land.
  */
 import type { EnvironmentDetection } from '../environment/detection';
-import type { PaneToHost, ApprovalMode } from '../../shared/webview';
+import type { PermissionCommands } from '../permissions/approvals';
+import type { PaneToHost } from '../../shared/webview';
 import type { HistoryRef } from '../../shared/chat';
 
 /** What the router may call. One function per capability the pane can ask for. */
+import type { TabCommands } from '../workspace/lifecycle';
 import type { ProjectCommands } from '../workspace/projectGrouped';
+import type { PermissionRootCommands } from '../workspace/rootPicker';
 
 export interface RouterHost {
     log(line: string): void;
@@ -31,17 +34,12 @@ export interface RouterHost {
     handleListFiles(query: string, requestId: string): Promise<void>;
     handlePreviewFile(path: string, requestId: string): Promise<void>;
 
-    postHiddenSessions(): void;
-    handleOpenTab(sessionId?: string): Promise<void>;
-    handleReorderSessions(ids: unknown): void;
-    handleCloseSessions(sessionId: string, mode: unknown): Promise<void>;
-    handleRenameSession(sessionId: unknown, title: unknown): Promise<void>;
-    handleToggleStickySession(sessionId: string): void;
+    /** The tab commands: one member, not one per message. */
+    tabs: TabCommands;
     /** The project group's commands: one member, not one per message. */
     projects: ProjectCommands;
     handleSessionExport(sessionId: string, action: unknown, indices?: unknown): void;
     handleSwitchAgent(name: string): void;
-    handleSwitchSession(sessionId: string, interrupt: boolean): void;
 
     switchModel(configId: string, valueId: string): Promise<void>;
     syncModels(): Promise<void>;
@@ -56,15 +54,10 @@ export interface RouterHost {
     dismissAllPeers(): void;
 
     retry(): Promise<void>;
-    handlePermissionResponse(id: string, optionId: string | null): void;
-    /** Write Hermes' approvals.mode for the active profile. */
-    setApprovalMode(mode: ApprovalMode): Promise<void>;
-    /** Re-read approvals.mode and post it, even when it did not change. */
-    requestApprovalMode(): void;
-    /** Save the deny list, clear it, and turn approvals off. */
-    setOpenAccess(): Promise<void>;
-    /** Write the last saved deny list back. */
-    restoreDeny(): Promise<void>;
+    /** Permissions: the profile's approval mode, and the red action on its deny list. */
+    permissions: PermissionCommands;
+    /** The permission root: the folder Hermes works in when a workspace shows several. */
+    permissionRoot: PermissionRootCommands;
     handleInsertEditor(text: string): Promise<void>;
     handleDeleteMessages(indices: unknown): void;
     /** The session-memory dropdown: the viewer tab, and the chip's X. */
@@ -102,22 +95,22 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.ready();
             break;
         case 'getHiddenSessions':
-            host.postHiddenSessions();
+            host.tabs.postHiddenSessions();
             break;
         case 'openTab':
-            host.enqueueChatOp(() => host.handleOpenTab(message.sessionId));
+            host.enqueueChatOp(() => host.tabs.openTab(message.sessionId));
             break;
         case 'reorderSessions':
-            host.handleReorderSessions(message.sessionIds);
+            host.tabs.reorderSessions(message.sessionIds);
             break;
         case 'closeSessions':
-            void host.handleCloseSessions(message.sessionId, message.mode);
+            void host.tabs.closeSessions(message.sessionId, message.mode);
             break;
         case 'renameSession':
-            void host.handleRenameSession(message.sessionId, message.title);
+            void host.tabs.renameSession(message.sessionId, message.title);
             break;
         case 'toggleStickySession':
-            host.handleToggleStickySession(message.sessionId);
+            host.tabs.toggleStickySession(message.sessionId);
             break;
         case 'moveToWorkspace':
             host.projects.moveTabToWorkspace(message.sessionId, message.workspace);
@@ -141,7 +134,7 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.handleSwitchAgent(message.agentName);
             break;
         case 'switchSession':
-            host.handleSwitchSession(message.sessionId, message.interrupt === true);
+            host.tabs.switchSession(message.sessionId, message.interrupt === true);
             break;
         case 'switchModel':
             void host.switchModel(message.configId, message.valueId);
@@ -188,7 +181,7 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.detection().closeConfigure();
             break;
         case 'permissionResponse':
-            host.handlePermissionResponse(message.id, message.optionId ?? null);
+            host.permissions.respond(message.id, message.optionId ?? null);
             break;
         case 'forwardMessage':
             host.forwardMessage(message.text, message.sourceMessageId, message.history);
@@ -206,16 +199,25 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
             host.dismissAllPeers();
             break;
         case 'setApprovalMode':
-            void host.setApprovalMode(message.mode);
+            void host.permissions.setMode(message.mode);
             break;
         case 'requestApprovalMode':
-            host.requestApprovalMode();
+            host.permissions.request();
             break;
         case 'setOpenAccess':
-            void host.setOpenAccess();
+            void host.permissions.openAccess();
             break;
         case 'restoreDeny':
-            void host.restoreDeny();
+            void host.permissions.restoreDeny();
+            break;
+        case 'setPermissionRoot':
+            void host.permissionRoot.set(String(message.root || ''));
+            break;
+        case 'openPermissionRoot':
+            host.permissionRoot.open();
+            break;
+        case 'permissionRootClose':
+            host.permissionRoot.close();
             break;
         case 'insertEditor':
             void host.handleInsertEditor(message.text || '');

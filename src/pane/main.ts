@@ -16,6 +16,10 @@ import * as switchSession from './components/modals/switchSession';
 import * as multiSelect from './components/multiSelect';
 import * as closedSessions from './components/pickers/closedSessions';
 import * as permissionModeBar from './components/permissions/permissionModeBar';
+// Component styles are bundled into media/pane.css by `npm run build:pane`.
+import './components/permissions/permissionCard.css';
+import './components/workspace/permissionRootBar.css';
+import { initPermissionRoot } from './components/workspace/permissionRootBar';
 import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
@@ -97,6 +101,7 @@ export function boot(): void {
     closedSessions.initClosedPickerBtnClick();
     closedSessions.initClosedDropdownClick();
     permissionModeBar.initPermissionModeBtnClick();
+    initPermissionRoot();
     info.initBtnClick();
     info.initAboutModalClick();
     info.initHelpModalClick();

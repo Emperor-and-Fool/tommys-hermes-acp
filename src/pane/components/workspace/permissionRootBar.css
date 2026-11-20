@@ -1,0 +1,114 @@
+/*
+ * The permission-root row, co-located with the component that draws it.
+ *
+ * Bundled by `npm run build:pane` (esbuild) into media/pane.css, which chat.html links next to the
+ * house stylesheet. Moved here from media/chat.css unchanged: the row, its chips, and the flash and
+ * word a folder that just joined the workspace wears.
+ */
+
+/* The permission-root row: one line of explanation and one button per folder to choose. */
+.permission-root-inner {
+    align-items: flex-start;
+}
+
+.permission-root-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.permission-root-title {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.permission-root-body {
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--dim);
+}
+
+.permission-root-notice {
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #d97706;
+}
+
+.permission-root-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 2px;
+}
+
+.permission-root-option {
+    padding: 2px 8px;
+    font-size: 11.5px;
+    border: 1px solid var(--border, #d0c8b8);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.permission-root-option.is-current {
+    border-color: #2ea043;
+    color: #2ea043;
+    font-weight: 700;
+}
+
+.permission-root-option:hover {
+    background: var(--input-bg);
+}
+
+/*
+ * A folder that just joined the workspace: the chip flashes orange and carries the word, so the
+ * colour has a meaning written next to it. The current chip stays green, so a chip that is both
+ * keeps its border and gains the flash plus the word.
+ */
+.permission-root-option.is-new {
+    animation: permission-root-new-flash 1.6s ease-in-out infinite;
+}
+
+.permission-root-option.is-new:not(.is-current) {
+    border-color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+.permission-root-new {
+    margin-left: 6px;
+    color: var(--vscode-editorWarning-foreground, #d18616);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/*
+ * A folder whose path is gone: still listed, because the row explains the workspace, but it cannot
+ * be worked in — so it does not flash, it dims, and it carries the word that says why.
+ */
+.permission-root-option.is-missing {
+    animation: none;
+    border-style: dashed;
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.permission-root-option.is-missing:hover {
+    background: transparent;
+}
+
+.permission-root-missing {
+    margin-left: 6px;
+    color: var(--vscode-errorForeground, #c9302c);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+@keyframes permission-root-new-flash {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    50% { box-shadow: 0 0 0 2px var(--vscode-editorWarning-foreground, #d18616); }
+}

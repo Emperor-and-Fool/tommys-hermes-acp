@@ -19,12 +19,22 @@ export interface PromptHost {
     messages(): ChatMessage[];
     tabs(): SessionInfo[];
     resolveCwd(): string;
+    /** The cwd of one tab's session: its own root, else the agent's default. */
+    resolveCwdFor(sessionId: string): string;
     log(line: string): void;
     post(msg: HostToPane): void;
     otherSessionIsPrompting(): boolean;
     detachActivePrompt(fromSessionId: string, options?: { savePartial?: boolean }): Promise<void>;
     bindHermesSessionId(hermesSessionId: string): void;
     applySessionModelPreference(): Promise<void>;
+    /**
+     * Bring the session's edit mode in line with the buttons, and wait for Hermes' answer.
+     *
+     * Awaited before a first prompt goes out: Hermes starts every session on `default`, and a
+     * `set_mode` sent after the prompt is refused as busy, so the whole first turn would run on the
+     * wrong mode. A refusal is logged and the send goes on — the mode is not worth the message.
+     */
+    applySessionEditMode(): Promise<void>;
     setBoundSessionId(sessionId: string): void;
     saveMessage(role: string, text: string): void;
     savePermissionRequest(id: string, request: PermissionRequest): void;
@@ -308,9 +318,8 @@ export class PromptRunner {
         const sessionId = this.host.sessionId();
         const bound = this.host.tabs().find((rec) => rec.id === sessionId)?.hermesSessionId;
         if (bound && acp.activeSessionId !== bound) {
-            const record = this.host.tabs().find((rec) => rec.id === sessionId);
             try {
-                await acp.loadSession(record?.cwd || this.host.resolveCwd(), bound);
+                await acp.loadSession(this.host.resolveCwdFor(sessionId), bound);
                 this.host.log(`Switched Hermes session to ${bound}`);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -333,7 +342,7 @@ export class PromptRunner {
                 return { ok: false, notified: true };
             }
             // Blank tab: the first message is what creates its session.
-            await acp.newSession(this.host.resolveCwd());
+            await acp.newSession(this.host.resolveCwdFor(sessionId));
             if (this.host.acpStatus() !== 'ready') {
                 // `newSession` keeps the connection when the agent refuses and reports through
                 // the status; without this check the turn fell through as a success and the send
@@ -342,6 +351,15 @@ export class PromptRunner {
                 return { ok: false, notified: false };
             }
             this.host.bindHermesSessionId(acp.activeSessionId);
+            // Hermes starts every session on `default`. The button's edit mode goes out now, and
+            // the send waits for its answer: sent after the prompt, Hermes refuses it as busy and
+            // the whole first turn runs on `default`.
+            try {
+                await this.host.applySessionEditMode();
+            } catch (err) {
+                // A refused or broken edit mode is logged; the message the user asked for still goes.
+                this.host.log(`Edit mode not applied before the first prompt: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
         await this.host.applySessionModelPreference();
         this.host.setBoundSessionId(sessionId);

@@ -10,6 +10,8 @@
  */
 import { byId } from '../../dom';
 import { post } from '../../post';
+import { state } from '../../state';
+import { approvalModeNoticeApplies } from './permissionsState';
 import {
     beginApprovalModePending,
     createApprovalModeBlock,
@@ -18,6 +20,12 @@ import {
 } from './approvalModeSwitch';
 
 let open = false;
+
+/** The Hermes session the pane is showing: '' on a blank tab, which no notice can be about. */
+function activeHermesSessionId(): string {
+    const tab = state.lastSessions.find(session => session.id === state.activeSessionId);
+    return tab?.hermesSessionId || '';
+}
 
 export function permissionModeRowIsOpen(): boolean {
     return open;
@@ -31,7 +39,7 @@ export function setPermissionModeRow(next: boolean): void {
         return;
     }
     open = next;
-    bar.hidden = !open;
+    bar.hidden = !(open || approvalModeNoticeApplies(activeHermesSessionId()));
     if (btn) {
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
@@ -43,9 +51,30 @@ export function setPermissionModeRow(next: boolean): void {
     }
 }
 
+/**
+ * Say, beside the buttons, that the edit half waits for the run in flight.
+ *
+ * Commands follow the button at once — that is the profile's own setting — while the session's edit
+ * mode is frozen per run by Hermes. Showing the row has the same rule as the permission root: the
+ * row appears while it has something to say, and disappears when the run ends and it is applied.
+ */
+export function syncPermissionModeNotice(): void {
+    const bar = byId('permissionModeBar');
+    const notice = byId('permissionModeNotice');
+    const waiting = approvalModeNoticeApplies(activeHermesSessionId());
+    if (notice) {
+        notice.textContent = waiting ? (locale.appliesNextRun || 'Applies from the next run.') : '';
+        notice.hidden = !waiting;
+    }
+    if (bar) {
+        bar.hidden = !(open || waiting);
+    }
+}
+
 export function applyPermissionModeLabels(): void {
     // The button's words and accent belong to the state: the switch module writes them.
     syncAllApprovalModeBlocks();
+    syncPermissionModeNotice();
     const close = byId('permissionModeClose');
     if (close) {
         const label = locale.permissionModeClose || 'Close';
@@ -56,7 +85,7 @@ export function applyPermissionModeLabels(): void {
 
 export function initPermissionModeBtnClick(): void {
     applyPermissionModeLabels();
-    // One switch, mounted once: everything it renders comes from `state.approvalMode`.
+    // One switch, mounted once: everything it renders comes from `permissionsState.approvalMode`.
     const host = byId('permissionModeOptions');
     if (host && !host.querySelector('.permission-approval-block')) {
         const block = createApprovalModeBlock();

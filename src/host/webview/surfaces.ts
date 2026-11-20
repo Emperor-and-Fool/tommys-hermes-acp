@@ -32,6 +32,9 @@ export interface ChatSurface {
     panel?: vscode.WebviewPanel;
 }
 
+/** What asked for the rail. Logged with the branch it took: the same call can read differently. */
+export type RevealTrigger = 'panel:active' | 'openChat' | 'sendSelection' | 'switchSession';
+
 /** What the host supplies: the six provider concerns a surface cannot own. */
 export interface SurfacesHost {
     /** The pane's HTML, with its resource URIs resolved against this webview. */
@@ -78,6 +81,16 @@ export class Surfaces {
 
     get hasViewSurface(): boolean {
         return this._list.some(surface => !!surface.view);
+    }
+
+    /**
+     * Whether the rail is on screen: the side panel, with the conversation in the editor.
+     *
+     * Only the rail opens the permission-root row by itself, so this is the one question the row
+     * asks before spending a new folder's welcome.
+     */
+    get railVisible(): boolean {
+        return this._list.some(surface => surface.role === 'rail' && surface.view?.visible === true);
     }
 
     /** The webview the plugin icon is read from: whichever renderer exists. */
@@ -166,6 +179,25 @@ export class Surfaces {
         void surface.webview.postMessage(msg);
     }
 
+    /**
+     * Send to the renderers of one role, and to nobody else.
+     *
+     * A message that opens something must not fan out: the surface the user is looking at would
+     * open it behind their back. When no surface of that role is live, the message is dropped —
+     * `republish()` is how a surface that appears later hears it.
+     */
+    postToRole(role: SurfaceRole, msg: HostToPane): boolean {
+        let sent = false;
+        for (const surface of this._list) {
+            if (surface.role !== role) {
+                continue;
+            }
+            void surface.webview.postMessage(msg);
+            sent = true;
+        }
+        return sent;
+    }
+
     /** Fan out to every renderer: the side bar view and/or the chat panel. */
     post(msg: HostToPane): void {
         if (this._list.length === 0) {
@@ -236,6 +268,14 @@ export class Surfaces {
                 this._panel = undefined;
             }
         });
+        // The conversation is on screen in an editor tab: what is missing beside it is the list
+        // of chats, so the rail follows the panel into view.
+        panel.onDidChangeViewState(() => {
+            this._host.log(`Chat panel view state: active=${panel.active}, visible=${panel.visible}`);
+            if (panel.active) {
+                this.revealRail('panel:active');
+            }
+        });
         this.postRole(surface);
     }
 
@@ -255,5 +295,53 @@ export class Surfaces {
         try {
             this._panel.title = this._host.activeTabTitle();
         } catch { /* panel already disposed */ }
+    }
+
+    /**
+     * Show our side panel, unless the user is already looking at it.
+     *
+     * Three intents reach it: a command asking for the chat, our editor panel becoming the active
+     * tab, and a session tab clicked inside the panel — in every case the rail is where the other
+     * chats are.
+     *
+     * Documented API first: `WebviewView.show(true)` reveals our own view and keeps the focus in
+     * the editor (the typings: "When true the view will not take focus"). The container command
+     * `workbench.view.extension.<id>` is used only when no view is in hand — it is a workbench
+     * internal, and it opens the whole container, which is what we want then and nothing else.
+     *
+     * One log line per branch, with the trigger: a guard that skips and a command VS Code ignores
+     * look identical from the pane, and the reason both panes are told apart here is that the
+     * same branch can behave differently on the primary and the secondant.
+     */
+    revealRail(trigger: RevealTrigger): void {
+        const where = `${identity().role}, ${trigger}`;
+        if (this._view?.visible) {
+            this._host.log(`Reveal rail: already visible (${where})`);
+            return;
+        }
+        if (this._view) {
+            this._host.log(`Reveal rail: show(preserveFocus) (${where})`);
+            this._view.show(true);
+            return;
+        }
+        this._host.log(`Reveal rail: open container (view not resolved) (${where})`);
+        void vscode.commands.executeCommand(`workbench.view.extension.${identity().sidebarId}`);
+    }
+
+    /**
+     * The tab commands, with one addition: picking a session tab shows the rail.
+     *
+     * The message arrives as a tab command, and what the rail lists is a fact about the surfaces,
+     * so the wrapping lives here; the router host keeps one member, as it did (R2).
+     */
+    tabCommands<T extends { switchSession(sessionId: string, interrupt: boolean): void }>(commands: T): T {
+        const wrapped: T = {
+            ...commands,
+            switchSession: (sessionId: string, interrupt: boolean) => {
+                this.revealRail('switchSession');
+                commands.switchSession(sessionId, interrupt);
+            },
+        };
+        return wrapped;
     }
 }

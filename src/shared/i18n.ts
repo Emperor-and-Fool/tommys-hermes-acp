@@ -26,6 +26,7 @@ export interface LocaleStrings {
     sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
+    profileMissing: string;
     modelSwitchIncomplete: string;
     openTab: string;
     chooseChat: string;
@@ -36,6 +37,24 @@ export interface LocaleStrings {
     permissionModeClose: string;
     /** The red action: what it does, and what it does on the confirming press. */
     permissionOpenTooltip: string;
+    /** Nothing to work in: Hermes is not started until a folder or workspace is open. */
+    noFolderOpen: string;
+    /** The permission root: which folder Hermes works in when a workspace shows several. */
+    /** Edit cards only: why this asks, and what to change. */
+    permissionEditHint: string;
+    permissionRootLabel: string;
+    permissionRootTitle: string;
+    permissionRootBody: string;
+    permissionRootLastRemoved: string;
+    /** The word on a folder that just joined the workspace. */
+    permissionRootNew: string;
+    /** The word on a folder whose path is gone. */
+    permissionRootMissing: string;
+    /** A move Hermes refused: {folder} is where it could not go, {previous} where it stays. */
+    permissionRootMoveRefused: string;
+    /** A root that left the workspace while the session ran: {folder} is the one that went. */
+    permissionRootRootRemoved: string;
+    appliesNextRun: string;
     permissionOpenConfirm: string;
     /** The way back for the patterns the red action cleared. */
     permissionRestoreLabel: string;
@@ -214,12 +233,6 @@ export interface LocaleStrings {
     permissionAllowOnce: string;
     permissionAllowAlways: string;
     permissionAllowSession: string;
-    /** Balloon on the greyed session button: how to unlock the scope. */
-    permissionSessionNeedsManual: string;
-    /** What the card says when the session answer was pressed on it. */
-    permissionSessionArmed: string;
-    /** Balloon on the session answer once Manual has made it live. */
-    permissionSessionArmedHint: string;
     permissionRejectOnce: string;
     permissionRejectAlways: string;
     permissionDeny: string;
@@ -341,7 +354,11 @@ export interface LocaleStrings {
     approvalModeSmart: string;
     approvalModeOff: string;
 
-    approvalModeTooltip: string;
+    /** What each mode does to commands and edits. Replaces one false sentence. */
+    approvalModeManualTip: string;
+    approvalModeSmartTip: string;
+    approvalModeNoneTip: string;
+    approvalModeSensitiveTip: string;
     approvalModeFailed: string;
 
     // Steer

@@ -60,20 +60,13 @@ app.onRequest('session/request_permission', async ({ params }) => {
 
 app.onRequest(methods.client.fs.readTextFile, async () => ({ content: '' }));
 app.onRequest(methods.client.fs.writeTextFile, async () => ({}));
-app.onRequest(methods.client.terminal.create, async () => ({ terminalId: 't1' }));
-app.onRequest(methods.client.terminal.output, async () => ({ output: '', truncated: false }));
-app.onRequest(methods.client.terminal.waitForExit, async () => ({ exitCode: 0 }));
-app.onRequest(methods.client.terminal.release, async () => ({}));
-app.onRequest(methods.client.terminal.kill, async () => ({}));
-
 const conn = app.connect(stream);
 try {
     await conn.agent.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: {
-            fs: { readTextFile: true, writeTextFile: true },
-            terminal: true,
-        },
+        // Nothing advertised: the extension's own client offers no fs or terminal capability, so
+        // the handlers for them below are gone too.
+        clientCapabilities: {},
     });
     const session = await conn.agent.buildSession({ cwd: process.cwd(), mcpServers: [] }).start();
     console.log('[session]', session.sessionId);

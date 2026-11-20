@@ -1,0 +1,12 @@
+# One line ending for the whole repo: LF in the repository and in the working tree.
+# SKDJ's decision, 2026-11-16: settled by Git rather than by discipline, so no prompt has to ask.
+* text=auto eol=lf
+
+# Delivered bytes, never text. The extension ships as built JavaScript, and Node and VS Code read
+# LF on every platform, so neither the Windows build nor the packaged VSIX is affected.
+*.png binary
+*.jpg binary
+*.vsix binary
+
+# Third-party minified code (marked, DOMPurify, highlight.js): leave its bytes as delivered.
+media/vendor/** -text

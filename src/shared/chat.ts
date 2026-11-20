@@ -140,8 +140,8 @@ export interface SessionInfo {
      * this is the id ACP `session/load` addresses, so a tab survives reconnects.
      */
     hermesSessionId?: string;
-    /** Working directory the Hermes session was created in (used when resuming). */
-    cwd?: string;
+    /** The folder Hermes works in for this tab: its cwd, and the boundary for edits (00.02 §3). */
+    permissionRootFolderId?: string;
     /** The workspace this tab was opened in, by id: the tab's reference into the workspace list. */
     workspaceId?: string;
     /** The project this tab was moved into. Absent means the plane below the projects. */

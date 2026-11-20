@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive the live permission card's approval switch over CDP and check the config follows.
+"""Drive the live approval switch in the rail bar over CDP and check the config follows.
 
     python3 scripts/approval-switch-check.py [profile]
 
@@ -10,16 +10,18 @@ Needs VSCodium started with the renderer's debug port:
 
 What it does, without touching your files:
   1. finds the pane (the only webview whose iframe has #messages),
-  2. uses a pending permission card, or posts a synthetic ``permissionRequest`` into the
-     pane so the card's switch exists (nothing is sent to Hermes either way),
+  2. opens the rail's mode row the way a user does (its button asks the host for the
+     current mode, so what the switch shows is Hermes' answer, not a guess),
   3. clicks one mode that is not the current one, waits for
      ``hermes --profile <p> config get approvals.mode`` to say so, checks the switch
      shows it pressed, clicks the original mode back, and waits for the CLI again,
   4. leaves the profile on the mode it found.
 
+The switch lives in #permissionModeOptions inside #permissionModeBar since the card's
+own switch was removed; nothing here posts a synthetic card.
+
 Exit 0 when the CLI followed both clicks, 2 when there is nothing to drive (no CDP
-port, or no real permission request yet), 1 on a real mismatch. The synthetic card is
-resolved at the end and disappears on the next reload.
+port, no pane, or no switch in the deployed build), 1 on a real mismatch.
 """
 from __future__ import annotations
 
@@ -42,18 +44,20 @@ PANE_PROBE = """
 })()
 """
 
-CARD_STATE = """
+BAR_STATE = """
 (() => {
     const doc = document.querySelector('iframe').contentDocument;
-    const block = doc.querySelector('.permission-approval-block');
+    const host = doc.getElementById('permissionModeOptions');
+    const block = host && host.querySelector('.permission-approval-block');
     if (!block) {
-        return { card: false };
+        return { bar: false };
     }
     const row = block.querySelector('.permission-approval');
     const buttons = Array.from(block.querySelectorAll('.permission-approval-btn'));
+    const bar = doc.getElementById('permissionModeBar');
     return {
-        card: true,
-        pending: !!doc.querySelector('.message.permission.pending'),
+        bar: true,
+        hidden: bar ? !!bar.hidden : null,
         mode: row ? row.dataset.mode : null,
         labels: buttons.map(b => b.textContent),
         disabled: buttons.map(b => b.disabled),
@@ -66,24 +70,14 @@ CARD_STATE = """
 })()
 """
 
-POST_MODE = """
+OPEN_BAR = """
 (() => {
-    const frame = document.querySelector('iframe');
-    frame.contentWindow.postMessage({ type: 'approvalMode', mode: '%s' }, '*');
-    return true;
-})()
-"""
-
-POST_CARD = """
-(() => {
-    const frame = document.querySelector('iframe');
-    frame.contentWindow.postMessage({
-        type: 'permissionRequest',
-        id: 'switch-check-probe',
-        title: 'Approval switch probe (test script)',
-        detail: 'Synthetic card: no tool call is behind it.',
-        options: [{ optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' }],
-    }, '*');
+    const doc = document.querySelector('iframe').contentDocument;
+    const btn = doc.getElementById('permissionModeBtn');
+    if (!btn) {
+        return false;
+    }
+    btn.click();
     return true;
 })()
 """
@@ -91,23 +85,13 @@ POST_CARD = """
 CLICK_MODE = """
 (() => {
     const doc = document.querySelector('iframe').contentDocument;
-    const btn = doc.querySelector('.permission-approval-btn[data-approval-mode="%s"]');
+    const host = doc.getElementById('permissionModeOptions');
+    const btn = host && host.querySelector('.permission-approval-btn[data-approval-mode="%s"]');
     if (!btn || btn.disabled) {
         return { clicked: false, disabled: btn ? true : null };
     }
     btn.click();
     return { clicked: true };
-})()
-"""
-
-RESOLVE_PROBE = """
-(() => {
-    const doc = document.querySelector('iframe').contentDocument;
-    const btn = doc.querySelector('.permission-btn');
-    if (btn) {
-        btn.click();
-    }
-    return true;
 })()
 """
 
@@ -207,34 +191,31 @@ async def main() -> int:
 
     before = cli_get()
     print(f"profile {PROFILE}: CLI says {before!r}\n")
-    await pane.js(POST_CARD)
-    await asyncio.sleep(0.4)
-
-    state = await pane.js(CARD_STATE)
-    if not state or not state.get("card"):
-        print("A permissionRequest produced no card with a switch: is the deployed build current?")
+    if not await pane.js(OPEN_BAR):
+        print("No #permissionModeBtn in the pane: is the deployed build current?")
         return 1
-    check("pending card shows the switch", bool(state.get("pending")), json.dumps(state.get("labels")))
-    if all(state.get("disabled") or []):
-        # Nothing has been approved since the reload, so the host has not posted a mode yet.
-        # Seed the pane's display state with what the CLI says; everything after this is the
-        # real path: button -> pane message -> host -> `hermes config set`.
-        print(f"switch disabled (no real card since reload): seeding the card with {before!r}")
-        await pane.js(POST_MODE % before)
+    # The button posts requestApprovalMode, so an enabled switch means the host has answered.
+    state = await pane.js(BAR_STATE)
+    if not state or not state.get("bar"):
+        print("The bar carries no switch (#permissionModeOptions): is the deployed build current?")
+        return 1
+    check("the row opened", state.get("hidden") is False, json.dumps(state))
+    deadline = asyncio.get_event_loop().time() + 8.0
+    while all(state.get("disabled") or [True]) and asyncio.get_event_loop().time() < deadline:
         await asyncio.sleep(0.3)
-        state = await pane.js(CARD_STATE)
-        check("switch enabled after the CLI's mode is posted", not all(state.get("disabled") or []),
-              json.dumps(state))
+        state = await pane.js(BAR_STATE)
+    check("switch enabled once the host answered", not all(state.get("disabled") or []),
+          json.dumps(state))
 
     wanted = "manual" if before != "manual" else "smart"
-    check("switch already shows the CLI's mode", state.get("mode") == before,
-          f"card {state.get('mode')!r} vs CLI {before!r}")
+    check("the switch shows the CLI's mode", state.get("mode") == before,
+          f"bar {state.get('mode')!r} vs CLI {before!r}")
 
     clicked = await pane.js(CLICK_MODE % wanted)
     check(f"clicked {wanted!r}", bool(clicked and clicked.get("clicked")), json.dumps(clicked))
     followed = await wait_for_cli(wanted)
     check(f"CLI followed to {wanted!r}", followed, repr(cli_get()))
-    state = await pane.js(CARD_STATE)
+    state = await pane.js(BAR_STATE)
     pressed = [label for label, pressed in zip(state.get("labels") or [], state.get("pressed") or []) if pressed == "true"]
     check("switch shows it pressed", state.get("mode") == wanted and len(pressed) == 1, json.dumps(state))
     check("no error line", not state.get("error"), state.get("error") or "")
@@ -244,7 +225,6 @@ async def main() -> int:
     restored = await wait_for_cli(before)
     check(f"CLI back on {before!r}", restored, repr(cli_get()))
 
-    await pane.js(RESOLVE_PROBE)
     await pane.close()
 
     print()

@@ -4,19 +4,91 @@ import * as os from 'os';
 import * as path from 'path';
 import { setting } from '../../shared/extensionId';
 
-export function resolveDefaultHermesHome(): string {
-    const fromEnv = process.env.HERMES_HOME?.trim();
+/**
+ * What a Hermes home is resolved against: the platform, the environment and the user's home.
+ *
+ * All three are parameters, as Hermes' own `_platform_default_hermes_home(environ, user_home)` takes
+ * them, because `%USERPROFILE%\.hermes` has to be testable on Linux.
+ */
+export interface HermesHomeOptions {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv;
+    /** The user's home. Never a path from the environment: Hermes deliberately does not read `$HOME`. */
+    home?: string;
+}
+
+/**
+ * Expand a Hermes home the way Hermes does: `os.path.expanduser(os.path.expandvars(path))`
+ * (hermes_constants.py:52-54).
+ *
+ * `~` is the user's home. `%VAR%` is expanded on Windows only, `$VAR` and `${VAR}` everywhere else,
+ * because that is what `os.path.expandvars` does — and a variable it does not know is left as it was
+ * written, not blanked.
+ */
+/** Windows paths are joined with Windows rules, whichever platform the test runs on. */
+function joiner(platform: NodeJS.Platform): typeof path.posix {
+    return platform === 'win32' ? path.win32 : path.posix;
+}
+
+export function expandHermesHome(raw: string, options: HermesHomeOptions = {}): string {
+    const platform = options.platform ?? process.platform;
+    const env = options.env ?? process.env;
+    const home = options.home ?? os.homedir();
+    const trimmed = (raw || '').trim();
+    if (!trimmed) {
+        return '';
+    }
+    const expanded = platform === 'win32'
+        ? trimmed.replace(/%([^%]+)%/g, (match, name: string) => (name in env ? String(env[name]) : match))
+        : trimmed.replace(/\$(?:\{([^}]+)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+            (match, braced: string | undefined, plain: string | undefined) => {
+                const name = braced ?? plain ?? '';
+                return name in env ? String(env[name]) : match;
+            });
+    if (expanded === '~') {
+        return home;
+    }
+    if (expanded.startsWith('~/') || expanded.startsWith('~\\')) {
+        return joiner(platform).join(home, expanded.slice(2));
+    }
+    return expanded;
+}
+
+/**
+ * Hermes' home: `HERMES_HOME` when it names one, else the platform default with
+ * `HERMES_DATA_DIR_SUFFIX` appended literally (`~/.hermes<suffix>`, `%LOCALAPPDATA%\hermes<suffix>`),
+ * which is what `_platform_default_hermes_home` does (hermes_constants.py:57-64).
+ */
+export function resolveDefaultHermesHome(options: HermesHomeOptions = {}): string {
+    const platform = options.platform ?? process.platform;
+    const env = options.env ?? process.env;
+    const home = options.home ?? os.homedir();
+    const fromEnv = (env.HERMES_HOME?.trim() || '');
     if (fromEnv) {
-        return fromEnv;
+        return expandHermesHome(fromEnv, { platform, env, home });
     }
-    if (process.platform === 'win32') {
-        const localAppData = process.env.LOCALAPPDATA?.trim();
-        if (localAppData) {
-            return path.join(localAppData, 'hermes');
-        }
-        return path.join(os.homedir(), 'AppData', 'Local', 'hermes');
+    const suffix = env.HERMES_DATA_DIR_SUFFIX || '';
+    if (platform === 'win32') {
+        const localAppData = (env.LOCALAPPDATA?.trim() || '');
+        const win = joiner('win32');
+        const base = localAppData || win.join(home, 'AppData', 'Local');
+        return win.join(base, `hermes${suffix}`);
     }
-    return path.join(os.homedir(), '.hermes');
+    return joiner(platform).join(home, `.hermes${suffix}`);
+}
+
+/**
+ * The root of Hermes' data: the folder whose `profiles/` holds the profiles and whose own
+ * `state.db` is the default profile's.
+ *
+ * Not simply `resolveDefaultHermesHome()`: Hermes points `HERMES_HOME` at the *profile's* own folder
+ * for an agent it starts (this session runs with `HERMES_HOME=~/.hermes/profiles/dev-vsc`), and the
+ * profile folders then sit beside it rather than inside it. The check is structural — a home inside
+ * a `profiles/` folder is a profile, and its root is that folder's parent.
+ */
+export function resolveHermesRoot(): string {
+    const home = resolveDefaultHermesHome();
+    return path.basename(path.dirname(home)) === 'profiles' ? path.dirname(path.dirname(home)) : home;
 }
 
 /** The binaries inside `<home>/hermes-agent/venv`; on Windows each name also gets an extension. */
@@ -73,7 +145,7 @@ export function collectHermesHomes(): string[] {
     }
     const fromEnv = process.env.HERMES_HOME?.trim();
     if (fromEnv) {
-        homes.add(fromEnv);
+        homes.add(expandHermesHome(fromEnv));
     }
     return [...homes];
 }

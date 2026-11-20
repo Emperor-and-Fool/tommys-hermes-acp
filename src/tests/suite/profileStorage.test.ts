@@ -3,13 +3,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    activeSessionPathFor,
-    migrateLegacySessionStorage,
     sanitizeProfileScopeKey,
     saveProfileState,
     loadProfileState,
-    sessionsPathFor,
-} from '../../host/cache/profileStorage';
+} from '../../host/workspace/profileStorage';
+import { sessionsPathFor } from '../../host/store/paths';
 
 describe('profileStorage', () => {
     it('sanitizeProfileScopeKey removes unsafe characters', () => {
@@ -35,24 +33,6 @@ describe('profileStorage', () => {
                 'Hi'
             );
             assert.strictEqual(fs.existsSync(sessionsPathFor(dir, 'rina')), false);
-        } finally {
-            fs.rmSync(dir, { recursive: true, force: true });
-        }
-    });
-
-    it('migrateLegacySessionStorage moves global files once', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-legacy-'));
-        try {
-            fs.writeFileSync(path.join(dir, 'sessions.json'), '[]');
-            fs.writeFileSync(path.join(dir, 'active-session.txt'), 'abc');
-            migrateLegacySessionStorage(dir, '__default__');
-            assert.strictEqual(fs.existsSync(path.join(dir, 'sessions.json')), false);
-            assert.strictEqual(
-                fs.readFileSync(activeSessionPathFor(dir, '__default__'), 'utf-8'),
-                'abc'
-            );
-            migrateLegacySessionStorage(dir, '__default__');
-            assert.strictEqual(fs.existsSync(sessionsPathFor(dir, '__default__')), true);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }

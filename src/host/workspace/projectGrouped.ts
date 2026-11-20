@@ -1,12 +1,8 @@
-import type * as vscode from 'vscode';
 import type { HostToPane } from '../../shared/webview';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { WorkspaceIdentity, WorkspaceStore } from './workSpace';
-import { ProjectStore } from './projectStore';
-import {
-    dropProjectFromTabs, moveTabIntoProject, moveTabToProject, moveTabToWorkspace,
-    projectsInWorkspace, workspaceOwnsCwd,
-} from './projectRules';
+import { moveTabToWorkspace, WorkspaceIdentity } from './workSpace';
+import type { WorkspaceSubscription } from './workSpace';
+import { ProjectStore, WorkspaceStore } from './store';
 
 /**
  * The project group: the projects named against this window's workspace, and which tab sits in one.
@@ -30,6 +26,10 @@ export interface ProjectsHost {
     activeTabId(): string;
     /** Open another workspace in this window. A reload, and the only way to follow a tab. */
     openWorkspace(workspacePath: string): void;
+    /** Which window this is: the editor answers, and the feature never asks it directly (F6). */
+    currentWorkspacePath(): string;
+    /** Told when the window's folders change. */
+    onDidChangeWorkspaceFolders(handler: () => void): WorkspaceSubscription;
 }
 
 /** What the router reaches: one member on `RouterHost`, not five. */
@@ -42,21 +42,87 @@ export interface ProjectCommands {
 }
 
 /**
+ * Put a tab in a project, or back on the plane when `projectId` is empty.
+ *
+ * The value is a project id, not a name: a rename must not move the tabs that belong to it.
+ */
+export function moveTabToProject(tabs: SessionInfo[], tabId: string, projectId: string): SessionInfo[] {
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index < 0 || (tabs[index].project || '') === projectId) {
+        return tabs;
+    }
+    const next = tabs.slice();
+    const record: SessionInfo = { ...tabs[index] };
+    if (projectId) {
+        record.project = projectId;
+    } else {
+        delete record.project;
+    }
+    next[index] = record;
+    return next;
+}
+
+/**
+ * A tab in a project belongs to that project's workspace: the project wins in every evaluation but
+ * the explicit "move this tab to a workspace", so the two cannot disagree.
+ */
+export function moveTabIntoProject(tabs: SessionInfo[], tabId: string, project: Project): SessionInfo[] {
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index < 0) {
+        return tabs;
+    }
+    const moved = moveTabToProject(tabs, tabId, project.id);
+    const next = moved === tabs ? tabs.slice() : moved;
+    const record: SessionInfo = { ...next[index] };
+    if (project.workspaceId) {
+        record.workspaceId = project.workspaceId;
+    }
+    if (!project.id) {
+        delete record.project;
+    }
+    next[index] = record;
+    return next;
+}
+
+/**
+ * The projects of one window: a project belongs to a workspace *and* an agent, so this window is
+ * handed only the projects named against its own workspace.
+ *
+ * A project made in a window with no folder or workspace file has no workspace either, and belongs
+ * to that window — the empty string matches the empty string, exactly as `tabsInWorkspace` does.
+ */
+export function projectsInWorkspace(projects: Project[], workspaceId: string): Project[] {
+    return projects.filter(project => (project.workspaceId || '') === (workspaceId || ''));
+}
+
+/** Every tab a project holds, back on the plane: a group is a view, not an owner. */
+export function dropProjectFromTabs(tabs: SessionInfo[], projectId: string): SessionInfo[] {
+    return tabs.map(tab => {
+        if (tab.project !== projectId) {
+            return tab;
+        }
+        const record: SessionInfo = { ...tab };
+        delete record.project;
+        return record;
+    });
+}
+
+/**
  * The component: the workspace registry, the projects named against it, and the tab membership
  * that ties a tab to one.
  *
- * Construction takes the storage directory and one port; everything it does to the app goes
- * through that port, so nothing in here names `App`.
+ * It receives its two stores from the composition root and one port; everything it does to the
+ * app goes through that port, so nothing in here names `App` and nothing builds its own store.
  */
 export class Projects {
-    private readonly _store: WorkspaceStore;
-    private readonly _agentProjects: ProjectStore;
     private readonly _identity: WorkspaceIdentity;
     readonly commands: ProjectCommands;
 
-    constructor(historyDir: string, scopeKey: string, private readonly _host: ProjectsHost) {
-        this._store = new WorkspaceStore(historyDir);
-        this._agentProjects = new ProjectStore(historyDir, scopeKey, this._store);
+    constructor(
+        private readonly _store: WorkspaceStore,
+        private readonly _agentProjects: ProjectStore,
+        private readonly _host: ProjectsHost,
+    ) {
         // Adopt the shared file's list now: `start()` registers the workspace moments later, and
         // that write must never be the thing that decides whether the projects survive.
         this._agentProjects.projects();
@@ -66,6 +132,8 @@ export class Projects {
                 this._store.register(value);
                 this.postList();
             },
+            currentPath: () => this._host.currentWorkspacePath(),
+            onDidChangeFolders: handler => this._host.onDidChangeWorkspaceFolders(handler),
         });
         this.commands = {
             createProject: name => this._createProject(name),
@@ -88,7 +156,7 @@ export class Projects {
      * Nothing is posted here: at activation no webview surface exists yet, so it belongs in the
      * pane's ready replay (`_onWebviewReady`).
      */
-    start(): vscode.Disposable {
+    start(): WorkspaceSubscription {
         return this._identity.start();
     }
 
@@ -98,8 +166,8 @@ export class Projects {
     }
 
     /** Which profile's projects file this component is writing to. */
-    get scopeKey(): string {
-        return this._agentProjects.scopeKey;
+    get sessionProfileId(): string {
+        return this._agentProjects.sessionProfileId;
     }
 
     /** The window's workspace id: what a tab, a project and the pane refer to. */
@@ -112,23 +180,14 @@ export class Projects {
         return this._store.read().map(workspace => workspace.id);
     }
 
-    /** The id of the workspace whose folder holds this cwd, if this editor has opened it. */
-    workspaceIdForCwd(cwd: string | undefined): string {
-        if (!cwd) {
-            return '';
-        }
-        const entry = this._store.read().find(workspace => workspaceOwnsCwd(workspace.path, cwd));
-        return entry ? entry.id : '';
-    }
-
     /** The projects this window shows: the list the pane gets, for a reader that is not the pane. */
     projectsInWindow(): Project[] {
         return projectsInWorkspace(this._agentProjects.projects(), this.currentId());
     }
 
     /** The agent switched: its projects are a different file, beside that profile's tabs. */
-    bindProfileScope(scopeKey: string): void {
-        this._agentProjects.setScope(scopeKey);
+    bindProfileScope(sessionProfileId: string): void {
+        this._agentProjects.setProfile(sessionProfileId);
         this.postList();
     }
 
@@ -166,7 +225,7 @@ export class Projects {
             this._refuse('This window\'s workspace is not registered yet — reload the window.');
             return;
         }
-        if (!this._agentProjects.scopeKey) {
+        if (!this._agentProjects.sessionProfileId) {
             this._refuse('No agent profile is bound yet — reload the window.');
             return;
         }

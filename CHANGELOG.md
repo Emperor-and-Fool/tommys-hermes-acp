@@ -6,7 +6,111 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.5.0] - 2026-11-20
+
+2.4.0 was skipped: this release collects two weeks of changes.
+
+### What changed along the way
+
+| First | Later | Why |
+|---|---|---|
+| One Hermes cwd per window: every Hermes session worked in the same workspace folder (17 Nov). | Each Hermes session keeps its own Hermes cwd, chosen from the workspace folders (19 Nov). | Two Hermes sessions (tabs) in one chat panel could not work in two different folders. |
+| The row with the workspace folder settings opened at every start and every change of the workspace directories. | It opens at two moments: when an agent becomes active (its Hermes sessions appear with their message counts), and when the side panel comes into view after a workspace folder was added. | It interrupted at moments that meant nothing. |
+| We built an "Allow for session" answer on the permission card ourselves (removed 16 Nov). | The card shows only Hermes' own answers. Flagged commands under Manual (and Smart, when it passes them to you) get "Allow for session": valid while the Hermes session is active, confirmed again when it's reactivated. File edits never show it (Hermes #29410). | Our version was a work-around that never met the expectation. |
+| Clicking our chat tab in the editor switched the side panel with a general VS Code command. | Clicking our chat tab in the editor brings up that extension's own side panel, for the primary and the secondant, and keeps the focus in the editor. | The side panel's own documented call reaches both extensions reliably. |
+| We expected a file reached through a symlink to be outside the Hermes cwd. | Hermes follows a symlink to the real file before it checks a file edit, so a file counts as inside or outside the Hermes cwd by where it really lives. | Tests of the permission modes now use files whose real location is outside the Hermes cwd. |
+| Each extension had its own data home on top of the single agent guard. | Both extensions share one data home, centralizing projects, tabs and tags for every agent. | An improved agent guard prevents simultaneous agent use, even across multiple windows. |
+
+### Added
+
+- **Each Hermes session keeps its own Hermes cwd.** A workspace can hold several workspace folders;
+  Hermes works in one. The row with the workspace folder settings marks it with a green chip, and a
+  new Hermes session starts in the agent's default folder for that workspace.
+- **A newly added workspace folder is marked.** Its chip flashes orange, with the word "New" in
+  orange behind the folder name, for 30 seconds of viewing time shared by both extensions.
+- **The row says what happened to the Hermes cwd.** A move Hermes refused (the Hermes cwd stays), a
+  workspace folder missing on disk (shown, not choosable), the Hermes cwd's folder removed from the
+  workspace.
+- **The side panel follows the chat.** Opening the chat, sending a selection, or clicking our chat
+  tab in the editor brings up that extension's side panel.
+- **An improved agent guard.** An agent running in one window is not offered in another, and
+  connecting to it is refused.
+- **An agent keeps its projects, tabs, tags and images after a profile rename**, and a profile
+  renamed outside the extension is found again.
+
+### Changed
+
+- **The permission card shows only what Hermes offers, and says why when it is about an edit.** The
+  Manual/Smart/None/ALL switch no longer sits inside the card — the permission mode is a setting,
+  and it has its own control in the toolbar. Edit cards carry one plain line naming the three things
+  that can make an edit ask (the mode, the Hermes cwd, a protected file) and telling the reader which
+  to change; the hint applies from the next run, as the permission mode does. Command cards get no
+  hint.
+- **The permission modes now govern edits as well as commands.** Manual asks for both; Smart and
+  None run commands as before and free file edits inside the Hermes cwd, asking outside it; ALL frees
+  edits everywhere and clears the deny rules. Sensitive files — `.git`, `.ssh`, `.env`, keys,
+  instruction files — always ask, and no permission mode changes that. A change made while a run is
+  in flight applies when that run ends instead of being lost, and each mode's tooltip now says what
+  it does to commands and edits separately, replacing the one sentence that claimed None only asked
+  about Hermes itself.
+- **The control that shows the Hermes cwd opens and closes its row**, the same as ✕.
+- **The active Hermes session (tab) is remembered per agent per workspace.**
+- **A window with no workspace folder open does not start Hermes.**
+
+### Improved
+
+- **A new chat works with the permission mode you see, from its first request.**
+- **After switching agents, the permission mode you see is the one in use.**
+- **Developer: before converting data from an older layout**, the data home is copied to
+  `<home>.backup-<yyyymmdd>`, and only one window converts at a time.
+- **Developer, learned from Hermes:** `profile.yaml` is optional. For an agent Hermes starts,
+  `HERMES_HOME` is that agent's own profile folder (`~/.hermes/profiles/<name>`). Hermes' home folder
+  (`~/.hermes`: the application, the default configuration and all profiles) is found one level above
+  `profiles/`. `state.db` is read with `node:sqlite` from the runtime, and a fallback folder is chosen
+  by when it was added, not by its position.
+
+### Fixed
+
+- **The extension survives Windows.** Five suspects were fixed before release, each with a test that
+  runs here by passing the platform in: one folder has one identity (`C:\Repo` and `c:\repo\` used to
+  make two rows, and a session's Hermes cwd could not be found again), a rename is retried while
+  another process holds the file (four windows share `folders.json`), a migration stops at the first
+  folder it cannot move instead of leaving the data split over two folders, `HERMES_HOME` is expanded
+  the way Hermes expands it (`~`, `%VAR%` on Windows, `$VAR` / `${VAR}` elsewhere) and
+  `HERMES_DATA_DIR_SUFFIX` is applied, and `state.db` is opened read-only so a lock while Hermes
+  writes is logged and skipped instead of thrown. **This release has not been run on Windows yet**:
+  the code paths are covered by tests here, the platform is not.
+- **A permission press made during a run now says what it did.** Commands follow at once, but Hermes
+  freezes the session's edit mode for the run in flight, so the edit half waited in silence. The pane
+  says "Applies from the next run." beside the answers — the same words the Hermes cwd uses, from one
+  string — and clears it when the run ends and the mode lands.
+- **A Hermes session is no longer claimed for a window because its folder happens to be inside one.**
+  Once ownership was decided by containment, an untagged Hermes session — written before tags
+  existed, or made by the TUI, the CLI or Desktop — was tagged to whichever window had that folder,
+  and opening it then moved it to that window's Hermes cwd. Nothing claims a Hermes session now: it
+  reaches a window only by being opened from Closed Sessions, which is also where such sessions are
+  now listed, beside the ones Hermes was told to hide.
+- **The Hermes cwd stays on your choice after a window reload.** Before, Hermes went back to the
+  workspace's first folder while the green chip still showed your choice.
+
+### Removed
+
+- **Four pieces of extension-side code that decided permissions nobody saw, and two ACP
+  capabilities Hermes never asks for.** The permission card drew its own "Allow for session"
+  button on gates where Hermes had deliberately withheld that scope, and pressed it answered the
+  next request unseen; the ACP client fell back to answering "allow" when no handler was passed;
+  and the client advertised `fs` and `terminal` capabilities that Hermes never calls, the terminal
+  side spawning processes inside the extension, outside every approval gate. All four are gone
+  rather than replaced: the card shows only the options Hermes sends, a permission handler is now
+  required, and `clientCapabilities` advertises nothing. The workspace path guard stays — the
+  chat preview still uses it.
+- **The editor's own `mcp.json` is no longer a second source of MCP servers.** The session request
+  used to be built from `mcp.json` in the session folder and in `~/.cursor` / `~/.vscode`, and Hermes
+  added those servers to the session next to the profile's own — a hidden source next to the one
+  place servers are meant to live. The field is still sent, always empty, because ACP requires it;
+  MCP servers are configured in the Hermes profile (`config.yaml` → `mcp_servers`) only. The reader
+  that parsed that file, and `fsRead`, whose only caller went with the fs capability, are removed
+  rather than left unused.
 
 ## [2.3.1] - 2026-11-12
 

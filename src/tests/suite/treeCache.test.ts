@@ -9,7 +9,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Project, SessionInfo } from '../../shared/chat';
-import { buildTreeSnapshot, TreeCache, treePathsFor } from '../../host/workspace/treeCache';
+import { buildTreeSnapshot } from '../../host/workspace/workSpace';
+import { TreeStore, treePathsFor } from '../../host/workspace/store';
 
 function tmp(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'treecache-'));
@@ -25,20 +26,22 @@ function project(id: string, name: string): Project {
 
 function input(workspaceId: string, over: Record<string, unknown> = {}) {
     return {
+        sessionProfileId: 'id-dev-vsc',
         profile: 'dev-vsc',
         workspacePath: `/proj/${workspaceId}.code-workspace`,
         workspaceId,
         activeSessionId: 'a',
+        folderPath: (folderId: string) => (folderId === 'f-x' ? '/work/x' : ''),
         projects: [project('p1', 'Features')],
         tabs: [tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true }), tab('b')],
         ...over,
     };
 }
 
-/** A cache whose inputs are whatever the test last set: the same shape App wires. */
+/** A store whose inputs are whatever the test last set: the same shape App wires. */
 function cacheOn(dir: string, log: (line: string) => void = () => undefined) {
     const holder: { current: any } = { current: input('w1') };
-    const cache = new TreeCache(dir, log, () => holder.current);
+    const cache = new TreeStore(dir, log, () => holder.current);
     return { cache, holder };
 }
 
@@ -46,7 +49,7 @@ describe('the tree file: what it says', () => {
     it('puts each tab under its project, and everything else on the plane', () => {
         const snapshot = buildTreeSnapshot(input('w1', {
             tabs: [
-                tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true, cwd: '/x' }),
+                tab('a', { project: 'p1', hermesSessionId: 'h-a', sticky: true, permissionRootFolderId: 'f-x' }),
                 tab('b'),
                 tab('c', { project: 'gone' }),
             ],
@@ -56,7 +59,7 @@ describe('the tree file: what it says', () => {
         assert.deepStrictEqual(snapshot.projects.map(entry => entry.name), ['Features']);
         assert.deepStrictEqual(snapshot.projects[0].tabs.map(entry => entry.id), ['a']);
         assert.deepStrictEqual(snapshot.projects[0].tabs[0], {
-            id: 'a', title: 'Title a', hermesSessionId: 'h-a', sticky: true, cwd: '/x', updatedAt: 2,
+            id: 'a', title: 'Title a', hermesSessionId: 'h-a', sticky: true, cwd: '/work/x', updatedAt: 2,
         });
         // 'b' belongs to no project; 'c' names one this workspace does not have.
         assert.deepStrictEqual(snapshot.plane.map(entry => entry.id), ['b', 'c']);
@@ -73,7 +76,7 @@ describe('the tree file: two of them, and the window moving between workspaces',
     it('writes current, and keeps the workspace it left as passive', () => {
         const dir = tmp();
         const { cache, holder } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
         holder.current = input('w1');
         cache.refresh();
@@ -96,7 +99,7 @@ describe('the tree file: two of them, and the window moving between workspaces',
     it('does not rewrite a tree that has not changed', () => {
         const dir = tmp();
         const { cache } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
         cache.refresh();
         const before = fs.statSync(paths.current).mtimeMs;
         cache.refresh();
@@ -107,9 +110,9 @@ describe('the tree file: two of them, and the window moving between workspaces',
         const dir = tmp();
         const lines: string[] = [];
         const { cache, holder } = cacheOn(dir, line => lines.push(line));
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
-        holder.current = input('w1', { profile: '' });
+        holder.current = input('w1', { sessionProfileId: '' });
         cache.refresh();
         holder.current = input('', { workspaceId: '' });
         cache.refresh();
@@ -122,20 +125,20 @@ describe('the tree file: an agent is told it exists', () => {
     it('names both files once per session and workspace, then stays quiet', () => {
         const dir = tmp();
         const { cache } = cacheOn(dir);
-        const paths = treePathsFor(dir, 'dev-vsc');
+        const paths = treePathsFor(dir, 'id-dev-vsc');
 
-        const first = cache.noticeBlock('dev-vsc', 'w1', 'tab-a');
+        const first = cache.noticeBlock('id-dev-vsc', 'w1', 'tab-a');
         assert.ok(first.includes(paths.current), 'current is named');
         assert.ok(first.includes(paths.passive), 'previous is named');
-        assert.strictEqual(cache.noticeBlock('dev-vsc', 'w1', 'tab-a'), '', 'the same turn is not repeated');
+        assert.strictEqual(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-a'), '', 'the same turn is not repeated');
 
         // A different session, or the same session in another workspace, is a fresh introduction.
-        assert.ok(cache.noticeBlock('dev-vsc', 'w1', 'tab-b').includes(paths.current));
-        assert.ok(cache.noticeBlock('dev-vsc', 'w2', 'tab-a').includes(paths.current));
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-b').includes(paths.current));
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w2', 'tab-a').includes(paths.current));
 
         // Nothing to point at yet: no block, and it does not burn the introduction.
         assert.strictEqual(cache.noticeBlock('', 'w1', 'tab-c'), '');
-        assert.strictEqual(cache.noticeBlock('dev-vsc', '', 'tab-c'), '');
-        assert.ok(cache.noticeBlock('dev-vsc', 'w1', 'tab-c').includes(paths.current));
+        assert.strictEqual(cache.noticeBlock('id-dev-vsc', '', 'tab-c'), '');
+        assert.ok(cache.noticeBlock('id-dev-vsc', 'w1', 'tab-c').includes(paths.current));
     });
 });

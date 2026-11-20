@@ -3,24 +3,42 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { copyToClipboard } from '../../util/clipboard';
 import { escapeHtml } from '../../util/html';
+import { clearPopup, placePopup } from '../../util/popup';
 import { COPY_ICON_SVG } from '../messages/markdown';
 import { requestSessionExport } from '../multiSelect';
 import { requestSwitchSession } from '../modals/switchSession';
-import { applyProjectCollapsed, clearPopup, placePopup, projectTreeHtml, showProjectContextMenu, showProjectPicker } from './projectGrouped';
-import { showWorkspacePicker } from './workSpace';
 import type { SessionInfo } from '../../../shared/chat';
 
 /**
- * The tab in the pane: the strip it is drawn in, the drag that reorders it, and its own menu.
+ * A tab in the pane: its markup, its drag, and its own menu.
  *
- * The strip draws what `projectTreeHtml` gives it — a tab's markup is this file's, the tree's shape
- * is the project file's — and the folder header's fold and menu are wired here because they hang off
- * the tab strip's DOM.
+ * This file is a child of the workspace file (F7). It draws tabs and wires what a tab does; the
+ * whole tree, the redraw after a change, and the two pickers a tab's menu opens come from the
+ * parent as arguments. It imports neither the parent nor its sibling.
  */
+
+/**
+ * What the parent hands this file: a way to redraw the tree, and the two pickers the tab menu opens.
+ *
+ * The two flags travel with them because the menu is built when the user asks for it, not when the
+ * tree was drawn — and every change to either list redraws, so what is captured here stays true.
+ */
+export interface TabWiring {
+    /** Redraw the whole tree: the parent's job, and the only redraw there is. */
+    rerender(sessions: SessionInfo[], activeId: string): void;
+    /** Open the workspace level of the tab menu for this tab. */
+    showWorkspacePicker(sessionId: string): void;
+    /** Open the project level of the tab menu for this tab. */
+    showProjectPicker(sessionId: string): void;
+    /** There is a workspace to move to. */
+    hasWorkspaces: boolean;
+    /** There is a project to move to. */
+    hasProjects: boolean;
+}
 
 const TAB_STICKY_SVG = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M9.2 1.3 11.5 3.6V6l2.2 2.1v1.2H10v4.2L9 14H7L6 13.5V9.3H2.3V8.1L4.5 6V3.6L6.8 1.3h2.4zm-.9 1.4H7.7L5.9 4.5V6.4L4.3 8h7.4L10.1 6.4V4.5L8.3 2.7z"/></svg>';
 
-function reorderSessionTabs(fromId: string, toId: string) {
+function reorderSessionTabs(fromId: string, toId: string, wiring: TabWiring) {
     if (!fromId || !toId || fromId === toId || !state.lastSessions.length) {
         return;
     }
@@ -47,12 +65,12 @@ function reorderSessionTabs(fromId: string, toId: string) {
     const byId: Record<string, SessionInfo> = {};
     state.lastSessions.forEach(function(s) { byId[s.id] = s; });
     state.lastSessions = ids.map(function(id) { return byId[id]; }).filter(Boolean);
-    renderSessionTabs(state.lastSessions, state.lastActiveSessionId);
+    wiring.rerender(state.lastSessions, state.lastActiveSessionId);
     post({ type: 'reorderSessions', sessionIds: ids });
 }
 
 /** One tab's markup, and the separator that ends the sticky run inside its own list. */
-function tabEntriesHtml(list: SessionInfo[]): string {
+export function tabEntriesHtml(list: SessionInfo[]): string {
     const parts: string[] = [];
     list.forEach(function(s, index) {
         const active = s.id === state.activeSessionId ? ' active' : '';
@@ -73,36 +91,7 @@ function tabEntriesHtml(list: SessionInfo[]): string {
     return parts.join('');
 }
 
-/**
- * A project, or the plane, as a drop target: dropping a tab here moves it.
- *
- * The tab's own drag carries its id, so the drop only has to name the project. An empty id is the
- * plane, which is how a tab gets back out of a project without the menu.
- */
-function wireProjectDropTarget(group: HTMLElement, projectId: string): void {
-    group.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        if (!e.dataTransfer) return;
-        e.dataTransfer.dropEffect = 'move';
-        group.classList.add('drag-over');
-    });
-    group.addEventListener('dragleave', function(e) {
-        // Leaving for a child is not leaving the target: without this the highlight flickers.
-        if (e.relatedTarget && group.contains(e.relatedTarget as Node)) return;
-        group.classList.remove('drag-over');
-    });
-    group.addEventListener('drop', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        group.classList.remove('drag-over');
-        const tabId = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-        if (tabId) {
-            post({ type: 'setTabProject', sessionId: tabId, projectId: projectId });
-        }
-    });
-}
-
-function wireTabDragDrop(tab: HTMLElement) {
+function wireTabDragDrop(tab: HTMLElement, container: HTMLElement, wiring: TabWiring) {
     tab.draggable = true;
     tab.addEventListener('dragstart', function(e) {
         if (tab.classList.contains('editing')) {
@@ -116,7 +105,7 @@ function wireTabDragDrop(tab: HTMLElement) {
     });
     tab.addEventListener('dragend', function() {
         tab.classList.remove('dragging');
-        tabBar.querySelectorAll('.session-tab').forEach(function(t) {
+        container.querySelectorAll('.session-tab').forEach(function(t) {
             t.classList.remove('drag-over');
         });
     });
@@ -136,28 +125,50 @@ function wireTabDragDrop(tab: HTMLElement) {
         if (!e.dataTransfer) return;
         const fromId = e.dataTransfer.getData('text/plain');
         const toId = tab.dataset.id;
-        if (fromId && toId) reorderSessionTabs(fromId, toId);
+        if (fromId && toId) reorderSessionTabs(fromId, toId, wiring);
     });
     tab.addEventListener('mousedown', function(e) {
         tab.draggable = !(e.target && e.target.closest && e.target.closest('.tab-close'));
     });
 }
 
-export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
-    state.activeSessionId = activeId || state.activeSessionId;
-    state.lastSessions = sessions || [];
-    state.lastActiveSessionId = state.activeSessionId;
-    if (!sessions || sessions.length === 0) {
-        tabBar.innerHTML = '';
-        return;
+/**
+ * A blank chat has no record, so no list from the host can contain it: it is drawn from the
+ * `newChat` message while it is the active one, in the project it was opened in, and it stops
+ * being drawn the moment it is left or its own first turn gives it a record.
+ */
+export function withBlankChat(sessions: SessionInfo[]): SessionInfo[] {
+    const blank = state.blankChat;
+    if (!blank) {
+        return sessions;
     }
-    if (tabBar.querySelector('.session-tab.editing')) {
-        state.pendingTabsRender = { sessions: sessions, activeId: activeId };
-        return;
+    if (sessions.some(tab => tab.id === blank.id)) {
+        state.blankChat = null;
+        return sessions;
     }
-    tabBar.innerHTML = projectTreeHtml(sessions, tabEntriesHtml);
+    if (blank.id !== state.activeSessionId) {
+        state.blankChat = null;
+        return sessions;
+    }
+    return [
+        {
+            id: blank.id,
+            title: locale.newChat,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            ...(blank.project ? { project: blank.project } : {}),
+        },
+        ...sessions,
+    ];
+}
 
-    tabBar.querySelectorAll<HTMLElement>('.session-tab').forEach(function(tab) {
+/**
+ * Wire every tab the parent just drew: the click that switches, the menu, the drag, the close.
+ *
+ * The container is the parent's: this file knows what a tab is, not where the tree put it.
+ */
+export function wireTabs(container: HTMLElement, wiring: TabWiring): void {
+    container.querySelectorAll<HTMLElement>('.session-tab').forEach(function(tab) {
         tab.addEventListener('click', function(e) {
             if (e.target && e.target.closest && e.target.closest('.tab-close')) {
                 return;
@@ -174,39 +185,11 @@ export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
             e.preventDefault();
             e.stopPropagation();
             const id = tab.dataset.id;
-            if (id) showTabContextMenu(id, e.clientX, e.clientY);
+            if (id) showTabContextMenu(id, e.clientX, e.clientY, wiring);
         });
-        wireTabDragDrop(tab);
+        wireTabDragDrop(tab, container, wiring);
     });
-    tabBar.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
-        const header = group.querySelector<HTMLElement>('.tab-group-header');
-        if (!header) return;
-        applyProjectCollapsed(group);
-        header.addEventListener('click', function(e) {
-            // A rename input lives in the header; a click in it is not a fold.
-            if (e.target && (e.target as HTMLElement).classList.contains('tab-rename-input')) return;
-            const id = group.dataset.project || '';
-            if (!id) return;
-            if (state.collapsedProjects.has(id)) {
-                state.collapsedProjects.delete(id);
-            } else {
-                state.collapsedProjects.add(id);
-            }
-            applyProjectCollapsed(group);
-        });
-        header.addEventListener('contextmenu', function(e: MouseEvent) {
-            e.preventDefault();
-            e.stopPropagation();
-            const id = group.dataset.project;
-            if (id) showProjectContextMenu(id, e.clientX, e.clientY);
-        });
-        wireProjectDropTarget(group, group.dataset.project || '');
-    });
-    const planeGroup = tabBar.querySelector<HTMLElement>('.tab-group--plane');
-    if (planeGroup) {
-        wireProjectDropTarget(planeGroup, '');
-    }
-    tabBar.querySelectorAll('.tab-close').forEach(function(btn) {
+    container.querySelectorAll('.tab-close').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -216,11 +199,6 @@ export function renderSessionTabs(sessions: SessionInfo[], activeId: string) {
             post({ type: 'closeSessions', sessionId: btn.dataset.id, mode: 'self' });
         });
     });
-
-    const activeTab = tabBar.querySelector('.session-tab.active');
-    if (activeTab) {
-        activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
 }
 
 export function hideTabContextMenu() {
@@ -228,7 +206,8 @@ export function hideTabContextMenu() {
     clearPopup();
 }
 
-export function showTabContextMenu(sessionId: string, clientX: number, clientY: number) {
+/** A tab's own menu. Which pickers it may open is the parent's answer, not this file's. */
+function showTabContextMenu(sessionId: string, clientX: number, clientY: number, wiring: TabWiring) {
     const session = state.lastSessions.find(function(s) { return s.id === sessionId; });
     if (!session || !tabContextMenu) {
         return;
@@ -249,8 +228,8 @@ export function showTabContextMenu(sessionId: string, clientX: number, clientY: 
         '<button type="button" class="tab-ctx-item" data-action="export">' + escapeHtml(locale.tabContextExport) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="copy">' + escapeHtml(locale.tabContextCopy) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="rename">' + escapeHtml(locale.tabContextRename) + '</button>' +
-        '<button type="button" class="tab-ctx-item" data-action="moveTo"' + (state.lastWorkspaces.length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveWorkspace) + '</button>' +
-        '<button type="button" class="tab-ctx-item" data-action="moveProject"' + (state.lastProjects.length ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveProject) + '</button>' +
+        '<button type="button" class="tab-ctx-item" data-action="moveTo"' + (wiring.hasWorkspaces ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveWorkspace) + '</button>' +
+        '<button type="button" class="tab-ctx-item" data-action="moveProject"' + (wiring.hasProjects ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextMoveProject) + '</button>' +
         '<div class="tab-ctx-divider"></div>' +
         '<button type="button" class="tab-ctx-item" data-action="close">' + escapeHtml(locale.tabContextClose) + '</button>' +
         '<button type="button" class="tab-ctx-item" data-action="closeOthers"' + (canCloseOthers ? '' : ' disabled') + '>' + escapeHtml(locale.tabContextCloseOthers) + '</button>' +
@@ -272,11 +251,11 @@ export function showTabContextMenu(sessionId: string, clientX: number, clientY: 
             const targetId = state.tabContextSessionId;
             // The pickers replace this menu in place, so it stays where it opened.
             if (action === 'moveTo') {
-                showWorkspacePicker(targetId);
+                wiring.showWorkspacePicker(targetId);
                 return;
             }
             if (action === 'moveProject') {
-                showProjectPicker(targetId);
+                wiring.showProjectPicker(targetId);
                 return;
             }
             hideTabContextMenu();
@@ -285,7 +264,7 @@ export function showTabContextMenu(sessionId: string, clientX: number, clientY: 
             } else if (action === 'copy') {
                 requestSessionExport('copy', undefined, targetId);
             } else if (action === 'rename') {
-                startTabRename(targetId);
+                startTabRename(targetId, wiring);
             } else if (action === 'toggleSticky') {
                 post({ type: 'toggleStickySession', sessionId: targetId });
             } else if (action === 'close' || action === 'closeOthers' || action === 'closeLeft' || action === 'closeRight' || action === 'closeAll') {
@@ -302,14 +281,14 @@ export function showTabContextMenu(sessionId: string, clientX: number, clientY: 
     placePopup(clientX, clientY);
 }
 
-function startTabRename(sessionId: string) {
+function startTabRename(sessionId: string, wiring: TabWiring) {
     if (!sessionId) {
         return;
     }
     const tabs = tabBar.querySelectorAll('.session-tab');
     let tab: Element | null = null;
     for (let i = 0; i < tabs.length; i++) {
-        if (tabs[i].dataset.id === sessionId) {
+        if ((tabs[i] as HTMLElement).dataset.id === sessionId) {
             tab = tabs[i];
             break;
         }
@@ -347,7 +326,7 @@ function startTabRename(sessionId: string) {
         if (state.pendingTabsRender) {
             const next = state.pendingTabsRender;
             state.pendingTabsRender = null;
-            renderSessionTabs(next.sessions, next.activeId);
+            wiring.rerender(next.sessions, next.activeId);
         }
     }
     input.addEventListener('keydown', function(e) {

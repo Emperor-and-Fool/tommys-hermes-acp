@@ -25,6 +25,7 @@ export const zhCn: LocaleStrings = {
     sessionReplayFailed: '无法从 Hermes 载入此对话。请从 Open 重新打开，或重新加载窗口。',
     sessionNotWritable: '此对话未连接到 Hermes 会话，因此未发送任何内容。请从已关闭的对话中重新打开。',
     profileExcluded: '“{0}”是主代理正在使用的配置档。请为此面板选择另一个。',
+    profileMissing: '“{0}”已不是 Hermes 现有的配置档。请另外选择一个；未移动或删除任何数据。',
     modelSwitchIncomplete: '模型未能切换到 {0}，对话保持原样。',
     openTab: '打开标签页',
     chooseChat: '选择对话',
@@ -38,7 +39,21 @@ export const zhCn: LocaleStrings = {
     permissionModeBtnTooltip: '如需本会话允许，模式必须为手动',
     permissionModeTitle: '权限模式',
     permissionModeClose: '关闭',
-    permissionOpenTooltip: '危险！（仅拦截关键操作）',
+    permissionOpenTooltip: '危险！一切都会执行，拒绝规则已清空。编辑：处处自由。敏感文件始终询问。',
+    permissionEditHint: '此处的编辑需要授权，原因可能是按钮模式、权限根目录或受保护的文件。'
+        + '请修改按钮或根目录；改动将在下一轮运行时生效。',
+    permissionRootLabel: '权限根目录',
+    permissionRootTitle: '权限根目录',
+    permissionRootBody: '此工作区同时打开 {folders} 个文件夹，Hermes 只能在其中之一工作。'
+        + '请选择 {profile} 的工作文件夹；该文件夹之外的编辑需要授权。',
+    permissionRootNew: '新',
+    permissionRootMissing: '缺失',
+    permissionRootMoveRefused: 'Hermes 无法将会话移动到 {folder}。它仍留在 {previous}。',
+    permissionRootRootRemoved: '{folder} 已离开此工作区。在你选择其他根目录之前，该会话仍在那里工作。',
+    permissionRootLastRemoved: '最后一个根目录已移除：本项目无法再从本窗口访问。'
+        + '其会话将保持未归属状态，只能通过 Hermes TUI 或重新打开该文件夹访问。',
+    appliesNextRun: '将在下一轮运行时生效。',
+    noFolderOpen: '请先打开文件夹或工作区以开始',
     permissionOpenConfirm: '再次按下：关闭审批并清空 approvals.deny，规则已保存到 JSON 备份。',
     permissionRestoreLabel: '恢复拒绝规则',
     noClosedSessions: '没有已关闭的会话',
@@ -205,7 +220,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <ul>
                 <li><code>tommys.path</code> — Hermes 可执行文件路径（留空则自动检测）</li>
                 <li><code>tommys.profile</code> — 对应 <code>--profile</code> 参数</li>
-                <li><code>tommys.cwd</code> — Agent 工作目录（默认工作区根目录）</li>
             </ul>
             <p>点击视图标题栏 <strong>更多 → 配置</strong> 可打开 Settings，修改后<strong>实时生效</strong>（连接相关项会自动重连）。</p>
 
@@ -292,9 +306,6 @@ hermes --profile &lt;name&gt; acp</code></pre>
     permissionAllowOnce: '允许一次',
     permissionAllowAlways: '始终允许',
     permissionAllowSession: '本会话允许',
-    permissionSessionNeedsManual: '如需本会话允许，请先切换到手动模式',
-    permissionSessionArmed: '已单次允许 — 下一次请求将自动按会话允许',
-    permissionSessionArmedHint: '现在单次允许，并自动按会话允许处理下一次请求',
     permissionRejectOnce: '拒绝一次',
     permissionRejectAlways: '始终拒绝',
     permissionDeny: '拒绝',
@@ -396,7 +407,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     approvalModeSmart: '智能',
     approvalModeOff: '无',
 
-    approvalModeTooltip: '选择“无”时，仅在 Hermes 自身被操作时请求许可',
+    approvalModeManualTip: '命令与编辑都会先询问。',
+    approvalModeSmartTip: '命令：由 Hermes 判断，有风险时询问。编辑：权限根目录内自由，目录外需询问。',
+    approvalModeNoneTip: '命令一律执行，除你的拒绝规则外。编辑：权限根目录内自由，目录外需询问。',
+    approvalModeSensitiveTip: '敏感文件（.git、.ssh、.env、密钥、代理指令文件）始终询问。',
     approvalModeFailed: '无法更改审批模式。',
     steer: '引导',
     steerHint: '作为引导发送到正在运行的一轮中',

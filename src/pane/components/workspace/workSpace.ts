@@ -1,15 +1,25 @@
-import { tabContextMenu } from '../../dom';
+import { tabBar, tabContextMenu } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
-import { clearPopup, placePopup } from './projectGrouped';
+import { clearPopup, placePopup } from '../../util/popup';
+import { applyProjectFocus, projectTreeHtml, showProjectNotice, showProjectPicker, wireProjectGroups } from './projectGrouped';
+import { tabEntriesHtml, wireTabs, withBlankChat } from './sessionTab';
+import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
+import type { HostToPane } from '../../../shared/webview';
 
 /**
- * The workspace in the pane: the list of the ones this editor has opened, as a menu level.
+ * The workspace in the pane, as the parent of the feature (F7): the lists the host last reported,
+ * the three messages that replace them, and the one render that draws the whole tree.
  *
- * A workspace has no name of ours — it is a file or a folder — so a row shows the path's own name
- * and keeps the full path in its tooltip.
+ * A child draws tabs or a project group and wires what it drew. The redraw, the two pickers and
+ * the lists reach the children as arguments, so this is the only file in the folder that imports
+ * another one.
  */
+
+/** The workspaces and the projects the host last reported: this feature's own state (S1). */
+let workspaces: Workspace[] = [];
+let projects: Project[] = [];
 
 /** The last path segment without the workspace extension: what a picker row can show. */
 export function workspaceLabel(workspacePath: string): string {
@@ -17,13 +27,18 @@ export function workspaceLabel(workspacePath: string): string {
     return base.replace(/\.code-workspace$/i, '');
 }
 
-/** The workspaces this editor has opened, as the tab menu's second level. */
+/**
+ * The workspaces this editor has opened, as the tab menu's second level.
+ *
+ * A workspace has no name of ours — it is a file or a folder — so a row shows the path's own name
+ * and keeps the full path in its tooltip.
+ */
 export function showWorkspacePicker(sessionId: string): void {
     if (!tabContextMenu) {
         return;
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveWorkspace) + '</div>';
-    state.lastWorkspaces.forEach(function(entry) {
+    workspaces.forEach(function(entry) {
         html += '<button type="button" class="tab-ctx-item" data-workspace="' + escapeHtml(entry.id) + '" title="' + escapeHtml(entry.path) + '">' + escapeHtml(workspaceLabel(entry.path)) + '</button>';
     });
     tabContextMenu.innerHTML = html;
@@ -36,4 +51,74 @@ export function showWorkspacePicker(sessionId: string): void {
         });
     });
     placePopup(0, 0);
+}
+
+/**
+ * Draw the tree: the strip the tabs and the project groups are assembled into.
+ *
+ * An empty list empties the strip. A tab being renamed holds the drawing back — a caller that
+ * changes the list meanwhile leaves its arguments here, and the rename's own finish redraws with
+ * them. Otherwise the tree is the projects' shape around the tabs' markup, and each child is then
+ * asked to wire what it drew.
+ */
+export function renderTree(sessions: SessionInfo[], activeId: string): void {
+    state.activeSessionId = activeId || state.activeSessionId;
+    const list = withBlankChat(sessions || []);
+    state.lastSessions = list;
+    state.lastActiveSessionId = state.activeSessionId;
+    if (list.length === 0) {
+        tabBar.innerHTML = '';
+        return;
+    }
+    if (tabBar.querySelector('.session-tab.editing')) {
+        state.pendingTabsRender = { sessions: sessions, activeId: activeId };
+        return;
+    }
+    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml, projects, workspaces);
+
+    wireTabs(tabBar, {
+        rerender: renderTree,
+        showWorkspacePicker: showWorkspacePicker,
+        // The project picker is the other child's: this is where the two are joined, so the tab
+        // menu can open it without either child knowing the other.
+        showProjectPicker: (sessionId: string) => showProjectPicker(sessionId, projects, workspaces),
+        hasWorkspaces: workspaces.length > 0,
+        hasProjects: projects.length > 0,
+    });
+    wireProjectGroups(tabBar, projects, workspaces);
+
+    const activeTab = tabBar.querySelector('.session-tab.active');
+    if (activeTab) {
+        activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+}
+
+/**
+ * The host's session list: which tab is on screen, the list the tree draws from, the focus that
+ * follows the active session, and the redraw. The rest of that message belongs to other features —
+ * the hint in the status bar, the history list, the switch modal — and the router hands it to each
+ * of them in turn (R1a).
+ */
+export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>): void {
+    state.activeSessionId = msg.activeSessionId || state.activeSessionId;
+    state.lastSessions = msg.sessions || [];
+    state.lastActiveSessionId = state.activeSessionId;
+    applyProjectFocus(projects);
+    renderTree(msg.sessions, msg.activeSessionId);
+}
+
+/**
+ * The host's project list: both lists replace, the tree redraws from what it now holds, and the
+ * notice clears — a list that arrived is itself the answer to whatever was refused.
+ */
+export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>): void {
+    workspaces = msg.workspaces || [];
+    projects = msg.projects || [];
+    renderTree(state.lastSessions, state.lastActiveSessionId);
+    showProjectNotice('');
+}
+
+/** Something the host wants the user to read: a refused create, and nothing else today. */
+export function onProjectNotice(msg: Extract<HostToPane, { type: 'projectNotice' }>): void {
+    showProjectNotice(msg.message);
 }

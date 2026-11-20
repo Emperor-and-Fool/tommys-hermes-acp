@@ -3,6 +3,7 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { setMenuOpen, wirePickerButton } from '../modals/modal';
+import type { HostToPane } from '../../../shared/webview';
 
 
 const closedDropdown = required('closedDropdown');
@@ -26,6 +27,22 @@ export function initClosedPickerBtnClick(): void {
 
 export function initClosedDropdownClick(): void {
     closedDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+}
+
+/**
+ * The host's hidden list: the rows the Closed picker offers, and a pick that no longer exists.
+ *
+ * A picked session that is gone from the list was opened or deleted elsewhere, so the pick is
+ * dropped rather than left pointing at nothing. The redraw is this file's because the rows are.
+ */
+export function onHiddenSessions(msg: Extract<HostToPane, { type: 'hiddenSessions' }>): void {
+    state.closedSessions = Array.isArray(msg.sessions) ? msg.sessions : [];
+    if (state.pendingOpenSessionId !== null && !state.closedSessions.some(function(s) { return s.sessionId === state.pendingOpenSessionId; })) {
+        state.pendingOpenSessionId = null;
+        state.pendingOpenTitle = '';
+        state.pendingOpenCount = 0;
+    }
+    renderClosedList();
 }
 
 export function renderClosedList() {

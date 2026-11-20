@@ -233,11 +233,6 @@ and copies everything into the installed extension directory, verifying each fil
 <td>auto-detect</td>
 </tr>
 <tr>
-<td><code>tommys.cwd</code></td>
-<td>Working directory for sessions</td>
-<td>workspace root</td>
-</tr>
-<tr>
 <td><code>tommys.profile</code></td>
 <td>Hermes profile name</td>
 <td><code>default</code></td>
