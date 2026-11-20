@@ -63,9 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **After switching agents, the permission mode you see is the one in use.**
 - **Developer: before converting data from an older layout**, the data home is copied to
   `<home>.backup-<yyyymmdd>`, and only one window converts at a time.
-- **Developer, learned from Hermes:** `profile.yaml` is optional; Hermes' root is not `HERMES_HOME`
-  for a profile Hermes starts; `state.db` is read with `node:sqlite` from the runtime; a fallback
-  folder is chosen by when it was added, not by its position.
+- **Developer, learned from Hermes:** `profile.yaml` is optional. For an agent Hermes starts,
+  `HERMES_HOME` is that agent's own profile folder (`~/.hermes/profiles/<name>`). Hermes' home folder
+  (`~/.hermes`: the application, the default configuration and all profiles) is found one level above
+  `profiles/`. `state.db` is read with `node:sqlite` from the runtime, and a fallback folder is chosen
+  by when it was added, not by its position.
 
 ### Fixed
 
