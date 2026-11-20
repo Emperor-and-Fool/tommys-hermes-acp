@@ -332,6 +332,7 @@ export class App implements vscode.WebviewViewProvider {
             store: new PresenceStore(storagePath),
             role: this._id.role,
             profile: () => this._profiles.resolveTarget().cliProfile,
+            live: () => !!this._connection.acp,
             log: (line) => this._log(line),
         });
         this._presence.start();
@@ -474,8 +475,8 @@ export class App implements vscode.WebviewViewProvider {
             steerNotice: (text) => this._log(text),
             profileChanged: (name) => {
                 this._fireProfileChanged(name);
-                // A new profile is news for the other windows now, not on the next beat.
-                this._presence.beat();
+                // Presence is not written here: a switch only sets the selection, and a profile the
+                // guarantee refuses must not be announced. The connect that lands writes it.
                 // Push it up too: the primary's picker must stop offering this profile.
                 this._primary?.registerSiblingProfile?.(this.activeProfile);
             },

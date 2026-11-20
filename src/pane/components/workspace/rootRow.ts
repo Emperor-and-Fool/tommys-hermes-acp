@@ -15,6 +15,25 @@ export interface RootFacts {
     noticePrevious?: string;
 }
 
+/** The two messages a press of the row's own button can send. */
+export type RootRowPress = { type: 'openPermissionRoot' } | { type: 'permissionRootClose' };
+
+/**
+ * What a press of the row's button means: it toggles, like the permission-mode button does.
+ *
+ * A closed row opens. An open one closes through the same path as the X, so the host hears
+ * `permissionRootClose` — a countdown that is running stops and keeps the seconds it reached.
+ * Returns the row's state after the press.
+ */
+export function pressRootButton(open: boolean, send: (msg: RootRowPress) => void): boolean {
+    if (open) {
+        send({ type: 'permissionRootClose' });
+        return false;
+    }
+    send({ type: 'openPermissionRoot' });
+    return true;
+}
+
 /**
  * Whether the row is on screen.
  *

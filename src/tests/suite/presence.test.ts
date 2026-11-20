@@ -91,10 +91,12 @@ describe('the heartbeat', () => {
         const store = new PresenceStore(home);
         const logs: string[] = [];
         let current = profile;
+        let live = true;
         const presence = new ProfilePresence({
             store,
             role: 'primary',
             profile: () => current,
+            live: () => live,
             log: (line: string) => {
                 logs.push(line);
             },
@@ -106,6 +108,9 @@ describe('the heartbeat', () => {
             presence,
             setProfile: (value: string) => {
                 current = value;
+            },
+            setLive: (value: boolean) => {
+                live = value;
             },
             rows: () => store.live(Date.now(), Number.MAX_SAFE_INTEGER),
             file: () => path.join(presenceDirFor(home), `${store.instanceId}.json`),
@@ -128,7 +133,7 @@ describe('the heartbeat', () => {
                 'the same profile is not announced twice');
 
             h.setProfile('kitt');
-            h.presence.beat();
+            h.presence.connected();
             assert.ok(h.logs.some(line => line.includes('this instance runs "kitt"')));
             assert.deepStrictEqual(JSON.parse(fs.readFileSync(h.file(), 'utf-8')).cliProfile, 'kitt');
             h.presence.dispose();
@@ -153,13 +158,51 @@ describe('the heartbeat', () => {
         }
     });
 
+    it('a selection that never connects is not announced: the row keeps the profile it landed on', () => {
+        const h = harness('dev-vsc');
+        try {
+            h.presence.start();
+            h.presence.connected();
+
+            // The picker now points at a profile another window runs; no connect lands on it.
+            h.setProfile('kitt');
+            h.presence.beat();
+            h.presence.beat();
+
+            assert.strictEqual(JSON.parse(fs.readFileSync(h.file(), 'utf-8')).cliProfile, 'dev-vsc',
+                'the selection is not the truth; the connect is');
+            assert.ok(!h.logs.some(line => line.includes('this instance runs "kitt"')),
+                'and it is not announced either');
+            h.presence.dispose();
+        } finally {
+            fs.rmSync(h.home, { recursive: true, force: true });
+        }
+    });
+
+    it('a dropped connection takes the row away', () => {
+        const h = harness();
+        try {
+            h.presence.start();
+            h.presence.connected();
+            assert.ok(fs.existsSync(h.file()));
+
+            h.setLive(false);
+            h.presence.beat();
+            assert.strictEqual(fs.existsSync(h.file()), false, 'no live client, no row');
+            assert.ok(h.logs.some(line => line.includes('row removed (disconnected)')));
+            h.presence.dispose();
+        } finally {
+            fs.rmSync(h.home, { recursive: true, force: true });
+        }
+    });
+
     it('has nothing to announce without a profile, so the row goes', () => {
         const h = harness('default');
         try {
             h.presence.start();
             h.presence.connected();
             h.setProfile('');
-            h.presence.beat();
+            h.presence.connected();
             assert.strictEqual(fs.existsSync(h.file()), false);
             assert.ok(h.logs.some(line => line.includes('row removed (no profile)')));
             h.presence.dispose();

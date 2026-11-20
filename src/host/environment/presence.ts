@@ -9,8 +9,10 @@ export interface ProfilePresenceHost {
     store: PresenceStore;
     /** Which of the two extensions this is. */
     role: 'primary' | 'secondant';
-    /** The CLI profile Hermes would run on; '' when this instance has none. */
+    /** The CLI profile the picker would connect to; '' when this instance has none selected. */
     profile(): string;
+    /** Whether a client is connected at all: a dropped link means no profile is being run. */
+    live(): boolean;
     log(line: string): void;
 }
 
@@ -20,28 +22,29 @@ export interface ProfilePresenceHost {
  * It is not a store and owns no data — the store is `host/store/presence.ts`. This is the feature
  * side: when to say it, and what to do when there is nothing to say.
  *
- * Written on start, on every profile change (the same moment `profileChanged` fires) and on every
- * beat. A disconnected instance has no profile to announce, so its file is removed instead of
- * holding a row that says nothing. `dispose` removes it too: a closed window must not keep a
- * profile out of the other window's picker until the beat goes stale.
+ * **It announces the profile a connect landed on, never the one the picker selected.** A selection
+ * is set before the excluded-profile guarantee runs, so a switch to a profile another window holds
+ * would otherwise be announced for the moment between the selection and the refusal — and the
+ * other window would then be told its own profile is taken. `connected()` records the profile the
+ * connect got past the guarantee with; the beat writes that record and nothing else.
+ *
+ * The row goes when there is nothing to announce: no profile, no live connection (a dropped link),
+ * or the window closing. A closed window must not keep a profile out of another window's picker
+ * until the beat goes stale.
  */
 export class ProfilePresence {
     private _timer?: ReturnType<typeof setInterval>;
     /** What the last write said, so the log speaks only when the answer changes. */
     private _announcedProfile = '';
     private _announcing = false;
-    /**
-     * Whether this instance has connected to a profile at all.
-     *
-     * A picker that offers a taken profile is not a connection: the guarantee refuses it, and
-     * announcing it here would claim a profile another window is actually running. Only a connect
-     * that got past that guarantee says this instance is on a profile.
-     */
+    /** Whether a connect has landed at all: before that there is nothing to announce. */
     private _connected = false;
+    /** The profile that connect landed on. Beats write this, never the current selection. */
+    private _liveProfile = '';
 
     constructor(private readonly _host: ProfilePresenceHost) {}
 
-    /** Say it now, then keep saying it. Nothing is announced until a connect has landed. */
+    /** Start the beat. Nothing is announced until a connect has landed. */
     start(): void {
         this.beat();
         this._timer = setInterval(() => this.beat(), HEARTBEAT_MS);
@@ -50,20 +53,27 @@ export class ProfilePresence {
     /**
      * A connect got past the excluded-profile guarantee: this instance really is on that profile.
      *
-     * From here the beat may announce it, and a refusal can no longer change it — a refused connect
-     * leaves the row as it was, which is what the other windows should keep reading.
+     * Read from the selection at this moment and recorded; a later selection that never connects
+     * (the guarantee refuses it) changes nothing here.
      */
     connected(): void {
+        this._liveProfile = this._host.profile();
         this._connected = true;
         this.beat();
     }
 
-    /** Say where this instance stands: on a connect, on a profile change, and on every beat. */
+    /** Say where this instance stands, from the recorded profile and the live connection. */
     beat(): void {
         if (!this._connected) {
             return;
         }
-        const cliProfile = this._host.profile();
+        if (!this._host.live()) {
+            // A dropped client runs no profile: say nothing rather than the last one.
+            this._stopAnnouncing('disconnected');
+            this._liveProfile = '';
+            return;
+        }
+        const cliProfile = this._liveProfile;
         if (!cliProfile) {
             this._stopAnnouncing('no profile');
             return;

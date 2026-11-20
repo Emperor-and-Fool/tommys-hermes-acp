@@ -1,6 +1,6 @@
 import { byId } from '../../dom';
 import { post } from '../../post';
-import { shouldShowRow, type RootFacts } from './rootRow';
+import { pressRootButton, shouldShowRow, type RootFacts } from './rootRow';
 
 /** The row is open because this surface's own button was pressed, or the host asked. */
 let open = false;
@@ -19,26 +19,29 @@ export function initPermissionRoot(): void {
     const btn = byId('permissionRootBtn');
     if (btn) {
         btn.addEventListener('click', function () {
-            // This surface opens its own row, now: the click belongs to the surface it happened
-            // in, and the host is only asked for fresh facts — never to open anything.
-            open = true;
+            // The button toggles, like the permission-mode one: a closed row opens, an open one
+            // closes through the X's path. This surface owns that; the host only hears the message.
+            open = pressRootButton(open, msg => post(msg));
             drawRow();
-            post({ type: 'openPermissionRoot' });
         });
     }
     const close = byId('permissionRootClose');
     if (close) {
         close.addEventListener('click', function () {
-            open = false;
+            // The X is the same press while the row is open: one path, one message.
+            open = pressRootButton(true, msg => post(msg));
             drawRow();
-            // The host owns the countdown: a closed row stops it and keeps the seconds it reached.
-            post({ type: 'permissionRootClose' });
         });
     }
 }
 
 /** Draw the row from the facts on hand and the local open state. */
 function drawRow(): void {
+    const btn = byId('permissionRootBtn');
+    if (btn) {
+        // The button is the row's own switch: what it opened, it closes.
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
     const bar = byId('permissionRootBar');
     if (!bar || !facts) {
         return;
