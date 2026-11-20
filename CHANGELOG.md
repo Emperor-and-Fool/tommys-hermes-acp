@@ -6,78 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.5.0] - 2026-11-20
+
+2.4.0 was skipped: this release collects two weeks of changes.
+
+### What changed along the way
+
+| First | Later | Why |
+|---|---|---|
+| One Hermes cwd per window: every Hermes session worked in the same workspace folder (17 Nov). | Each Hermes session keeps its own Hermes cwd, chosen from the workspace folders (19 Nov). | Two Hermes sessions (tabs) in one chat panel could not work in two different folders. |
+| The row with the workspace folder settings opened at every start and every change of the workspace directories. | It opens at two moments: when an agent becomes active (its Hermes sessions appear with their message counts), and when the side panel comes into view after a workspace folder was added. | It interrupted at moments that meant nothing. |
+| We built an "Allow for session" answer on the permission card ourselves (removed 16 Nov). | The card shows only Hermes' own answers. Flagged commands under Manual (and Smart, when it passes them to you) get "Allow for session": valid while the Hermes session is active, confirmed again when it's reactivated. File edits never show it (Hermes #29410). | Our version was a work-around that never met the expectation. |
+| Clicking our chat tab in the editor switched the side panel with a general VS Code command. | Clicking our chat tab in the editor brings up that extension's own side panel, for the primary and the secondant, and keeps the focus in the editor. | The side panel's own documented call reaches both extensions reliably. |
+| We expected a file reached through a symlink to be outside the Hermes cwd. | Hermes follows a symlink to the real file before it checks a file edit, so a file counts as inside or outside the Hermes cwd by where it really lives. | Tests of the permission modes now use files whose real location is outside the Hermes cwd. |
+| Each extension had its own data home on top of the single agent guard. | Both extensions share one data home, centralizing projects, tabs and tags for every agent. | An improved agent guard prevents simultaneous agent use, even across multiple windows. |
 
 ### Added
 
-- **A permission root: which folder Hermes works in, when a workspace shows several.** Hermes takes
-  one folder as its boundary, and a `.code-workspace` can show many, so the window now remembers a
-  primary — the first folder — and the folder you picked. The rail shows the current root beside the
-  permission mode; the dialog offers the folders and opens by itself whenever the folder list
-  changes while two or more remain. A pick moves the session with it: an idle session is re-loaded
-  at once, a busy one is told it applies from the next run. When a chosen root goes away the primary
-  takes over, when the primary goes away the most recently added folder does, and when the last
-  folder goes the window says plainly that the projects are no longer reachable from it.
-
-### Fixed
-
-- **A permission press made during a run now says what it did.** Commands follow the button at once,
-  but Hermes freezes the session's edit mode for the run in flight, so the edit half waited in
-  silence. The pane says "Applies from the next run." beside the buttons — the same words the
-  permission root uses, from one string — and clears it when the run ends and the mode lands.
-- **Hermes is no longer told that this window is "the workspace".** The tree notice now says
-  *clientworkspace* throughout, including its tag, and states that the trees describe projects and
-  tabs rather than the folder Hermes works in — the word it uses for that.
-- **A log line that could never be right is gone.** "Replay carried N rows against the catalog's M"
-  compared a transcript row count with `sessions.message_count`, which is a maintained counter reset
-  to the compressed history's length at every compaction (2230 rows against 128 in the live profile).
-  The comparison and its two helpers are removed; the loading state's own throttle stays.
-- **The permission-root button fits the rail, and an open belongs to one surface.** In the sidebar the
-  folder name was cut off ("emperorandfo…"), so the rail now shows a symbol in the house style and
-  keeps the balloon; the editor panel keeps the name, where there is room. Clicking either button
-  opens that surface's own list — it used to open both, because every message was fanned out — and
-  the automatic dialog at start or on a folder change is addressed to the rail alone. When no sidebar
-  is open at that moment the dialog is dropped rather than shown somewhere else, and appears there
-  the next time the surface is shown.
-- **The permission root is shown at start, and asks once per start when there is a choice.** After a
-  plain reload the rail's button was blank and the dialog never appeared, because the state was only
-  posted when a folder changed. A window showing two or more folders now opens the dialog on every
-  start with the active root marked — the primary the first time, the stored choice afterwards — and
-  a single-folder window posts the state alone. Nothing is compared at start-up: the stored roots are
-  reconciled on every read, so the window simply picks up where it left off.
-- **A session is no longer claimed for a window because its folder happens to be inside one.** Once
-  ownership was decided by containment, an untagged session — written before tags existed, or made
-  by the TUI, the CLI or Desktop — was tagged to whichever window had that folder, and opening it
-  then moved it to that window's permission root. Nothing claims a session now: it reaches a window
-  only by being opened from Closed Sessions, which is also where such sessions are now listed,
-  beside the ones Hermes was told to hide.
+- **Each Hermes session keeps its own Hermes cwd.** A workspace can hold several workspace folders;
+  Hermes works in one. The row with the workspace folder settings marks it with a green chip, and a
+  new Hermes session starts in the agent's default folder for that workspace.
+- **A newly added workspace folder is marked.** Its chip flashes orange, with the word "New" in
+  orange behind the folder name, for 30 seconds of viewing time shared by both extensions.
+- **The row says what happened to the Hermes cwd.** A move Hermes refused (the Hermes cwd stays), a
+  workspace folder missing on disk (shown, not choosable), the Hermes cwd's folder removed from the
+  workspace.
+- **The side panel follows the chat.** Opening the chat, sending a selection, or clicking our chat
+  tab in the editor brings up that extension's side panel.
+- **An improved agent guard.** An agent running in one window is not offered in another, and
+  connecting to it is refused.
+- **An agent keeps its projects, tabs, tags and images after a profile rename**, and a profile
+  renamed outside the extension is found again.
 
 ### Changed
 
 - **The permission card shows only what Hermes offers, and says why when it is about an edit.** The
-  Manual/Smart/None switch no longer sits inside the card — the mode is a setting, and its button is
-  in the toolbar. Edit cards carry one plain line naming the three things that can make an edit ask
-  (the button, the permission root, a protected file) and telling the reader which to change; the
-  hint applies from the next run, as the mode does. Command cards get no hint.
-- **The permission buttons now govern edits as well as commands.** Manual asks for both; Smart and
-  None run commands as before and free file edits inside the permission root, asking outside it;
-  DANGER frees edits everywhere and clears the deny rules. Sensitive files — `.git`, `.ssh`, `.env`,
-  keys, instruction files — always ask, and no button changes that. A change made while a run is in
-  flight applies when that run ends instead of being lost, and each button's tooltip now says what
-  it does to commands and edits separately, replacing the one sentence that claimed None only
-  asked about Hermes itself.
-- **Permissions has a feature of its own.** Nine methods and six file-writing helpers left the
-  composition root for `host/permissions/` (its record and deny backups behind one store), mounted
-  on the router as one member instead of four. `app.ts` is 224 lines shorter for it.
-- **One cwd per workspace, decided by the folder VS Code opened.** The folder a session runs in
-  had three answers — the active editor's folder, the workspace file, a stored path compared by
-  prefix — and they disagreed on everything except a single folder. It is now one rule: the folder
-  the window opened (a plain folder is itself the workspace; a `.code-workspace` gives its first
-  folder), one cwd per workspace rather than per tab, and a tab moved to another workspace loads
-  there so Hermes moves the session with it. Focus no longer decides, and `tommys.cwd` and the
-  per-agent `cwd` are gone with it. A window with no folder is not a working area: Hermes is not
-  started, and the pane says why. A cwd is claimed by the window that contains it, so the
-  "workspace file elsewhere" and "second root" cases now belong to the window they run in.
+  Manual/Smart/None/ALL switch no longer sits inside the card — the permission mode is a setting,
+  and it has its own control in the toolbar. Edit cards carry one plain line naming the three things
+  that can make an edit ask (the mode, the Hermes cwd, a protected file) and telling the reader which
+  to change; the hint applies from the next run, as the permission mode does. Command cards get no
+  hint.
+- **The permission modes now govern edits as well as commands.** Manual asks for both; Smart and
+  None run commands as before and free file edits inside the Hermes cwd, asking outside it; ALL frees
+  edits everywhere and clears the deny rules. Sensitive files — `.git`, `.ssh`, `.env`, keys,
+  instruction files — always ask, and no permission mode changes that. A change made while a run is
+  in flight applies when that run ends instead of being lost, and each mode's tooltip now says what
+  it does to commands and edits separately, replacing the one sentence that claimed None only asked
+  about Hermes itself.
+- **The control that shows the Hermes cwd opens and closes its row**, the same as ✕.
+- **The active Hermes session (tab) is remembered per agent per workspace.**
+- **A window with no workspace folder open does not start Hermes.**
+
+### Improved
+
+- **A new chat works with the permission mode you see, from its first request.**
+- **After switching agents, the permission mode you see is the one in use.**
+- **Developer: before converting data from an older layout**, the data home is copied to
+  `<home>.backup-<yyyymmdd>`, and only one window converts at a time.
+- **Developer, learned from Hermes:** `profile.yaml` is optional; Hermes' root is not `HERMES_HOME`
+  for a profile Hermes starts; `state.db` is read with `node:sqlite` from the runtime; a fallback
+  folder is chosen by when it was added, not by its position.
+
+### Fixed
+
+- **A permission press made during a run now says what it did.** Commands follow at once, but Hermes
+  freezes the session's edit mode for the run in flight, so the edit half waited in silence. The pane
+  says "Applies from the next run." beside the answers — the same words the Hermes cwd uses, from one
+  string — and clears it when the run ends and the mode lands.
+- **A Hermes session is no longer claimed for a window because its folder happens to be inside one.**
+  Once ownership was decided by containment, an untagged Hermes session — written before tags
+  existed, or made by the TUI, the CLI or Desktop — was tagged to whichever window had that folder,
+  and opening it then moved it to that window's Hermes cwd. Nothing claims a Hermes session now: it
+  reaches a window only by being opened from Closed Sessions, which is also where such sessions are
+  now listed, beside the ones Hermes was told to hide.
+- **The Hermes cwd stays on your choice after a window reload.** Before, Hermes went back to the
+  workspace's first folder while the green chip still showed your choice.
 
 ### Removed
 
