@@ -1,0 +1,26 @@
+/* The folder the pane is working in.
+ *
+ * One marker, two shapes: a project header circled in its own accent (the same colour its tabs
+ * carry), and the root space — the plane and the empty area it keeps — in the neutral border.
+ * Without it the state is invisible: a tab strip has no cursor to read a selection from.
+ */
+.tab-group.is-active[data-project] > .tab-group-header {
+    box-shadow: inset 0 0 0 2px var(--project-accent);
+    color: var(--project-accent);
+}
+
+body.surface-rail .tab-group.is-active[data-project] {
+    background: color-mix(in srgb, var(--project-accent) 16%, transparent);
+}
+
+/* The root space keeps an area even with no tab in it: the plane is a place the pane can work
+ * in, so it has to be clickable and markable whether or not it holds anything. */
+body.surface-rail .tab-group--plane {
+    min-height: 18px;
+}
+
+body.surface-rail .tab-group--plane.is-active {
+    box-shadow: inset 0 0 0 1px var(--border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--dim) 12%, transparent);
+}

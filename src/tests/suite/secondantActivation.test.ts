@@ -18,6 +18,7 @@ const quietHost = (): SessionsHost & { lines: string[] } => {
         modelLabel: () => undefined,
             currentWorkspaceId: () => '',
             knownWorkspaceIds: () => [],
+            activeChanged: () => {},
     };
 };
 

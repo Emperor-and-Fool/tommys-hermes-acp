@@ -19,6 +19,7 @@ import * as permissionModeBar from './components/permissions/permissionModeBar';
 // Component styles are bundled into media/pane.css by `npm run build:pane`.
 import './components/permissions/permissionCard.css';
 import './components/workspace/permissionRootBar.css';
+import './components/workspace/projectGrouped.css';
 import { initPermissionRoot } from './components/workspace/permissionRootBar';
 import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';

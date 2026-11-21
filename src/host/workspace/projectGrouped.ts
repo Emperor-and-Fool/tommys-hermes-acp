@@ -39,6 +39,8 @@ export interface ProjectCommands {
     deleteProject(projectId: string): void;
     moveTabToProject(tabId: string, projectId: string): void;
     moveTabToWorkspace(tabId: string, workspace: string): void;
+    /** The folder the pane is working in, or the plane with ''. A click, never a derivation. */
+    setActiveProject(projectId: string): void;
 }
 
 /**
@@ -117,6 +119,13 @@ export function dropProjectFromTabs(tabs: SessionInfo[], projectId: string): Ses
 export class Projects {
     private readonly _identity: WorkspaceIdentity;
     readonly commands: ProjectCommands;
+    /**
+     * The project this window is working in, or '' for the plane.
+     *
+     * Null until something names it, and never persisted: a window starts on the active tab's
+     * project, so opening a session opens its folder.
+     */
+    private _activeProject: string | null = null;
 
     constructor(
         private readonly _store: WorkspaceStore,
@@ -147,6 +156,7 @@ export class Projects {
                 this._writeTabs(next, `Tab ${tabId} -> project ${projectId || '(plane)'}`);
             },
             moveTabToWorkspace: (tabId, workspaceId) => this._moveTabToWorkspace(tabId, workspaceId),
+            setActiveProject: projectId => this.setActiveProject(projectId),
         };
     }
 
@@ -188,20 +198,83 @@ export class Projects {
     /** The agent switched: its projects are a different file, beside that profile's tabs. */
     bindProfileScope(sessionProfileId: string): void {
         this._agentProjects.setProfile(sessionProfileId);
+        // Another profile is another tab list: the active project it had names nothing here.
+        this._activeProject = null;
         this.postList();
     }
 
     /**
-     * Tell the pane what exists: the workspaces this editor opened, and this window's projects.
+     * The project this window is working in, or '' for the plane.
+     *
+     * The value a reader gets before anything set it is the active tab's project — the state a
+     * window starts in, and the reason a click is not needed to begin with.
+     */
+    get activeProject(): string {
+        if (this._activeProject !== null) {
+            return this._activeProject;
+        }
+        return this._projectOfActiveTab();
+    }
+
+    /**
+     * Set the active project, or the plane with an empty id.
+     *
+     * A value this window does not list clamps to the plane: a project deleted, or one of another
+     * window's, must not leave the state pointing at something no header can show. Nothing is
+     * posted for a value that did not change — a tab switch inside one project says nothing new.
+     */
+    setActiveProject(projectId: string): void {
+        const next = this._clampActiveProject(projectId);
+        // Compared against the value last posted, never against the derived start value: the
+        // derivation reads the active tab, which is the very thing this call may be following.
+        if (this._activeProject === next) {
+            return;
+        }
+        this._activeProject = next;
+        this._host.log(`Active project: ${next || '(root)'}`);
+        this.postList();
+    }
+
+    /**
+     * The active tab moved (a click, an adopt, a close): the project follows it.
+     *
+     * This is what makes a tab click behave like a click on a folder in an explorer, and it is
+     * why the pane sends no project of its own when the tab is what changed.
+     */
+    syncActiveProject(): void {
+        this.setActiveProject(this._projectOfActiveTab());
+    }
+
+    /** The project of the tab on screen: '' when there is no such tab, or it is on the plane. */
+    private _projectOfActiveTab(): string {
+        const activeId = this._host.activeTabId();
+        return this._host.tabs().find(tab => tab.id === activeId)?.project || '';
+    }
+
+    private _clampActiveProject(projectId: string): string {
+        if (!projectId) {
+            return '';
+        }
+        return this.projectsInWindow().some(project => project.id === projectId) ? projectId : '';
+    }
+
+    /**
+     * Tell the pane what exists: the workspaces this editor opened, this window's projects, and
+     * the one the pane works in.
      *
      * The workspaces are shared, so all of them travel. The projects are not: only the ones named
-     * against this window's workspace, or they would appear in every window of the agent.
+     * against this window's workspace, or they would appear in every window of the agent. The
+     * active project rides this message because it is a property of this list — the pane draws
+     * the marker while it draws the groups, so a second message would be a second paint.
      */
     postList(): void {
+        // Read once and pin it: the derived start value becomes the state the moment it is posted.
+        this._activeProject = this._clampActiveProject(this.activeProject);
         this._host.post({
             type: 'projectList',
             workspaces: this._store.read(),
             projects: this.projectsInWindow(),
+            activeProjectId: this.activeProject,
         });
     }
 

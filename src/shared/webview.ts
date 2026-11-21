@@ -73,8 +73,9 @@ export type HostToPane =
 
     // Tabs and models.
     | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string }
-    /** The project tree: the workspaces this editor opened, and the projects named against them. */
-    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[] }
+    /** The project tree: the workspaces this editor opened, the projects named against them, and
+     * which one the pane is working in ('' = the plane, the tabs in no project). */
+    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[]; activeProjectId: string }
     | { type: 'hiddenSessions'; sessions: CatalogSession[] }
     | { type: 'sessionExport'; action: SessionExportAction; sessionId: string; title: string; markdown: string; filename: string }
     | { type: 'modelList'; configId: string; currentValueId: string; currentLabel: string; models: ModelListItem[]; groups?: ModelProviderGroup[]; fromAgent: boolean }
@@ -165,6 +166,8 @@ export type PaneToHost =
     | { type: 'deleteProject'; projectId: string }
     /** Put a tab in a folder; an empty id puts it back on the plane below them. */
     | { type: 'setTabProject'; sessionId: string; projectId: string }
+    /** The folder the pane is working in: a project header, or '' for the plane and its space. */
+    | { type: 'setActiveProject'; projectId: string }
     | { type: 'sessionExport'; sessionId: string; action: SessionExportAction; indices?: number[] }
     /** `interrupt` is set when the user confirms switching away from a running turn. */
     | { type: 'switchSession'; sessionId: string; interrupt?: boolean }

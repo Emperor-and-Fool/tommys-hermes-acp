@@ -409,6 +409,8 @@ export class App implements vscode.WebviewViewProvider {
             modelLabel: () => this._models.currentLabel,
             currentWorkspaceId: () => this._projects.currentId(),
             knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
+            // The active project follows the tab, and the workspace feature is the one that says so.
+            activeChanged: () => this._projects.syncActiveProject(),
         }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
@@ -430,6 +432,7 @@ export class App implements vscode.WebviewViewProvider {
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
             resolveCwd: () => this._cwd.defaultFolderPath(),
+            activeProject: () => this._projects.activeProject,
             resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
@@ -580,7 +583,11 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (this._session.tabs.length === 0) {
+        if (!this._session.hasOpenChat()) {
+            // A chat is open when a tab is on screen, or a blank one `+` minted: an empty window
+            // used to refuse here even after `+`, because the check asked for a record that only
+            // the first turn writes.
+            this._log('Send refused: no chat is open in this window');
             this._postMessage({ type: 'noActiveTab' });
             return;
         }
@@ -731,7 +738,8 @@ export class App implements vscode.WebviewViewProvider {
             this._notices.warn(t('hermesNotConnected'));
             return;
         }
-        if (this._session.tabs.length === 0) {
+        if (!this._session.hasOpenChat()) {
+            this._log('Send refused: no chat is open in this window');
             this._notices.warn(t('noActiveTabHint'));
             return;
         }

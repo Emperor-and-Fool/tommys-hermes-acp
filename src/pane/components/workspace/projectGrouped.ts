@@ -31,12 +31,16 @@ function applyProjectCollapsed(group: HTMLElement): void {
 /**
  * Projects are parents: their tabs are drawn inside them. A tab in no project — or in one that no
  * longer exists — sorts below all of them, unindented, which is what tells the two apart.
+ *
+ * The plane is drawn even when it holds no tab: it is the root the pane can be working in, so it
+ * has to be clickable and marked whether or not a tab is in it.
  */
 export function projectTreeHtml(
     sessions: SessionInfo[],
     tabsHtml: (list: SessionInfo[]) => string,
     projects: Project[],
     workspaces: Workspace[],
+    activeProjectId: string,
 ): string {
     const groups: Array<{ project: Project; sessions: SessionInfo[] }> = [];
     projects.forEach(function(project) {
@@ -50,7 +54,8 @@ export function projectTreeHtml(
 
     const parts: string[] = [];
     groups.forEach(function(group, index) {
-        parts.push('<div class="tab-group" data-project="' + escapeHtml(group.project.id) + '"' +
+        const active = group.project.id === activeProjectId ? ' is-active' : '';
+        parts.push('<div class="tab-group' + active + '" data-project="' + escapeHtml(group.project.id) + '"' +
             ' style="--project-accent:' + projectAccent(index, groups.length) + '">' +
             '<div class="tab-group-header" title="' + escapeHtml(workspacePathOf(workspaces, group.project.workspaceId)) + '">' +
                 '<span class="tab-group-caret"></span>' +
@@ -59,9 +64,8 @@ export function projectTreeHtml(
             '<div class="tab-group-tabs">' + tabsHtml(group.sessions) + '</div>' +
             '</div>');
     });
-    if (plane.length) {
-        parts.push('<div class="tab-group tab-group--plane"><div class="tab-group-tabs">' + tabsHtml(plane) + '</div></div>');
-    }
+    const rootActive = activeProjectId === '' ? ' is-active' : '';
+    parts.push('<div class="tab-group tab-group--plane' + rootActive + '"><div class="tab-group-tabs">' + tabsHtml(plane) + '</div></div>');
     return parts.join('');
 }
 
@@ -232,23 +236,24 @@ export function showProjectPicker(sessionId: string, projects: Project[], worksp
  * Leave the folder you are working in open, and one more to fetch context from.
  *
  * A start shows every folder, because that is how the workspace reads at a glance. From the first
- * switch onwards, the open set is the active session's project plus the most recently *opened*
- * other one — so a session can be opened just to read it, the working one returned to, and both
- * still be there. The rule is applied only when the active session changes, so dragging, renaming
- * and manual folding in between are left alone.
+ * switch onwards, the open set is the active *project* plus the most recently *opened* other one —
+ * so a session can be opened just to read it, the working one returned to, and both still be
+ * there. The rule is applied only when the active project changes, so dragging, renaming and
+ * manual folding in between are left alone.
  */
-export function applyProjectFocus(projects: Project[]): void {
-    const activeId = state.lastActiveSessionId;
-    if (!activeId || state.focusAppliedFor === activeId) {
+export function applyProjectFocus(projects: Project[], activeProjectId: string): void {
+    // The latch is keyed on the project, not the tab: a header click is a focus decision too, and
+    // the prefix keeps "applied for the root" apart from "never applied".
+    const key = 'p:' + activeProjectId;
+    if (state.focusAppliedFor === key) {
         return;
     }
     const firstApplication = state.focusAppliedFor === '';
-    state.focusAppliedFor = activeId;
-    const activeProject = state.lastSessions.find(tab => tab.id === activeId)?.project || '';
-    // Recency is the pane's own: a session that was opened *is* the evidence, and the tab list it
-    // came from is already here — no round trip, and no dependence on which list the host posts.
-    if (activeProject) {
-        state.recentProjects = [activeProject, ...state.recentProjects.filter(id => id !== activeProject)].slice(0, 8);
+    state.focusAppliedFor = key;
+    // Recency is the pane's own: a project that was working is the evidence, and no round trip
+    // is needed to know it.
+    if (activeProjectId) {
+        state.recentProjects = [activeProjectId, ...state.recentProjects.filter(id => id !== activeProjectId)].slice(0, 8);
     }
     if (firstApplication) {
         // A fresh window: every folder open.
@@ -256,16 +261,16 @@ export function applyProjectFocus(projects: Project[]): void {
         return;
     }
     const open: string[] = [];
-    if (activeProject) {
-        open.push(activeProject);
+    if (activeProjectId) {
+        open.push(activeProjectId);
     }
     for (const id of state.recentProjects) {
-        if (id !== activeProject) {
+        if (id !== activeProjectId) {
             open.push(id);
             break;
         }
     }
-    if (!activeProject) {
+    if (!activeProjectId) {
         for (const id of state.recentProjects.slice(0, 2)) {
             if (open.indexOf(id) < 0) open.push(id);
         }
@@ -276,10 +281,19 @@ export function applyProjectFocus(projects: Project[]): void {
 }
 
 /**
- * Wire the groups the parent just drew: the fold, the header's menu, and the drop target that
- * moves a tab into this project — plus the plane, which is the way back out.
+ * Wire the groups the parent just drew: the fold, the header's menu and its pick, the root space,
+ * and the drop target that moves a tab into this project — plus the plane, which is the way back
+ * out.
+ *
+ * A click on a header does two things: it folds the group, as it always has, and it makes that
+ * project the one the pane works in. The root space is the same click with no project.
  */
-export function wireProjectGroups(container: HTMLElement, projects: Project[], workspaces: Workspace[]): void {
+export function wireProjectGroups(
+    container: HTMLElement,
+    projects: Project[],
+    workspaces: Workspace[],
+    setActiveProject: (projectId: string) => void,
+): void {
     container.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
         const header = group.querySelector<HTMLElement>('.tab-group-header');
         if (!header) return;
@@ -289,6 +303,7 @@ export function wireProjectGroups(container: HTMLElement, projects: Project[], w
             if (e.target && (e.target as HTMLElement).classList.contains('tab-rename-input')) return;
             const id = group.dataset.project || '';
             if (!id) return;
+            setActiveProject(id);
             if (state.collapsedProjects.has(id)) {
                 state.collapsedProjects.delete(id);
             } else {
@@ -307,6 +322,14 @@ export function wireProjectGroups(container: HTMLElement, projects: Project[], w
     const planeGroup = container.querySelector<HTMLElement>('.tab-group--plane');
     if (planeGroup) {
         wireProjectDropTarget(planeGroup, '');
+        // The root space: the plane and the empty area it now keeps. A tab in it is a tab, and the
+        // host follows a tab on its own — so a click on one is left to the tab.
+        planeGroup.addEventListener('click', function(e) {
+            if (e.target && (e.target as HTMLElement).closest && (e.target as HTMLElement).closest('.session-tab')) {
+                return;
+            }
+            setActiveProject('');
+        });
     }
 }
 

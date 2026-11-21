@@ -20,6 +20,13 @@ import type { HostToPane } from '../../../shared/webview';
 /** The workspaces and the projects the host last reported: this feature's own state (S1). */
 let workspaces: Workspace[] = [];
 let projects: Project[] = [];
+/**
+ * The folder the pane is working in, or '' for the plane.
+ *
+ * The host owns it (the workspace feature, `host/workspace/projectGrouped.ts`) and sends it with
+ * the project list; this file holds the copy the tree is drawn from and sends a click back.
+ */
+let activeProjectId = '';
 
 /** The last path segment without the workspace extension: what a picker row can show. */
 export function workspaceLabel(workspacePath: string): string {
@@ -74,7 +81,7 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
         state.pendingTabsRender = { sessions: sessions, activeId: activeId };
         return;
     }
-    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml, projects, workspaces);
+    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml, projects, workspaces, activeProjectId);
 
     wireTabs(tabBar, {
         rerender: renderTree,
@@ -85,7 +92,7 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
         hasWorkspaces: workspaces.length > 0,
         hasProjects: projects.length > 0,
     });
-    wireProjectGroups(tabBar, projects, workspaces);
+    wireProjectGroups(tabBar, projects, workspaces, setActiveProject);
 
     const activeTab = tabBar.querySelector('.session-tab.active');
     if (activeTab) {
@@ -94,26 +101,40 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
 }
 
 /**
- * The host's session list: which tab is on screen, the list the tree draws from, the focus that
- * follows the active session, and the redraw. The rest of that message belongs to other features —
- * the hint in the status bar, the history list, the switch modal — and the router hands it to each
- * of them in turn (R1a).
+ * The folder the pane is working in, as a click: a project header, or '' for the plane.
+ *
+ * The host is the owner, so this only says what was picked; the marker and the fold come back in
+ * the project list the host answers with.
+ */
+function setActiveProject(projectId: string): void {
+    post({ type: 'setActiveProject', projectId: projectId });
+}
+
+/**
+ * The host's session list: which tab is on screen, the list the tree draws from, and the redraw.
+ * The rest of that message belongs to other features — the hint in the status bar, the history
+ * list, the switch modal — and the router hands it to each of them in turn (R1a).
+ *
+ * The fold is not applied here any more: it follows the active *project*, which arrives with the
+ * project list, and a tab that lands in the folder already open changes nothing.
  */
 export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>): void {
     state.activeSessionId = msg.activeSessionId || state.activeSessionId;
     state.lastSessions = msg.sessions || [];
     state.lastActiveSessionId = state.activeSessionId;
-    applyProjectFocus(projects);
     renderTree(msg.sessions, msg.activeSessionId);
 }
 
 /**
- * The host's project list: both lists replace, the tree redraws from what it now holds, and the
- * notice clears — a list that arrived is itself the answer to whatever was refused.
+ * The host's project list: both lists replace, the active project comes with them, the fold
+ * follows it, and the tree redraws from what it now holds. The notice clears — a list that
+ * arrived is itself the answer to whatever was refused.
  */
 export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>): void {
     workspaces = msg.workspaces || [];
     projects = msg.projects || [];
+    activeProjectId = msg.activeProjectId || '';
+    applyProjectFocus(projects, activeProjectId);
     renderTree(state.lastSessions, state.lastActiveSessionId);
     showProjectNotice('');
 }

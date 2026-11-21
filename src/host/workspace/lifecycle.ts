@@ -59,6 +59,11 @@ export interface TabLifecycleHost {
     resolveCwd(): string;
     /** The cwd of one tab's session: its own root, else the agent's default. */
     resolveCwdFor(sessionId: string): string;
+    /**
+     * The folder the pane is working in, or '' for the plane. A new chat is opened in it, and it
+     * is the workspace feature's state, not ours.
+     */
+    activeProject(): string;
     /** Our id for the agent this pane is talking to: attachments are keyed by it. */
     sessionProfileId(): string;
     attachments: AttachmentStore;
@@ -177,7 +182,7 @@ export class TabLifecycle {
                 rec => !!rec.hermesSessionId && !!session.catalogRow(rec.hermesSessionId)
             );
             if (newest?.hermesSessionId) {
-                session.activeId = newest.id;
+                session.setActiveId(newest.id);
                 session.messages = [];
                 this._host.post({ type: 'newChat' });
                 if (!await this._loadForReplay(acp, newest.id, newest.hermesSessionId, 'Adopt')) {
@@ -375,11 +380,12 @@ export class TabLifecycle {
     }
 
     async createBlankTab(): Promise<void> {
-        // The project of the tab being left is the project this chat is opened in.
-        const project = this._host.session.tabs.find(tab => tab.id === this._host.session.activeId)?.project || '';
+        // The folder the pane is working in is where this chat opens: `+` is not a tab change, so
+        // the active project is exactly what the new chat takes.
+        const project = this._host.activeProject();
         this._host.saveCurrent();
         this._host.session.messages = [];
-        this._host.session.activeId = mintId();
+        this._host.session.setActiveId(mintId(), { keepActiveProject: true });
         this._host.session.beginBlank(project);
         this._host.snapshotModelFromProfile();
         // No record: the chat is drawn from this message until its first turn writes one.
