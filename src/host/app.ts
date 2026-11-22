@@ -346,9 +346,12 @@ export class App implements vscode.WebviewViewProvider {
         // features that use them (C2). A profile switch reaches them through those
         // features' bindProfileScope, so nothing below builds a store of its own.
         const workspaces = new WorkspaceStore(this._historyDir);
+        // One per-workspace row table for this window: the roots read and write it, and the
+        // project pair is one of its keys, so the two features must not each hold a copy.
         // The roots live with the workspace record, so the locator reads and writes them there;
         // the store only exists from here on, which is why the locator is built at this point.
-        this._cwd = new WorkspaceCwd(this._folders, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
+        const profileWorkspaces = new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId);
+        this._cwd = new WorkspaceCwd(this._folders, profileWorkspaces);
         // Permissions keeps its own record and its own deny backups, in the profile's folder.
         this._approvals = new Approvals(
             {
@@ -401,7 +404,7 @@ export class App implements vscode.WebviewViewProvider {
                 const unsubscribe = this._folders.onFoldersChanged(handler);
                 return { dispose: unsubscribe };
             },
-        });
+        }, profileWorkspaces);
         this._session = new Sessions(this._historyDir, initialTarget.sessionProfileId, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),

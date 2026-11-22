@@ -112,10 +112,6 @@ export interface PaneState {
     collapsedProjects: Set<string>;
     /** The blank chat being written in: it has no record, so the pane carries it itself. */
     blankChat: { id: string; project: string } | null;
-    /** Project ids the host has seen opened, most recent first. */
-    recentProjects: string[];
-    /** The session the folding rule was last applied for; '' means it never has been. */
-    focusAppliedFor: string;
     logScrollIdleTimer: Timer | null;
     logScrollHeldByUser: boolean;
     logs: LogLine[];
@@ -213,8 +209,6 @@ export const state: PaneState = {
     lastSessions: [],
     collapsedProjects: new Set<string>(),
     blankChat: null,
-    recentProjects: [],
-    focusAppliedFor: '',
     logScrollIdleTimer: null,
     logScrollHeldByUser: false,
     logs: [],

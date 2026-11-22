@@ -3,6 +3,7 @@ import type { Project, SessionInfo } from '../../shared/chat';
 import { moveTabToWorkspace, WorkspaceIdentity } from './workSpace';
 import type { WorkspaceSubscription } from './workSpace';
 import { ProjectStore, WorkspaceStore } from './store';
+import type { ProfileWorkspaceStore } from './store';
 
 /**
  * The project group: the projects named against this window's workspace, and which tab sits in one.
@@ -122,15 +123,20 @@ export class Projects {
     /**
      * The project this window is working in, or '' for the plane.
      *
-     * Null until something names it, and never persisted: a window starts on the active tab's
-     * project, so opening a session opens its folder.
+     * Null until the start value is read: the pair saved for this workspace, or — the first time —
+     * the active tab's project. Never derived again afterwards.
      */
     private _activeProject: string | null = null;
+    /** The folder that was active before this one: the second of the two the tree keeps open. */
+    private _otherProject = '';
+    /** Which workspace the pair in hand belongs to: a workspace switch reads that workspace's own. */
+    private _restoredFor = '';
 
     constructor(
         private readonly _store: WorkspaceStore,
         private readonly _agentProjects: ProjectStore,
         private readonly _host: ProjectsHost,
+        private readonly _profileWorkspaces: ProfileWorkspaceStore,
     ) {
         // Adopt the shared file's list now: `start()` registers the workspace moments later, and
         // that write must never be the thing that decides whether the projects survive.
@@ -198,40 +204,76 @@ export class Projects {
     /** The agent switched: its projects are a different file, beside that profile's tabs. */
     bindProfileScope(sessionProfileId: string): void {
         this._agentProjects.setProfile(sessionProfileId);
-        // Another profile is another tab list: the active project it had names nothing here.
+        // Another profile is another tab list and another saved pair: read that one at the next
+        // post, which is what bindProfileScope asks for.
         this._activeProject = null;
+        this._otherProject = '';
+        this._restoredFor = '';
         this.postList();
     }
 
     /**
      * The project this window is working in, or '' for the plane.
      *
-     * The value a reader gets before anything set it is the active tab's project — the state a
-     * window starts in, and the reason a click is not needed to begin with.
+     * Before the start value has been read this is the active tab's project — the state a window
+     * starts in, and the reason a click is not needed to begin with.
      */
     get activeProject(): string {
-        if (this._activeProject !== null) {
-            return this._activeProject;
+        if (this._activeProject === null) {
+            return this._projectOfActiveTab();
         }
-        return this._projectOfActiveTab();
+        return this._activeProject;
+    }
+
+    /** The second folder the tree keeps open: the one that was active before this one. */
+    get otherOpenProject(): string {
+        return this._otherProject;
+    }
+
+    /**
+     * Read this workspace's pair, once — and again when the window moves to another workspace.
+     *
+     * The value saved for the workspace is the truth, even when the active tab says something
+     * else: the tab may have been restored after a reload, and the folder the user was working in
+     * is not the same fact as the tab on screen. Only a workspace that never saved a pair falls
+     * back to the active tab.
+     */
+    private _ensureRestored(): void {
+        const workspaceId = this.currentId();
+        if (this._restoredFor === workspaceId && this._activeProject !== null) {
+            return;
+        }
+        this._restoredFor = workspaceId;
+        const saved = workspaceId ? this._profileWorkspaces.openProjects(workspaceId) : undefined;
+        if (saved) {
+            this._activeProject = this._clampActiveProject(saved[0]);
+            this._otherProject = this._clampOtherProject(saved[1], this._activeProject);
+            return;
+        }
+        this._activeProject = this._projectOfActiveTab();
+        this._otherProject = '';
     }
 
     /**
      * Set the active project, or the plane with an empty id.
      *
      * A value this window does not list clamps to the plane: a project deleted, or one of another
-     * window's, must not leave the state pointing at something no header can show. Nothing is
-     * posted for a value that did not change — a tab switch inside one project says nothing new.
+     * window's, must not leave the state pointing at something no header can show. The folder
+     * that was active becomes the second one open — the root included — and the pair is written
+     * for this workspace on every change. Nothing is posted for a value that did not change.
      */
     setActiveProject(projectId: string): void {
+        this._ensureRestored();
         const next = this._clampActiveProject(projectId);
-        // Compared against the value last posted, never against the derived start value: the
-        // derivation reads the active tab, which is the very thing this call may be following.
-        if (this._activeProject === next) {
+        const previous = this._activeProject === null ? '' : this._activeProject;
+        // Compared against the value last read or posted, never against a getter that derives it.
+        if (previous === next) {
             return;
         }
+        this._otherProject = this._clampOtherProject(previous, next);
         this._activeProject = next;
-        this._host.log(`Active project: ${next || '(root)'}`);
+        this._saveOpenProjects();
+        this._host.log(`Active project: ${next || '(root)'} · other open: ${this._otherProject || '(root)'}`);
         this.postList();
     }
 
@@ -258,6 +300,21 @@ export class Projects {
         return this.projectsInWindow().some(project => project.id === projectId) ? projectId : '';
     }
 
+    /** The same clamp for the second slot, which also may not name the active folder twice. */
+    private _clampOtherProject(projectId: string, activeProjectId: string): string {
+        const clamped = this._clampActiveProject(projectId);
+        return clamped === activeProjectId ? '' : clamped;
+    }
+
+    /** Write the pair for this workspace. A window with no workspace has nowhere to write it. */
+    private _saveOpenProjects(): void {
+        const workspaceId = this.currentId();
+        if (!workspaceId || this._activeProject === null) {
+            return;
+        }
+        this._profileWorkspaces.setOpenProjects(workspaceId, this._activeProject, this._otherProject);
+    }
+
     /**
      * Tell the pane what exists: the workspaces this editor opened, this window's projects, and
      * the one the pane works in.
@@ -268,13 +325,17 @@ export class Projects {
      * the marker while it draws the groups, so a second message would be a second paint.
      */
     postList(): void {
-        // Read once and pin it: the derived start value becomes the state the moment it is posted.
+        // The pair is this window's state, read once and pinned: the derived start value becomes
+        // the state at the moment it is first published.
+        this._ensureRestored();
         this._activeProject = this._clampActiveProject(this.activeProject);
+        this._otherProject = this._clampOtherProject(this._otherProject, this._activeProject);
         this._host.post({
             type: 'projectList',
             workspaces: this._store.read(),
             projects: this.projectsInWindow(),
             activeProjectId: this.activeProject,
+            otherOpenProjectId: this._otherProject,
         });
     }
 

@@ -3,6 +3,8 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
+import { collapsedFromPair, projectClickAction } from './projectTree';
+import type { FoldOverride } from './projectTree';
 import type { Project, Workspace } from '../../../shared/chat';
 
 /**
@@ -178,51 +180,21 @@ export function showProjectPicker(
 }
 
 /**
- * Leave the folder you are working in open, and one more to fetch context from.
+ * Fold everything the pair does not hold open.
  *
- * A start shows every folder, because that is how the workspace reads at a glance. From the first
- * switch onwards, the open set is the active *project* plus the most recently *opened* other one —
- * so a session can be opened just to read it, the working one returned to, and both still be
- * there. The rule is applied only when the active project changes, so dragging, renaming and
- * manual folding in between are left alone.
+ * Two projects are open at most — the active one and the one before it — and the root counts as
+ * one of the two. A manual fold (a ctrl-click, or a click on the active project) is carried in
+ * `foldOverride` and applies to its own project only. The rule is a function of the pair, so it is
+ * re-applied on every list the host sends: a rename does not pop a folder open, and a pair change
+ * is what moves the tree.
  */
-export function applyProjectFocus(projects: Project[], activeProjectId: string): void {
-    // The latch is keyed on the project, not the tab: a header click is a focus decision too, and
-    // the prefix keeps "applied for the root" apart from "never applied".
-    const key = 'p:' + activeProjectId;
-    if (state.focusAppliedFor === key) {
-        return;
-    }
-    const firstApplication = state.focusAppliedFor === '';
-    state.focusAppliedFor = key;
-    // Recency is the pane's own: a project that was working is the evidence, and no round trip
-    // is needed to know it.
-    if (activeProjectId) {
-        state.recentProjects = [activeProjectId, ...state.recentProjects.filter(id => id !== activeProjectId)].slice(0, 8);
-    }
-    if (firstApplication) {
-        // A fresh window: every folder open.
-        state.collapsedProjects = new Set<string>();
-        return;
-    }
-    const open: string[] = [];
-    if (activeProjectId) {
-        open.push(activeProjectId);
-    }
-    for (const id of state.recentProjects) {
-        if (id !== activeProjectId) {
-            open.push(id);
-            break;
-        }
-    }
-    if (!activeProjectId) {
-        for (const id of state.recentProjects.slice(0, 2)) {
-            if (open.indexOf(id) < 0) open.push(id);
-        }
-    }
-    state.collapsedProjects = new Set(
-        projects.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
-    );
+export function applyProjectFocus(
+    projects: Project[],
+    activeProjectId: string,
+    otherOpenProjectId: string,
+    foldOverride: FoldOverride | null,
+): void {
+    state.collapsedProjects = collapsedFromPair(projects, activeProjectId, otherOpenProjectId, foldOverride);
 }
 
 /**
@@ -230,14 +202,18 @@ export function applyProjectFocus(projects: Project[], activeProjectId: string):
  * and the drop target that moves a tab into this project — plus the plane, which is the way back
  * out.
  *
- * A click on a header does two things: it folds the group, as it always has, and it makes that
- * project the one the pane works in. The root space is the same click with no project.
+ * A header click follows `projectClickAction`: a click on a folder that is not the working one
+ * selects it and never folds it; a click on the working folder folds it and posts nothing; a
+ * ctrl-click folds this one project by hand, selecting nothing. The root space is the same click
+ * with no project, and the parent owns it.
  */
 export function wireProjectGroups(
     container: HTMLElement,
     projects: Project[],
     workspaces: Workspace[],
+    activeProjectId: string,
     setActiveProject: (projectId: string) => void,
+    setFoldOverride: (override: FoldOverride | null) => void,
 ): void {
     container.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
         const header = group.querySelector<HTMLElement>('.tab-group-header');
@@ -248,13 +224,24 @@ export function wireProjectGroups(
             if (e.target && (e.target as HTMLElement).classList.contains('tab-rename-input')) return;
             const id = group.dataset.project || '';
             if (!id) return;
-            setActiveProject(id);
-            if (state.collapsedProjects.has(id)) {
-                state.collapsedProjects.delete(id);
-            } else {
-                state.collapsedProjects.add(id);
+            const action = projectClickAction(id, activeProjectId, !!(e.ctrlKey || e.metaKey));
+            if (action.clearOverride) {
+                setFoldOverride(null);
             }
-            applyProjectCollapsed(group);
+            if (action.post) {
+                setActiveProject(id);
+            }
+            if (action.fold) {
+                const collapsed = !state.collapsedProjects.has(id);
+                if (collapsed) {
+                    state.collapsedProjects.add(id);
+                } else {
+                    state.collapsedProjects.delete(id);
+                }
+                applyProjectCollapsed(group);
+                // The fold is the user's, not the pair's: it survives the next redraw.
+                setFoldOverride({ projectId: id, collapsed: collapsed });
+            }
         });
         header.addEventListener('contextmenu', function(e: MouseEvent) {
             e.preventDefault();

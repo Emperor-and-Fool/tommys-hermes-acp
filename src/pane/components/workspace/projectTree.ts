@@ -64,6 +64,65 @@ export function chatProjectOf(sessions: SessionInfo[], activeSessionId: string):
     return sessions.find(tab => tab.id === activeSessionId)?.project || '';
 }
 
+/** What one click on a project header is allowed to do. */
+export interface ProjectClick {
+    /** Tell the host this is the folder the pane works in. */
+    post: boolean;
+    /** Fold or open this project here, in the pane. */
+    fold: boolean;
+    /** This click ends any manual fold a previous click left behind. */
+    clearOverride: boolean;
+}
+
+/**
+ * A header click, decided before anything happens: select, fold, or both.
+ *
+ * The rule is "the first click selects, a click on the project you are already working in folds
+ * it" — so a click that moves the working folder never also folds it, and a click that folds
+ * never also posts. A ctrl-click (or meta-click) is the manual fold: it toggles this one project,
+ * selects nothing, and is nobody else's business until the next normal click.
+ */
+export function projectClickAction(projectId: string, activeProjectId: string, modifier: boolean): ProjectClick {
+    if (modifier) {
+        return { post: false, fold: true, clearOverride: false };
+    }
+    if (projectId !== activeProjectId) {
+        return { post: true, fold: false, clearOverride: true };
+    }
+    return { post: false, fold: true, clearOverride: true };
+}
+
+/** A fold the user made by hand: one project, held until the next normal click. */
+export interface FoldOverride {
+    projectId: string;
+    collapsed: boolean;
+}
+
+/**
+ * Which projects are folded, from the pair the host keeps open.
+ *
+ * Two projects are open at most — the active one and the one before it — and the root counts as
+ * one of the two, so a pair holding '' opens nothing on that side. A manual fold overrides the
+ * pair for its own project only, which is how a ctrl-fold survives the redraws the pair causes.
+ */
+export function collapsedFromPair(
+    projects: Project[],
+    activeProjectId: string,
+    otherOpenProjectId: string,
+    foldOverride: FoldOverride | null,
+): Set<string> {
+    const open = [activeProjectId, otherOpenProjectId].filter(Boolean);
+    const collapsed = new Set(projects.filter(project => open.indexOf(project.id) < 0).map(project => project.id));
+    if (foldOverride && projects.some(project => project.id === foldOverride.projectId)) {
+        if (foldOverride.collapsed) {
+            collapsed.add(foldOverride.projectId);
+        } else {
+            collapsed.delete(foldOverride.projectId);
+        }
+    }
+    return collapsed;
+}
+
 /**
  * The elements whose click is their own: a tab, a project header, a button, an input.
  *

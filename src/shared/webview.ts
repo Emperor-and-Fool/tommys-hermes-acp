@@ -74,8 +74,9 @@ export type HostToPane =
     // Tabs and models.
     | { type: 'sessionList'; sessions: SessionInfo[]; activeSessionId: string }
     /** The project tree: the workspaces this editor opened, the projects named against them, and
-     * which one the pane is working in ('' = the plane, the tabs in no project). */
-    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[]; activeProjectId: string }
+     * which two the pane keeps open — the active one ('' = the plane, the tabs in no project) and
+     * the one that was active before it. */
+    | { type: 'projectList'; workspaces: Workspace[]; projects: Project[]; activeProjectId: string; otherOpenProjectId: string }
     | { type: 'hiddenSessions'; sessions: CatalogSession[] }
     | { type: 'sessionExport'; action: SessionExportAction; sessionId: string; title: string; markdown: string; filename: string }
     | { type: 'modelList'; configId: string; currentValueId: string; currentLabel: string; models: ModelListItem[]; groups?: ModelProviderGroup[]; fromAgent: boolean }

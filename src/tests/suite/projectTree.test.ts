@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert from 'assert';
-import { chatProjectOf, isRootSpaceTarget, projectMarks, projectTreeHtml, ROOT_SPACE_OWNERS } from '../../pane/components/workspace/projectTree';
+import { chatProjectOf, collapsedFromPair, isRootSpaceTarget, projectClickAction, projectMarks, projectTreeHtml, ROOT_SPACE_OWNERS } from '../../pane/components/workspace/projectTree';
 import type { Project, SessionInfo, Workspace } from '../../shared/chat';
 
 /**
@@ -94,5 +94,56 @@ describe('the root space: one click, and only on the background', () => {
 
     it('the filter names those four owners and nothing else', () => {
         assert.strictEqual(ROOT_SPACE_OWNERS, '.session-tab, .tab-group-header, button, input');
+    });
+});
+
+describe('a header click: select first, fold only what you are working in', () => {
+    it('a click on a folder that is not the working one selects it and never folds it', () => {
+        assert.deepStrictEqual(projectClickAction('p2', 'p1', false), { post: true, fold: false, clearOverride: true });
+    });
+
+    it('a click on the working folder folds it and posts nothing', () => {
+        assert.deepStrictEqual(projectClickAction('p1', 'p1', false), { post: false, fold: true, clearOverride: true });
+    });
+
+    it('a ctrl-click (or meta-click) folds this one project, selects nothing and keeps itself', () => {
+        assert.deepStrictEqual(projectClickAction('p1', 'p1', true), { post: false, fold: true, clearOverride: false });
+        assert.deepStrictEqual(projectClickAction('p2', 'p1', true), { post: false, fold: true, clearOverride: false });
+    });
+});
+
+describe('the open set: the pair, and a manual fold on top of it', () => {
+    const projects = [project('p1'), project('p2'), project('p3')];
+    const folded = (set: Set<string>): string[] => projects.filter(p => set.has(p.id)).map(p => p.id).sort();
+
+    it('two folders are open at most: the active one and the one before it', () => {
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', null)), ['p3']);
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p3', 'p2', null)), ['p1']);
+    });
+
+    it('the root counts as one of the two: it opens nothing on its side', () => {
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, '', 'p2', null)), ['p1', 'p3'], 'root + X: only X');
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', '', null)), ['p1', 'p3'], 'X + root: only X');
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, '', '', null)), ['p1', 'p2', 'p3'], 'root alone');
+    });
+
+    it('a manual fold survives a redraw, and is gone once it is cleared', () => {
+        const override = { projectId: 'p1', collapsed: true };
+        const withOverride = collapsedFromPair(projects, 'p2', 'p1', override);
+        assert.ok(withOverride.has('p1'), 'the user folded it by hand');
+        assert.deepStrictEqual(folded(withOverride), ['p1', 'p3']);
+        // The same computation again — a re-render — lands on the same thing: it survives.
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', override)), ['p1', 'p3']);
+        // A normal click clears it, and the pair has the last word.
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', null)), ['p3']);
+    });
+
+    it('an override that opens a folder wins over the pair, and names nothing that is gone', () => {
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', { projectId: 'p3', collapsed: false })), []);
+        assert.deepStrictEqual(
+            collapsedFromPair(projects, 'p2', 'p1', { projectId: 'gone', collapsed: true }),
+            collapsedFromPair(projects, 'p2', 'p1', null),
+            'a deleted project cannot be folded',
+        );
     });
 });

@@ -5,6 +5,7 @@ import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
 import { applyProjectFocus, showProjectNotice, showProjectPicker, wireProjectGroups } from './projectGrouped';
 import { chatProjectOf, isRootSpaceTarget, projectTreeHtml, workspacePathOf } from './projectTree';
+import type { FoldOverride } from './projectTree';
 import { tabEntriesHtml, wireTabs, withBlankChat } from './sessionTab';
 import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
 import type { HostToPane } from '../../../shared/webview';
@@ -28,6 +29,16 @@ let projects: Project[] = [];
  * the project list; this file holds the copy the tree is drawn from and sends a click back.
  */
 let activeProjectId = '';
+/** The second folder the tree keeps open: the one that was active before this one. */
+let otherOpenProjectId = '';
+/**
+ * A fold the user made by hand — a ctrl-click, or a click on the working folder.
+ *
+ * The pair says what the host keeps open; this says what the user added to it. It is cleared by
+ * the next normal header click, by a click on the root space, and by any change of the active
+ * project, so it can never outlive the tree it was made in.
+ */
+let foldOverride: FoldOverride | null = null;
 
 /** The last path segment without the workspace extension: what a picker row can show. */
 export function workspaceLabel(workspacePath: string): string {
@@ -55,6 +66,13 @@ export function initRootSpace(): void {
     }
     root.addEventListener('click', function(e) {
         if (!isRootSpaceTarget(e.target as HTMLElement | null)) {
+            return;
+        }
+        foldOverride = null;
+        if (activeProjectId === '') {
+            // The root already is the working folder: nothing to post, but a manual fold has to go.
+            applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverride);
+            renderTree(state.lastSessions, state.lastActiveSessionId);
             return;
         }
         setActiveProject('');
@@ -126,7 +144,7 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
         hasWorkspaces: workspaces.length > 0,
         hasProjects: projects.length > 0,
     });
-    wireProjectGroups(tabBar, projects, workspaces, setActiveProject);
+    wireProjectGroups(tabBar, projects, workspaces, activeProjectId, setActiveProject, setFoldOverride);
 
     const activeTab = tabBar.querySelector('.session-tab.active');
     if (activeTab) {
@@ -142,6 +160,11 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
  */
 function setActiveProject(projectId: string): void {
     post({ type: 'setActiveProject', projectId: projectId });
+}
+
+/** The pane's own fold, held where the state is: a ctrl-click, or a click on the working folder. */
+function setFoldOverride(override: FoldOverride | null): void {
+    foldOverride = override;
 }
 
 /**
@@ -160,15 +183,23 @@ export function onSessionList(msg: Extract<HostToPane, { type: 'sessionList' }>)
 }
 
 /**
- * The host's project list: both lists replace, the active project comes with them, the fold
- * follows it, and the tree redraws from what it now holds. The notice clears — a list that
- * arrived is itself the answer to whatever was refused.
+ * The host's project list: both lists replace, the pair comes with them, the fold follows it, and
+ * the tree redraws from what it now holds. The notice clears — a list that arrived is itself the
+ * answer to whatever was refused.
+ *
+ * A change of the active project ends any manual fold: the pair is the new truth, and a fold made
+ * against the old one would fight it.
  */
 export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>): void {
     workspaces = msg.workspaces || [];
     projects = msg.projects || [];
-    activeProjectId = msg.activeProjectId || '';
-    applyProjectFocus(projects, activeProjectId);
+    const nextActive = msg.activeProjectId || '';
+    if (nextActive !== activeProjectId) {
+        foldOverride = null;
+    }
+    activeProjectId = nextActive;
+    otherOpenProjectId = msg.otherOpenProjectId || '';
+    applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverride);
     renderTree(state.lastSessions, state.lastActiveSessionId);
     showProjectNotice('');
 }

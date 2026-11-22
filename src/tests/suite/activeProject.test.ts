@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Sessions } from '../../host/workspace/sessions';
 import type { SessionsHost } from '../../host/workspace/sessions';
-import { ProjectStore, TabStore, WorkspaceStore } from '../../host/workspace/store';
+import { ProjectStore, ProfileWorkspaceStore, TabStore, WorkspaceStore } from '../../host/workspace/store';
 import { Projects } from '../../host/workspace/projectGrouped';
 import type { ProjectsHost } from '../../host/workspace/projectGrouped';
 import { TabLifecycle } from '../../host/workspace/lifecycle';
@@ -45,20 +45,29 @@ const sessionsHost = (posted: HostToPane[] = [], changed: string[] = []): Sessio
 });
 
 /** A window's project feature over real stores: the lists are files, the port is a fake. */
-const projectFeature = (store: ProjectStore, workspaces: WorkspaceStore, tabs: SessionInfo[]) => {
+const projectFeature = (
+    store: ProjectStore,
+    workspaces: WorkspaceStore,
+    tabs: SessionInfo[],
+    home: string,
+    workspacePath = '',
+) => {
     const posted: HostToPane[] = [];
     const host = {
         active: tabs[0]?.id || '',
+        path: workspacePath,
         post: (msg: HostToPane) => { posted.push(msg); },
         log: () => {},
         tabs: () => tabs,
         saveTabs: () => {},
         activeTabId: () => host.active,
         openWorkspace: () => {},
-        currentWorkspacePath: () => '',
+        currentWorkspacePath: () => host.path,
         onDidChangeWorkspaceFolders: () => ({ dispose: () => {} }),
-    } as ProjectsHost & { active: string };
-    return { projects: new Projects(workspaces, store, host), host, posted };
+    } as ProjectsHost & { active: string; path: string };
+    // The pair is saved per workspace in this profile's row table, exactly as the active tab is.
+    const profileWorkspaces = new ProfileWorkspaceStore(home, () => 'scope');
+    return { projects: new Projects(workspaces, store, host, profileWorkspaces), host, posted, profileWorkspaces };
 };
 
 const lifecycleHost = (
@@ -174,7 +183,7 @@ describe('the active project: it follows the tab, and never the old one', () => 
         const alpha = store.create('Alpha', '') as { id: string };
         const beta = store.create('Beta', '') as { id: string };
         const tabs = [tab('a', alpha.id), tab('b', beta.id), tab('c')];
-        const feature = projectFeature(store, workspaces, tabs);
+        const feature = projectFeature(store, workspaces, tabs, home);
         return { alpha, beta, tabs, ...feature };
     };
 
@@ -185,19 +194,25 @@ describe('the active project: it follows the tab, and never the old one', () => 
 
     it('moves with the tab: another project, then the plane', () => {
         const { alpha, beta, host, projects, posted } = setup();
+        // A window publishes its start value first, as the ready replay does.
+        projects.postList();
+        posted.length = 0;
+
         host.active = 'b';
         projects.syncActiveProject();
         assert.strictEqual(projects.activeProject, beta.id, 'the new tab\'s folder');
+        assert.strictEqual(projects.otherOpenProject, alpha.id, 'and the folder it left stays open');
 
         host.active = 'c';
         projects.syncActiveProject();
         assert.strictEqual(projects.activeProject, '', 'a tab on the plane is the root');
+        assert.strictEqual(projects.otherOpenProject, beta.id, 'the folder before the root keeps its slot');
 
         // The pane is told with the list it draws, in the order the moves happened, and the
         // folder the window started in is never announced — it was the start value, not a move.
+        assert.deepStrictEqual(pairOf(posted), [beta.id, alpha.id, '', beta.id]);
         const told = posted.filter(msg => msg.type === 'projectList').map(msg => (msg as { activeProjectId: string }).activeProjectId);
         assert.deepStrictEqual(told, [beta.id, '']);
-        assert.ok(!told.includes(alpha.id), 'never the folder it left');
     });
 
     it('a value this window does not list is the root', () => {
@@ -214,5 +229,87 @@ describe('the active project: it follows the tab, and never the old one', () => 
         assert.strictEqual(projects.activeProject, beta.id);
         projects.setActiveProject(beta.id);
         assert.strictEqual(posted.length, 1, 'the same value again says nothing new');
+    });
+
+    it('the folder that was working becomes the other one open, and the root counts as one', () => {
+        const { alpha, beta, projects, posted } = setup();
+        posted.length = 0;
+
+        // X active → click the root: the pair is the root, then X.
+        projects.setActiveProject('');
+        assert.deepStrictEqual(pairOf(posted), ['', alpha.id]);
+
+        // → click Y: the pair is Y, then the root it just left — X is not kept.
+        projects.setActiveProject(beta.id);
+        assert.deepStrictEqual(pairOf(posted), ['', alpha.id, beta.id, '']);
+        assert.strictEqual(projects.otherOpenProject, '', 'only Y is open beside the root');
+    });
+});
+
+/** The pair as the pane was told it, per projectList post: active then other. */
+const pairOf = (posted: HostToPane[]): string[] =>
+    posted
+        .filter(msg => msg.type === 'projectList')
+        .flatMap(msg => {
+            const list = msg as { activeProjectId: string; otherOpenProjectId: string };
+            return [list.activeProjectId, list.otherOpenProjectId];
+        });
+
+describe('the pair is saved per workspace', () => {
+    const windowOn = (home: string, workspacePath: string) => {
+        const workspaces = new WorkspaceStore(home);
+        const workspace = workspaces.register(workspacePath)[0];
+        const store = new ProjectStore(home, 'scope', workspaces);
+        return { workspaces, workspace, store };
+    };
+
+    it('a saved pair is restored as it was, even when the active tab sits in another folder', () => {
+        const home = dir();
+        const first = windowOn(home, '/work/one');
+        const x = first.store.create('X', first.workspace.id) as { id: string };
+        const y = first.store.create('Y', first.workspace.id) as { id: string };
+        const z = first.store.create('Z', first.workspace.id) as { id: string };
+
+        // One window works in X, then in Y: that pair is what it saves.
+        const before = projectFeature(first.store, first.workspaces, [tab('a', z.id)], home, '/work/one');
+        before.projects.postList();
+        before.projects.setActiveProject(x.id);
+        before.projects.setActiveProject(y.id);
+        assert.deepStrictEqual(before.profileWorkspaces.openProjects(first.workspace.id), [y.id, x.id]);
+
+        // A reload: the tab on screen is in Z, and the saved pair still wins.
+        const after = projectFeature(first.store, first.workspaces, [tab('a', z.id)], home, '/work/one');
+        after.projects.postList();
+        assert.strictEqual(after.projects.activeProject, y.id, 'the folder the user was working in');
+        assert.strictEqual(after.projects.otherOpenProject, x.id, 'and the one before it');
+    });
+
+    it('a workspace with no saved pair falls back to the active tab, and the other slot is the root', () => {
+        const home = dir();
+        const { workspaces, workspace, store } = windowOn(home, '/work/two');
+        const alpha = store.create('Alpha', workspace.id) as { id: string };
+        const feature = projectFeature(store, workspaces, [tab('a', alpha.id)], home, '/work/two');
+        feature.projects.postList();
+        assert.strictEqual(feature.projects.activeProject, alpha.id);
+        assert.strictEqual(feature.projects.otherOpenProject, '');
+        assert.deepStrictEqual(pairOf(feature.posted), [alpha.id, '']);
+    });
+
+    it('a project deleted while it was in the pair clamps to the root', () => {
+        const home = dir();
+        const { workspaces, workspace, store } = windowOn(home, '/work/three');
+        const x = store.create('X', workspace.id) as { id: string };
+        const y = store.create('Y', workspace.id) as { id: string };
+        const before = projectFeature(store, workspaces, [tab('a', y.id)], home, '/work/three');
+        before.projects.postList();
+        before.projects.setActiveProject(x.id);
+        before.projects.setActiveProject(y.id);
+
+        // X is gone by the time the window comes back.
+        store.delete(x.id);
+        const after = projectFeature(store, workspaces, [tab('a', y.id)], home, '/work/three');
+        after.projects.postList();
+        assert.strictEqual(after.projects.activeProject, y.id);
+        assert.strictEqual(after.projects.otherOpenProject, '', 'the deleted folder is the root');
     });
 });

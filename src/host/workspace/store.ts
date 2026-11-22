@@ -183,10 +183,12 @@ export class WorkspaceStore {
     }
 }
 
-/** One agent's rows for one workspace: its default folder, and the session it was last on. */
+/** One agent's rows for one workspace: its default folder, the session it was last on, and the pair of projects the tree keeps open. */
 export interface ProfileWorkspaceRow {
     defaultFolderId: string;
     activeSessionId: string;
+    /** The folder the pane works in, then the one before it ('' = the root). Absent until saved. */
+    openProjects?: [string, string];
 }
 
 /** Where one agent's per-workspace rows live: beside its projects and tabs. */
@@ -242,6 +244,26 @@ export class ProfileWorkspaceStore implements RootsSource {
     /** The tab this agent was last on in this workspace. */
     setActiveSessionId(workspaceId: string, sessionId: string): void {
         this._update(workspaceId, row => ({ ...row, activeSessionId: sessionId }));
+    }
+
+    /**
+     * The project pair the tree keeps open: the active folder, then the one before it.
+     *
+     * Undefined means this workspace never saved one, which is a different fact from a pair of two
+     * empty ids: the first is "read it off the active tab", the second is "the root, and nothing
+     * before it".
+     */
+    openProjects(workspaceId: string): [string, string] | undefined {
+        const pair = this.row(workspaceId).openProjects;
+        if (!Array.isArray(pair) || pair.length !== 2) {
+            return undefined;
+        }
+        return [String(pair[0] || ''), String(pair[1] || '')];
+    }
+
+    /** Write the pair the tree is showing. '' is the root, on either side of it. */
+    setOpenProjects(workspaceId: string, active: string, other: string): void {
+        this._update(workspaceId, row => ({ ...row, openProjects: [active, other] }));
     }
 
     /**
