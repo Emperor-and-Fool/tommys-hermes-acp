@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### What changed along the way
+
+| First | Later | Why |
+|---|---|---|
+| The active tab's project was the only thing the tree knew: a new chat opened in it, and every project was open after a start. | The tree has an active project — a project, or none — that you choose, and at most two projects are open. | A new chat could not be opened outside a project, and the tree opened fully on every start. |
+| The agent last picked in any window was the one every window started on. | Each workspace and pane remembers its own agent, saved on every connect. A start takes that agent, then the configured agent, then the first agent no other window runs. | A reload could start a window on another window's agent, which the agent guard then refused. |
+
+### Added
+
+- **An active project.** Click a project header to make it the project a new chat opens in; click the
+  empty space of the tab list to choose none. The active project is outlined and shaded.
+- **The project holding the chat on screen stays outlined**, also when it is folded, so the chat is
+  never hidden behind a closed project.
+- **At most two projects are open:** the active project and the one before it. Having no active
+  project counts as one of the two.
+- **Ctrl-click a project header** to open or fold it without choosing it — a quick look across several
+  projects, undone by the next normal click.
+- **A reload brings the tree back as you left it:** the active project and the one before it, per
+  workspace and agent.
+
+### Changed
+
+- **A click on a project header chooses it; a click on the active project folds it.**
+- **Each window starts on its own agent.** The agent is remembered per workspace and pane, and saved
+  whenever a connect lands. Before, only a switch saved it: a window that started and stayed was
+  never remembered, and the secondant had no memory at all. The start takes this workspace's agent,
+  then the configured agent (`tommys.profile`, `default` when unset), then the first agent no other
+  window runs. The last pick made in any window is no longer a start.
+- **A refused agent names its holder:** the primary or the secondant, in this window or another one.
+
+### Fixed
+
+- **A new chat in a window without tabs could not be sent** ("No chat is open…" on every send).
+- **A new chat could not be opened outside a project.**
+- **A reload could land on another window's agent**, which the guard then refused.
+- **A window's own row from before a reload read as another window running its agent** for the 45
+  seconds a presence row stays believable, so the start skipped the window's own pick.
+- **A failed turn showed only "Internal error".** It now adds Hermes' reason, for example a missing
+  API key.
+
+### Repository
+
+- One setter for the active tab; the tab restore at start and on a profile rebind is quiet, so it
+  does not overwrite the saved project pair
+- Tree markup and rules in `pane/components/workspace/projectTree.ts`, DOM-free and tested as such
+- The stored workspace row stays out of the shared `Workspace` contract (`publicWorkspace()`); the
+  profile ports are required, so a missing wiring fails compilation instead of silently dropping the
+  agent guard
+- Presence id from workspace and role (`presenceInstanceId`), so a reload overwrites its own row;
+  rows left by windows that are gone are swept at start, never while fresh
+- One per-workspace row table per window, shared by the cwd and the project pair
 
 ## [2.5.0] - 2026-11-20
 
