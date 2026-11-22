@@ -26,6 +26,11 @@ export interface LocaleStrings {
     sessionReplayFailed: string;
     sessionNotWritable: string;
     profileExcluded: string;
+    /** Who holds a profile this pane may not run on: the four ways a profile can be held. */
+    holderPrimaryHere: string;
+    holderSecondantHere: string;
+    holderPrimaryElsewhere: string;
+    holderSecondantElsewhere: string;
     profileMissing: string;
     modelSwitchIncomplete: string;
     openTab: string;

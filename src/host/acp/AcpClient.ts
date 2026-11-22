@@ -35,6 +35,39 @@ import type { CatalogSession, PermissionOption } from '../../shared/acp';
 import { isSteerNotice } from './steerNotice';
 export type { CatalogSession, PermissionOption } from '../../shared/acp';
 
+/**
+ * The sentence a failed turn shows: the error's message, and Hermes' own reason when it sent one.
+ *
+ * Hermes reports an unhandled failure as a JSON-RPC "Internal error" and puts the human reason in
+ * the error's `data`: `acp/connection.py` turns the exception into
+ * `RequestError.internal_error({"details": str(exc)})`, or into whatever JSON the message parses
+ * as. The message alone is unactionable — a missing API key used to read "Error: Internal error" —
+ * so `data.details`, or `data` itself when it is a string, is appended.
+ *
+ * One helper for both catch sites: a prompt is rejected either at the call or in the promise it
+ * returns, and the two used to build the same sentence twice.
+ */
+export function describeTurnError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    const reason = errorReason(err);
+    return reason ? `Error: ${message} — ${reason}` : `Error: ${message}`;
+}
+
+/** Hermes' reason, out of the error's `data`: a string, or the `details` string inside it. */
+function errorReason(err: unknown): string {
+    const data = (err as { data?: unknown } | null)?.data;
+    if (typeof data === 'string') {
+        return data.trim();
+    }
+    if (data && typeof data === 'object') {
+        const details = (data as { details?: unknown }).details;
+        if (typeof details === 'string') {
+            return details.trim();
+        }
+    }
+    return '';
+}
+
 /** Dev-only: HERMES_ACP_TRACE=1 in the shell that launched the editor. */
 const ACP_TRACE = acpTraceEnabled();
 
@@ -484,8 +517,7 @@ export class AcpClient {
             promptPromise = this._promptActiveSession(text) as Promise<unknown>;
         } catch (err) {
             if (promptId === this._activePromptId) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._onMessage('assistant', `Error: ${msg}`);
+                this._onMessage('assistant', describeTurnError(err));
                 this._transitionTo('ready');
             }
             return;
@@ -507,8 +539,7 @@ export class AcpClient {
             }
         } catch (err) {
             if (promptId === this._activePromptId) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this._onMessage('assistant', `Error: ${msg}`);
+                this._onMessage('assistant', describeTurnError(err));
                 this._transitionTo('ready');
             }
         } finally {

@@ -5,7 +5,7 @@ import { formatDetectBrokenMessage } from '../environment/detectFormat';
 import { localizeStatusMessage, t } from '../i18n';
 import { classifyLogLevel, LogLevel } from '../logLevel';
 import type { HostToPane } from '../../shared/webview';
-import type { Profiles } from '../environment/profiles';
+import type { HolderKey, Profiles } from '../environment/profiles';
 import type { EnvironmentDetection } from '../environment/detection';
 import type { Sessions } from '../workspace/sessions';
 import type { ModelState } from '../models/modelState';
@@ -46,7 +46,7 @@ export interface ConnectionHost {
     /** A switch completed: the new profile's display name. */
     profileChanged(name: string): void;
     /** The profile this extension may not use: the sibling's, or one live in another window. */
-    excludedProfiles?: () => Array<{ cliProfile: string; holder: string }>;
+    excludedProfiles?: () => Array<{ cliProfile: string; holder: HolderKey }>;
     isViewingPromptSession(): boolean;
     setBoundSessionId(id: string): void;
     surfaceView(): PaneSurface | undefined;
@@ -160,7 +160,9 @@ export class Connection {
             this._host.post({
                 type: 'status',
                 status: 'error',
-                message: t('profileExcluded', target.displayName),
+                // The holder keeps its role: "the primary agent" and "a secondant in another
+                // window" send the user to different places.
+                message: t('profileExcluded', target.displayName, t(refusedBy.holder)),
             });
             this._host.post({ type: 'openProfilePicker' });
             return;

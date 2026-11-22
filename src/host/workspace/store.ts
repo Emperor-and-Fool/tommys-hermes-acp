@@ -112,6 +112,41 @@ export class WorkspaceStore {
     }
 
     /**
+     * The profile one pane last picked in this workspace: '' when it never picked one.
+     *
+     * The key is the workspace — the window, since the editor opens one workspace in one window —
+     * and the role separates the two panes, which never run on one profile. It is read before the
+     * workspace is registered, so it must not depend on anything but the path.
+     */
+    selectionFor(workspacePath: string, role: 'primary' | 'secondant'): string {
+        const entry = this.entryFor(workspacePath);
+        if (!entry) {
+            return '';
+        }
+        return (role === 'secondant' ? entry.secondantSelection : entry.primarySelection) || '';
+    }
+
+    /** Remember that pick. A window that connects before its workspace is filed gets a row here. */
+    setSelection(workspacePath: string, role: 'primary' | 'secondant', selectionId: string): void {
+        if (!workspacePath || !selectionId) {
+            return;
+        }
+        const file = this._read();
+        let row = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
+        if (!row) {
+            row = { id: workspaceIdFor(workspacePath), path: workspacePath, lastSeen: Date.now() };
+            file.workspaces.push(row);
+        }
+        const field: 'primarySelection' | 'secondantSelection' =
+            role === 'secondant' ? 'secondantSelection' : 'primarySelection';
+        if (row[field] === selectionId) {
+            return;
+        }
+        row[field] = selectionId;
+        this._write(file);
+    }
+
+    /**
      * Take the projects this file still carries, and drop them from it.
      *
      * Projects moved to `profiles/<scope>/projects.json`, because they group one agent's tabs. The

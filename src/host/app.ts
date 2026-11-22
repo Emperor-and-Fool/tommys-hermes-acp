@@ -313,6 +313,13 @@ export class App implements vscode.WebviewViewProvider {
         onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
+        // The workspace registry and its per-workspace rows are built first: a pane's profile
+        // pick is saved per workspace, and the start reads it before anything connects. The roots
+        // live with the workspace record, so the locator reads and writes them there; the store
+        // only exists from here on, which is why the locator is built at this point.
+        const workspaces = new WorkspaceStore(this._historyDir);
+        const profileWorkspaces = new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId);
+        this._cwd = new WorkspaceCwd(this._folders, profileWorkspaces);
         // The profile table is built here, before the feature that resolves names to ids (C2): the
         // seed is the first thing the window does with it.
         this._profiles = new Profiles({
@@ -321,6 +328,12 @@ export class App implements vscode.WebviewViewProvider {
             globalState: context.globalState,
             settings: this._settings,
             store: new ProfilesStore(storagePath),
+            // This pane's pick in this workspace: the start rule, ahead of the global fallback.
+            workspaceSelection: () => workspaces.selectionFor(this._cwd.workspaceIdentity(), this._id.role),
+            saveWorkspaceSelection: (selectionId) =>
+                workspaces.setSelection(this._cwd.workspaceIdentity(), this._id.role, selectionId),
+            // A start must never take a profile another window is running.
+            heldElsewhere: () => this._presence.live().map(row => row.cliProfile).filter(Boolean),
             excludedProfiles: () => excludedProfiles({
                 primary: this._primary?.activeProfile || '',
                 sibling: this._siblingProfile,
@@ -342,16 +355,6 @@ export class App implements vscode.WebviewViewProvider {
         runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
         const initialTarget = this._profiles.seed();
-        // The workspace feature's three stores: built once, here, and handed to the two
-        // features that use them (C2). A profile switch reaches them through those
-        // features' bindProfileScope, so nothing below builds a store of its own.
-        const workspaces = new WorkspaceStore(this._historyDir);
-        // One per-workspace row table for this window: the roots read and write it, and the
-        // project pair is one of its keys, so the two features must not each hold a copy.
-        // The roots live with the workspace record, so the locator reads and writes them there;
-        // the store only exists from here on, which is why the locator is built at this point.
-        const profileWorkspaces = new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId);
-        this._cwd = new WorkspaceCwd(this._folders, profileWorkspaces);
         // Permissions keeps its own record and its own deny backups, in the profile's folder.
         this._approvals = new Approvals(
             {

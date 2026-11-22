@@ -50,10 +50,18 @@ export interface SettingsReader {
     get<T>(key: string): T | undefined;
 }
 
-/** A profile this instance may not run on, and who holds it. The holder is for the log line. */
+/**
+ * Who holds a profile, as one of the four ways it can be held.
+ *
+ * A locale key rather than English: the refusal is a sentence the user reads, and the zh-cn
+ * translation has to carry every word of it.
+ */
+export type HolderKey = 'holderPrimaryHere' | 'holderSecondantHere' | 'holderPrimaryElsewhere' | 'holderSecondantElsewhere';
+
+/** A profile this instance may not run on, and who holds it. */
 export interface ExcludedProfile {
     cliProfile: string;
-    holder: string;
+    holder: HolderKey;
 }
 
 /**
@@ -62,26 +70,30 @@ export interface ExcludedProfile {
  * In this window the two extensions withhold each other's profile through their junction; in any
  * other window each instance announces its own in the presence table (`store/presence.ts`).
  * Normalised here, once: the comparison is on the CLI profile, never on the label an agent
- * happens to be called.
+ * happens to be called. The holder keeps its role — presence announces it, and "another window"
+ * alone cannot tell a user which of the two panes to look at.
  */
 export function excludedProfiles(input: {
     /** The primary's profile, as the secondant is told it. */
     primary?: string;
     /** The secondant's profile, as the primary is told it. */
     sibling?: string;
-    /** Every row another running instance announced, with its profile. */
-    elsewhere: Array<{ cliProfile: string }>;
+    /** Every row another running instance announced, with its profile and its role. */
+    elsewhere: Array<{ cliProfile: string; role?: 'primary' | 'secondant' }>;
 }): ExcludedProfile[] {
     const list: ExcludedProfile[] = [];
     if (input.primary) {
-        list.push({ cliProfile: normalizeHermesCliProfile(input.primary), holder: 'the primary' });
+        list.push({ cliProfile: normalizeHermesCliProfile(input.primary), holder: 'holderPrimaryHere' });
     }
     if (input.sibling) {
-        list.push({ cliProfile: normalizeHermesCliProfile(input.sibling), holder: 'the secondant' });
+        list.push({ cliProfile: normalizeHermesCliProfile(input.sibling), holder: 'holderSecondantHere' });
     }
     for (const row of input.elsewhere) {
         if (row.cliProfile) {
-            list.push({ cliProfile: normalizeHermesCliProfile(row.cliProfile), holder: 'another window' });
+            list.push({
+                cliProfile: normalizeHermesCliProfile(row.cliProfile),
+                holder: row.role === 'secondant' ? 'holderSecondantElsewhere' : 'holderPrimaryElsewhere',
+            });
         }
     }
     return list.filter(entry => !!entry.cliProfile);
@@ -101,6 +113,22 @@ export interface ProfilesHost {
      * actually runs on.
      */
     excludedProfiles?: () => Array<{ cliProfile: string }>;
+    /**
+     * The profile this pane last picked in this window's workspace, or '' when it never did.
+     *
+     * Read before the workspace is registered: the pick is what a start is resolved from, so it
+     * cannot wait for the rest of the window.
+     */
+    workspaceSelection?: () => string;
+    /** Remember this pane's pick for its workspace. The global key stays the fallback. */
+    saveWorkspaceSelection?: (selectionId: string) => void;
+    /**
+     * The CLI profiles other running instances hold.
+     *
+     * A start must never land on one of them: the window would connect, be refused by the
+     * guarantee, and show an error where a profile was expected.
+     */
+    heldElsewhere?: () => string[];
     /** Where Hermes keeps its profiles. Absent means the real home; a test passes a temp one. */
     hermesHome?: () => string;
 }
@@ -129,17 +157,46 @@ export class Profiles {
     }
 
     /**
-     * Seed the in-memory selection from the persisted id, and resolve it.
+     * Seed the in-memory selection from this window's pick, and resolve it.
+     *
+     * The order is the whole rule: this workspace's pick for this pane, then the profile last
+     * picked anywhere (the global key, kept as the fallback), then nothing — which leaves
+     * resolveTarget on its configured profile and the list's first agent, as it always was.
+     * A candidate presence reports as held elsewhere is skipped, so a start never lands on a
+     * profile another window is already running.
      *
      * resolveTarget() prefers the in-memory selection over the configured profile, and still
      * falls back when the persisted id no longer resolves.
      */
     seed(): ConnectionTarget {
-        this.selectionId = this.persistedSelectionId;
-        const target = this.resolveTarget(this.persistedSelectionId || undefined);
+        this.selectionId = this._startingSelection();
+        const target = this.resolveTarget(this.selectionId || undefined);
         this.selectionId = target.selectionId;
         this.displayName = target.displayName;
         return target;
+    }
+
+    /** The pick a start resolves from: this workspace's, else the last one anywhere, minus the held. */
+    private _startingSelection(): string {
+        const held = new Set((this._host.heldElsewhere ? this._host.heldElsewhere() : [])
+            .map(cliProfile => normalizeHermesCliProfile(cliProfile))
+            .filter(Boolean));
+        const candidates = [
+            this._host.workspaceSelection ? this._host.workspaceSelection() : '',
+            this.persistedSelectionId,
+        ];
+        for (const candidate of candidates) {
+            if (!candidate) {
+                continue;
+            }
+            const cliProfile = normalizeHermesCliProfile(this.resolveTarget(candidate).cliProfile);
+            if (held.has(cliProfile)) {
+                this._host.log(`Start profile "${candidate}" is held by another window; skipping it`);
+                continue;
+            }
+            return candidate;
+        }
+        return '';
     }
 
     /**
@@ -320,9 +377,10 @@ export class Profiles {
         });
     }
 
-    /** Remember the pick, so the next window opens on it. */
+    /** Remember the pick: in this workspace (the start rule) and globally (the fallback). */
     persistSelection(id: string): void {
         void this._host.globalState.update('activeSelectionId', id);
+        this._host.saveWorkspaceSelection?.(id);
     }
 
     /** The agent list changed: the profiles on disk must be read again. */
