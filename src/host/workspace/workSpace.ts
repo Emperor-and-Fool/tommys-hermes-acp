@@ -193,15 +193,22 @@ export interface TreePaths {
  * and this block describes the editor window — its projects and tabs — which is a different thing
  * and one the agent must not mistake for its cwd.
  */
-export function treeNoticeBlock(paths: TreePaths): string {
-    return [
+export function treeNoticeBlock(paths: TreePaths, notes = ''): string {
+    const lines = [
         '<clientworkspace-tree>',
         'The editor extension keeps this window\'s session tree on disk. Read it before asking which',
         'session lives where, and to see the projects, their tabs and the active session:',
         `current (this clientworkspace: projects and tabs, not your working folder): ${paths.current}`,
         `previous clientworkspace: ${paths.passive}`,
         '</clientworkspace-tree>',
-    ].join('\n');
+    ];
+    // Where this agent's own notes are comes from the notes feature; this function only places it.
+    // One notice, one "once per session and workspace": two blocks would say the same thing twice,
+    // at two different moments.
+    if (notes) {
+        lines.push('', notes);
+    }
+    return lines.join('\n');
 }
 
 /** All the feature needs from a subscription the editor hands it: drop it again. */

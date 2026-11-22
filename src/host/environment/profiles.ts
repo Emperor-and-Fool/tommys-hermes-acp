@@ -5,6 +5,7 @@ import { discoverHermesProfiles } from './profileDiscovery';
 import {
     hasProfilesRoot,
     isCurrentProfile,
+    profileDescription,
     profileNameFromPreviousNames,
     profileNameHoldingSessions,
 } from './profileFallback';
@@ -289,6 +290,18 @@ export class Profiles {
      */
     agentNameFor(sessionProfileId: string): string {
         return this._host.store.nameFor(sessionProfileId) || this.resolveTarget().agentName;
+    }
+
+    /**
+     * What a generated file may say about an agent: today's name, and the description Hermes keeps.
+     *
+     * The name comes from the id's own row, like `agentNameFor`. The description is read from that
+     * profile's `profile.yaml`, and is empty when Hermes has none — read, never written (H2).
+     */
+    describeAgent(sessionProfileId: string): { name: string; description: string } {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        return { name, description: profileDescription(name, hermesHome) };
     }
 
     labelFor(cliProfile: string): string {

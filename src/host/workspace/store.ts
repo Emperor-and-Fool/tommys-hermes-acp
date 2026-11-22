@@ -614,8 +614,11 @@ export class TreeStore {
      *
      * A reload empties the set, a session switch or a workspace switch changes the key, so each of
      * those is told again. Nothing to point at means no block — and no introduction burned.
+     *
+     * `notes` is the agent's own section (where its notes folder is, from `host/notes`): placed in
+     * this same notice so that one "once per session and workspace" covers both.
      */
-    noticeBlock(sessionProfileId: string, workspaceId: string, sessionId: string): string {
+    noticeBlock(sessionProfileId: string, workspaceId: string, sessionId: string, notes = ''): string {
         if (!sessionProfileId || !workspaceId || !sessionId) {
             return '';
         }
@@ -624,7 +627,7 @@ export class TreeStore {
             return '';
         }
         this._announced.add(key);
-        return treeNoticeBlock(treePathsFor(this._historyDir, sessionProfileId));
+        return treeNoticeBlock(treePathsFor(this._historyDir, sessionProfileId), notes);
     }
 
     /**

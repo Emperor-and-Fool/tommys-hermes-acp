@@ -3,6 +3,8 @@ import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
 import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
 import { treeInputOf } from './workspace/workSpace';
+import { AgentNotes } from './notes/notes';
+import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
@@ -126,16 +128,11 @@ export class App implements vscode.WebviewViewProvider {
     /** The project group: workspaces, the projects named against them, and tab membership. */
     private _projects: Projects;
     private _trees?: TreeStore;
+    /** Each agent's own notes, in the data home beside its tabs (`host/notes`). */
+    private _notes: AgentNotes;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
-
-
-
-
-
-
-
 
     // ---- Lifecycle ----
     /** Every live renderer: the sidebar view and/or the single chat panel. */
@@ -154,8 +151,13 @@ export class App implements vscode.WebviewViewProvider {
         resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
         historyBlock: (tabId) => this._historyStages.block(tabId),
         // The agent's own folder, and the id the tree is written under: one owner (see `treeInputOf`).
+        // The notes section rides in the same notice, so one "once" covers both.
         treeBlock: (tabId) => this._trees
-            ? this._trees.noticeBlock(this._session.sessionProfileId, this._projects.currentId(), tabId)
+            ? this._trees.noticeBlock(
+                this._session.sessionProfileId,
+                this._projects.currentId(),
+                tabId,
+                this._notes.notice(this._session.sessionProfileId))
             : '',
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
@@ -346,6 +348,12 @@ export class App implements vscode.WebviewViewProvider {
             }),
         });
         this._profiles.seedStore();
+        // Each agent's own notes: a folder beside its tabs, and the index that names it. Built here
+        // because it needs the profile table (a name and a description) and the data home.
+        this._notes = new AgentNotes(new NotesStore(this._historyDir), {
+            log: line => this._log(line),
+            profileInfo: id => this._profiles.describeAgent(id),
+        });
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
         this._presence = new ProfilePresence({
@@ -508,6 +516,8 @@ export class App implements vscode.WebviewViewProvider {
         this._connection.profileActive.on(() => {
             this._presence.connected();
             this._profiles.persistSelection();
+            // The agent's notes exist before it reads the notice that names them.
+            this._notes.ensure(this._session.sessionProfileId);
         });
 
         context.subscriptions.push(
@@ -564,24 +574,6 @@ export class App implements vscode.WebviewViewProvider {
             });
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         // The tab whose pane sent this. Captured before any await: `promptSessionId` is only set
@@ -672,8 +664,6 @@ export class App implements vscode.WebviewViewProvider {
             }
         }
     }
-
-
 
     /**
      * Text aimed at the running turn.
@@ -795,12 +785,6 @@ export class App implements vscode.WebviewViewProvider {
             await this._models.applySessionPreference();
         }
     }
-
-
-
-
-
-
 
     /** Phase 3: another session's transcript, read-only, in one temporary editor tab. */
     public openHistoryViewer(hermesSessionId: string, title: string): void {
