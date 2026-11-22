@@ -128,20 +128,31 @@ describe('the open set: the pair, and a manual fold on top of it', () => {
     });
 
     it('a manual fold survives a redraw, and is gone once it is cleared', () => {
-        const override = { projectId: 'p1', collapsed: true };
-        const withOverride = collapsedFromPair(projects, 'p2', 'p1', override);
-        assert.ok(withOverride.has('p1'), 'the user folded it by hand');
-        assert.deepStrictEqual(folded(withOverride), ['p1', 'p3']);
+        const folds = new Map([['p1', true]]);
+        const withFolds = collapsedFromPair(projects, 'p2', 'p1', folds);
+        assert.ok(withFolds.has('p1'), 'the user folded it by hand');
+        assert.deepStrictEqual(folded(withFolds), ['p1', 'p3']);
         // The same computation again — a re-render — lands on the same thing: it survives.
-        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', override)), ['p1', 'p3']);
-        // A normal click clears it, and the pair has the last word.
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', folds)), ['p1', 'p3']);
+        // A normal click clears the set, and the pair has the last word.
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', null)), ['p3']);
+    });
+
+    it('two ctrl-clicks hold two projects open at once, and one normal click ends both', () => {
+        // p2 is active, p1 is the other open one; the user opens p1's neighbour and p3's by hand.
+        const folds = new Map([['p2', true], ['p3', false]]);
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', folds)), ['p2'], 'p1 and p3 open, the working folder folded by hand');
+        // A third ctrl-click adds to the same set rather than replacing it.
+        folds.set('p1', true);
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', folds)), ['p1', 'p2']);
+        // The next normal click clears them all and the pair decides again.
         assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', null)), ['p3']);
     });
 
     it('an override that opens a folder wins over the pair, and names nothing that is gone', () => {
-        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', { projectId: 'p3', collapsed: false })), []);
+        assert.deepStrictEqual(folded(collapsedFromPair(projects, 'p2', 'p1', new Map([['p3', false]]))), []);
         assert.deepStrictEqual(
-            collapsedFromPair(projects, 'p2', 'p1', { projectId: 'gone', collapsed: true }),
+            collapsedFromPair(projects, 'p2', 'p1', new Map([['gone', true]])),
             collapsedFromPair(projects, 'p2', 'p1', null),
             'a deleted project cannot be folded',
         );

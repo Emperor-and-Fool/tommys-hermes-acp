@@ -92,33 +92,40 @@ export function projectClickAction(projectId: string, activeProjectId: string, m
     return { post: false, fold: true, clearOverride: true };
 }
 
-/** A fold the user made by hand: one project, held until the next normal click. */
-export interface FoldOverride {
-    projectId: string;
-    collapsed: boolean;
-}
+/**
+ * Folds the user made by hand: project id → folded.
+ *
+ * A set rather than one entry, because the gesture is an overview — open two or three folders',
+ * tabs at once to find a chat — and every one of them goes at the next normal click. Absent (null)
+ * means the user has made none.
+ */
+export type FoldOverrides = Map<string, boolean>;
 
 /**
  * Which projects are folded, from the pair the host keeps open.
  *
  * Two projects are open at most — the active one and the one before it — and the root counts as
- * one of the two, so a pair holding '' opens nothing on that side. A manual fold overrides the
- * pair for its own project only, which is how a ctrl-fold survives the redraws the pair causes.
+ * one of the two, so a pair holding '' opens nothing on that side. The user's own folds override
+ * the pair for their projects only, which is how a ctrl-click survives the redraws the pair
+ * causes.
  */
 export function collapsedFromPair(
     projects: Project[],
     activeProjectId: string,
     otherOpenProjectId: string,
-    foldOverride: FoldOverride | null,
+    foldOverrides: FoldOverrides | null,
 ): Set<string> {
     const open = [activeProjectId, otherOpenProjectId].filter(Boolean);
     const collapsed = new Set(projects.filter(project => open.indexOf(project.id) < 0).map(project => project.id));
-    if (foldOverride && projects.some(project => project.id === foldOverride.projectId)) {
-        if (foldOverride.collapsed) {
-            collapsed.add(foldOverride.projectId);
-        } else {
-            collapsed.delete(foldOverride.projectId);
-        }
+    if (foldOverrides) {
+        projects.forEach(project => {
+            const folded = foldOverrides.get(project.id);
+            if (folded === true) {
+                collapsed.add(project.id);
+            } else if (folded === false) {
+                collapsed.delete(project.id);
+            }
+        });
     }
     return collapsed;
 }

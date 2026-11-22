@@ -5,7 +5,7 @@ import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
 import { applyProjectFocus, showProjectNotice, showProjectPicker, wireProjectGroups } from './projectGrouped';
 import { chatProjectOf, isRootSpaceTarget, projectTreeHtml, workspacePathOf } from './projectTree';
-import type { FoldOverride } from './projectTree';
+import type { FoldOverrides } from './projectTree';
 import { tabEntriesHtml, wireTabs, withBlankChat } from './sessionTab';
 import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
 import type { HostToPane } from '../../../shared/webview';
@@ -32,13 +32,14 @@ let activeProjectId = '';
 /** The second folder the tree keeps open: the one that was active before this one. */
 let otherOpenProjectId = '';
 /**
- * A fold the user made by hand — a ctrl-click, or a click on the working folder.
+ * Folds the user made by hand — ctrl-clicks, and a click on the working folder.
  *
- * The pair says what the host keeps open; this says what the user added to it. It is cleared by
- * the next normal header click, by a click on the root space, and by any change of the active
- * project, so it can never outlive the tree it was made in.
+ * The pair says what the host keeps open; this says what the user added to it: open a few folders'
+ * tabs at once to find a chat, and they all close again at the next normal click. Cleared as a
+ * whole by that click, by a click on the root space, and by any change of the active project, so
+ * it cannot outlive the tree it was made in.
  */
-let foldOverride: FoldOverride | null = null;
+let foldOverrides: FoldOverrides | null = null;
 
 /** The last path segment without the workspace extension: what a picker row can show. */
 export function workspaceLabel(workspacePath: string): string {
@@ -68,10 +69,10 @@ export function initRootSpace(): void {
         if (!isRootSpaceTarget(e.target as HTMLElement | null)) {
             return;
         }
-        foldOverride = null;
+        foldOverrides = null;
         if (activeProjectId === '') {
             // The root already is the working folder: nothing to post, but a manual fold has to go.
-            applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverride);
+            applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverrides);
             renderTree(state.lastSessions, state.lastActiveSessionId);
             return;
         }
@@ -162,9 +163,20 @@ function setActiveProject(projectId: string): void {
     post({ type: 'setActiveProject', projectId: projectId });
 }
 
-/** The pane's own fold, held where the state is: a ctrl-click, or a click on the working folder. */
-function setFoldOverride(override: FoldOverride | null): void {
-    foldOverride = override;
+/**
+ * One project's fold in the set the pane keeps — or the whole set, when `collapsed` is null.
+ *
+ * A ctrl-click adds one; a plain click on the working folder says "forget the set, and fold this".
+ */
+function setFoldOverride(projectId: string, collapsed: boolean | null): void {
+    if (collapsed === null) {
+        foldOverrides = null;
+        return;
+    }
+    if (!foldOverrides) {
+        foldOverrides = new Map<string, boolean>();
+    }
+    foldOverrides.set(projectId, collapsed);
 }
 
 /**
@@ -195,11 +207,11 @@ export function onProjectList(msg: Extract<HostToPane, { type: 'projectList' }>)
     projects = msg.projects || [];
     const nextActive = msg.activeProjectId || '';
     if (nextActive !== activeProjectId) {
-        foldOverride = null;
+        foldOverrides = null;
     }
     activeProjectId = nextActive;
     otherOpenProjectId = msg.otherOpenProjectId || '';
-    applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverride);
+    applyProjectFocus(projects, activeProjectId, otherOpenProjectId, foldOverrides);
     renderTree(state.lastSessions, state.lastActiveSessionId);
     showProjectNotice('');
 }

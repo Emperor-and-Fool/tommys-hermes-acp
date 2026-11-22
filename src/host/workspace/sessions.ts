@@ -83,7 +83,9 @@ export class Sessions {
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
-        this.setActiveId(this.restoreActive());
+        // Restoring a tab is not a tab change: the workspace feature reads its own saved pair on
+        // the first post, and this would overwrite it with the restored tab's folder.
+        this.setActiveId(this.restoreActive(), { quiet: true });
         this.ensureRegistered();
     }
 
@@ -373,7 +375,9 @@ export class Sessions {
         this.tabs = [];
         this.loadCatalog();
         this._blankId = '';
-        this.setActiveId(this.restoreActive());
+        // The saved pair for this profile is the truth here too: a rebind restores a tab, it does
+        // not choose a folder.
+        this.setActiveId(this.restoreActive(), { quiet: true });
         this.messages = [];
         this.ensureRegistered();
         this.postList();

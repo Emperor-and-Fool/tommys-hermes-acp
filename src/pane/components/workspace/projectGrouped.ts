@@ -4,7 +4,7 @@ import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
 import { collapsedFromPair, projectClickAction } from './projectTree';
-import type { FoldOverride } from './projectTree';
+import type { FoldOverrides } from './projectTree';
 import type { Project, Workspace } from '../../../shared/chat';
 
 /**
@@ -192,9 +192,9 @@ export function applyProjectFocus(
     projects: Project[],
     activeProjectId: string,
     otherOpenProjectId: string,
-    foldOverride: FoldOverride | null,
+    foldOverrides: FoldOverrides | null,
 ): void {
-    state.collapsedProjects = collapsedFromPair(projects, activeProjectId, otherOpenProjectId, foldOverride);
+    state.collapsedProjects = collapsedFromPair(projects, activeProjectId, otherOpenProjectId, foldOverrides);
 }
 
 /**
@@ -213,7 +213,7 @@ export function wireProjectGroups(
     workspaces: Workspace[],
     activeProjectId: string,
     setActiveProject: (projectId: string) => void,
-    setFoldOverride: (override: FoldOverride | null) => void,
+    setFoldOverride: (projectId: string, collapsed: boolean | null) => void,
 ): void {
     container.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
         const header = group.querySelector<HTMLElement>('.tab-group-header');
@@ -226,7 +226,7 @@ export function wireProjectGroups(
             if (!id) return;
             const action = projectClickAction(id, activeProjectId, !!(e.ctrlKey || e.metaKey));
             if (action.clearOverride) {
-                setFoldOverride(null);
+                setFoldOverride(id, null);
             }
             if (action.post) {
                 setActiveProject(id);
@@ -239,8 +239,9 @@ export function wireProjectGroups(
                     state.collapsedProjects.delete(id);
                 }
                 applyProjectCollapsed(group);
-                // The fold is the user's, not the pair's: it survives the next redraw.
-                setFoldOverride({ projectId: id, collapsed: collapsed });
+                // The fold is the user's, not the pair's: it survives the next redraw. A
+                // ctrl-click adds to the set; a plain click on the working folder starts it over.
+                setFoldOverride(id, collapsed);
             }
         });
         header.addEventListener('contextmenu', function(e: MouseEvent) {

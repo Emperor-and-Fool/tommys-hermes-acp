@@ -24,13 +24,14 @@ import type { SessionInfo } from '../../shared/chat';
 
 const dir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'active-project-'));
 
-const tab = (id: string, project?: string, boundTo?: string): SessionInfo => ({
+const tab = (id: string, project?: string, boundTo?: string, workspaceId?: string): SessionInfo => ({
     id,
     title: id,
     createdAt: 1,
     updatedAt: 1,
     ...(project ? { project } : {}),
     ...(boundTo ? { hermesSessionId: boundTo } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
 });
 
 /** The sessions port, with the one member this feature adds to it recorded rather than acted on. */
@@ -158,14 +159,16 @@ describe('the active project: one setter, so no move can go unreported', () => {
         return { session, changed };
     };
 
-    it('a tab click, a tab that leaves this window and a profile rebind all report the move', () => {
+    it('a tab click and a tab that leaves this window report the move; a rebind restores instead', () => {
         const { session, changed } = setup();
         session.activate('b');
         assert.strictEqual(changed.length, 1, 'a click on another tab');
         session.setTabs([tab('a')]);
         assert.strictEqual(changed.length, 2, 'the active tab moved to another window');
+        // A profile rebind restores a tab the same way init does: the saved pair of that profile
+        // is the truth, so the restored tab must not announce itself as a change.
         session.bindProfileScope('another-scope');
-        assert.strictEqual(changed.length, 3, 'another profile is another tab list');
+        assert.strictEqual(changed.length, 2, 'a restored tab is not a tab change');
     });
 
     it('`+` is the exception: it moves the id and says nothing, because the folder stays', () => {
@@ -313,3 +316,104 @@ describe('the pair is saved per workspace', () => {
         assert.strictEqual(after.projects.otherOpenProject, '', 'the deleted folder is the root');
     });
 });
+
+/**
+ * A window wired the way `app.ts` wires it: every change of the active tab reaches the project
+ * feature (`activeChanged` → `syncActiveProject`), and both features read their per-workspace
+ * rows from the same store.
+ */
+const wiredWindow = (home: string, workspacePath: string) => {
+    const workspaces = new WorkspaceStore(home);
+    const workspace = workspaces.register(workspacePath)[0];
+    const store = new ProjectStore(home, 'scope', workspaces);
+    const posted: HostToPane[] = [];
+    let session!: Sessions;
+    const profileWorkspaces = new ProfileWorkspaceStore(home, () => session.sessionProfileId);
+    const projects = new Projects(workspaces, store, {
+        post: (msg: HostToPane) => { posted.push(msg); },
+        log: () => {},
+        tabs: () => session.tabs,
+        saveTabs: (next, options) => session.setTabs(next, options),
+        activeTabId: () => session.activeId,
+        openWorkspace: () => {},
+        currentWorkspacePath: () => workspacePath,
+        onDidChangeWorkspaceFolders: () => ({ dispose: () => {} }),
+    }, profileWorkspaces);
+    session = new Sessions(home, 'scope', {
+        post: (msg: HostToPane) => { posted.push(msg); },
+        log: () => {},
+        updatePanelTitle: () => {},
+        modelLabel: () => undefined,
+        currentWorkspaceId: () => workspace.id,
+        knownWorkspaceIds: () => [workspace.id],
+        activeChanged: () => projects.syncActiveProject(),
+    }, new TabStore(home, 'scope'));
+    // The order `app.ts` uses: init restores the tab, and the first post reads the saved pair.
+    return {
+        home, workspaces, workspace, store, profileWorkspaces, projects, session, posted,
+        start: () => { session.init(); projects.postList(); },
+    };
+};
+
+describe('a real start: restoring a tab is not choosing a folder', () => {
+    const withSavedPair = (workspacePath: string) => {
+        const home = dir();
+        const w = wiredWindow(home, workspacePath);
+        const x = w.store.create('X', w.workspace.id) as { id: string };
+        const y = w.store.create('Y', w.workspace.id) as { id: string };
+        const z = w.store.create('Z', w.workspace.id) as { id: string };
+        // What the last window left behind: the pair it worked in, and a tab in Z.
+        const tabs = new TabStore(home, 'scope');
+        tabs.writeCatalog([tab('z1', z.id, undefined, w.workspace.id)]);
+        tabs.writeActiveId(w.workspace.id, 'z1');
+        w.profileWorkspaces.setOpenProjects(w.workspace.id, y.id, x.id);
+        return { home, w, x, y, z };
+    };
+
+    it('a saved pair is restored, and the restored tab does not overwrite it', () => {
+        const { w, x, y } = withSavedPair('/work/start');
+        w.start();
+        assert.strictEqual(w.session.activeId, 'z1', 'the tab the window was on');
+        assert.strictEqual(w.projects.activeProject, y.id, 'the folder the pair names');
+        assert.strictEqual(w.projects.otherOpenProject, x.id);
+        assert.deepStrictEqual(w.profileWorkspaces.openProjects(w.workspace.id), [y.id, x.id], 'and the file still says so');
+        assert.deepStrictEqual(pairOf(w.posted), [y.id, x.id], 'nothing named Z on the way');
+    });
+
+    it('a profile rebind restores that profile\'s pair, not the tab it restored', () => {
+        const { home, w } = withSavedPair('/work/rebind');
+        const other = new ProjectStore(home, 'other', w.workspaces);
+        const x2 = other.create('X2', w.workspace.id) as { id: string };
+        const y2 = other.create('Y2', w.workspace.id) as { id: string };
+        const z2 = other.create('Z2', w.workspace.id) as { id: string };
+        const otherTabs = new TabStore(home, 'other');
+        otherTabs.writeCatalog([tab('o1', z2.id, undefined, w.workspace.id)]);
+        otherTabs.writeActiveId(w.workspace.id, 'o1');
+        new ProfileWorkspaceStore(home, () => 'other').setOpenProjects(w.workspace.id, y2.id, x2.id);
+
+        w.start();
+        // The rebind, in the order the connection does it: the tab first, then the projects.
+        w.session.bindProfileScope('other');
+        w.projects.bindProfileScope('other');
+
+        assert.strictEqual(w.session.activeId, 'o1', 'the restored tab of that profile');
+        assert.strictEqual(w.projects.activeProject, y2.id, 'the pair that profile saved');
+        assert.strictEqual(w.projects.otherOpenProject, x2.id);
+        assert.deepStrictEqual(w.profileWorkspaces.openProjects(w.workspace.id), [y2.id, x2.id]);
+    });
+
+    it('with nothing saved, the start takes the restored tab\'s folder and writes no pair', () => {
+        const home = dir();
+        const w = wiredWindow(home, '/work/fresh');
+        const z = w.store.create('Z', w.workspace.id) as { id: string };
+        const tabs = new TabStore(home, 'scope');
+        tabs.writeCatalog([tab('z1', z.id, undefined, w.workspace.id)]);
+        tabs.writeActiveId(w.workspace.id, 'z1');
+
+        w.start();
+        assert.strictEqual(w.projects.activeProject, z.id);
+        assert.strictEqual(w.projects.otherOpenProject, '');
+        assert.strictEqual(w.profileWorkspaces.openProjects(w.workspace.id), undefined, 'nothing was written');
+    });
+});
+
