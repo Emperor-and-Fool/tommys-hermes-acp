@@ -142,6 +142,34 @@ export function buildTreeSnapshot(input: TreeInput): TreeSnapshot {
     };
 }
 
+/**
+ * The tree as this window sees it, read at the moment of the write.
+ *
+ * The id and the tabs are read from the same owner, together. A refresh is fired by a
+ * `sessionList` post as often as by a `projectList` one, and on a profile change the two features
+ * re-bind their stores one after the other — an id read from the other holder names the wrong
+ * folder for the length of one write, which is how one agent's tabs came to sit under another
+ * agent's id (found 2026-11-22).
+ */
+export function treeInputOf(owners: {
+    /** The tabs, and the agent whose tabs they are — one owner, so the two cannot disagree. */
+    tabs: { sessionProfileId: string; activeId: string; tabsInWindow(): SessionInfo[] };
+    /** This window's folders: where it is and what it has open there. */
+    projects: { current(): string; currentId(): string; projectsInWindow(): Project[] };
+    /** Hermes' name for the agent today, for the readers of the file. */
+    agentName(): string;
+}): TreeInput {
+    return {
+        sessionProfileId: owners.tabs.sessionProfileId,
+        profile: owners.agentName(),
+        workspacePath: owners.projects.current(),
+        workspaceId: owners.projects.currentId(),
+        activeSessionId: owners.tabs.activeId,
+        projects: owners.projects.projectsInWindow(),
+        tabs: owners.tabs.tabsInWindow(),
+    };
+}
+
 /** The two files: `current` is where the window is, `passive` where it was. */
 export interface TreePaths {
     current: string;

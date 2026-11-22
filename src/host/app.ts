@@ -2,6 +2,7 @@ import type * as vscode from 'vscode';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
 import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
+import { treeInputOf } from './workspace/workSpace';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
@@ -420,16 +421,14 @@ export class App implements vscode.WebviewViewProvider {
             activeChanged: () => this._projects.syncActiveProject(),
         }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
-        // stays a call and the mapping lives with the files it writes.
-        this._trees = new TreeStore(this._historyDir, line => this._log(line), () => ({
-            sessionProfileId: this._projects.sessionProfileId,
-            profile: this._profiles.resolveTarget().agentName,
-            workspacePath: this._projects.current(),
-            workspaceId: this._projects.currentId(),
-            activeSessionId: this._session.activeId,
-            projects: this._projects.projectsInWindow(),
-            tabs: this._session.tabsInWindow(),
-        }));
+        // stays a call and the mapping lives with the files it writes. `treeInputOf` reads the id
+        // and the tabs from one owner: see why there.
+        this._trees = new TreeStore(this._historyDir, line => this._log(line), () =>
+            treeInputOf({
+                tabs: this._session,
+                projects: this._projects,
+                agentName: () => this._profiles.resolveTarget().agentName,
+            }));
         this._session.init();
         this._startPaneMail();
         this._lifecycle = new TabLifecycle({
@@ -664,7 +663,7 @@ export class App implements vscode.WebviewViewProvider {
         // First turn in this session and workspace: say where the tree file is. Sent as its own
         // block, so the transcript still shows only what was typed.
         const treeBlock = this._trees
-            ? this._trees.noticeBlock(this._projects.sessionProfileId, this._projects.currentId(), tabId)
+            ? this._trees.noticeBlock(this._session.sessionProfileId, this._projects.currentId(), tabId)
             : '';
         if (imageCount > 0 || historyBlock || treeBlock) {
             // Compose an ACP prompt: the attached conversation first, then the user's own text,
