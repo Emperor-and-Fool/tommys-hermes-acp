@@ -372,6 +372,12 @@ export interface LocaleStrings {
 
     // The agent notes mirror (the ⋯ menu's agent group)
     notesMirrorTitle: string;
+    notesMirrorConfirm: string;
+    notesMirrorCreateHere: string;
+    notesMirrorBack: string;
+    notesMirrorOpenFolder: string;
+    notesMirrorOldKept: string;
+    notesMirrorOldFailed: string;
     notesMirrorDocuments: string;
     notesMirrorChoose: string;
     notesMirrorDone: string;

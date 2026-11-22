@@ -36,6 +36,7 @@ const CHAT_COMMANDS: Array<[string, (app: App) => void | Promise<void>]> = [
     ['openAgentNotes', app => app.notes.openLocation()],
     ['setupNotesMirror', app => app.notes.setUp()],
     ['repairNotesMirror', app => app.notes.repair()],
+    ['changeNotesMirror', app => app.notes.changeLocation()],
 ];
 
 /**

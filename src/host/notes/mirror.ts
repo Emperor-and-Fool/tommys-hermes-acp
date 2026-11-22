@@ -58,6 +58,8 @@ export interface NotesMirrorHost {
      * `ProfilePresence` announces a window that has a connect, and both extensions share the table.
      */
     otherWindowLive(): boolean;
+    /** The agent this window is on: what "open notes location" opens. */
+    currentAgentId(): string;
 }
 
 /** How long "Remind me in 2 weeks" waits. */
@@ -111,6 +113,21 @@ export class NotesMirror {
         private readonly _env: Record<string, string | undefined> = process.env,
     ) {}
 
+    /**
+     * The ⋯ menu's agent group, one member per item.
+     *
+     * The feature answers its own menu: the current agent is the window's, so it is asked for
+     * through the port rather than handed in at construction (a window can switch agents).
+     */
+    get commands() {
+        return {
+            openLocation: () => this.openLocation(this._host.currentAgentId()),
+            setUp: () => this.setUp(),
+            repair: () => this.repair(),
+            changeLocation: () => this.changeLocation(),
+        };
+    }
+
     /** Where the mirror is, and what it holds, or undefined when the user has none. */
     current(): MirrorSetup | undefined {
         return this._store.readMirror();
@@ -130,7 +147,7 @@ export class NotesMirror {
         }
         const report = this.sync(setup);
         if (report.created || report.renamed || report.findings.length) {
-            this._host.log(this.summary(report, setup));
+            this._host.log(this.summary(report, setup.location));
         }
     }
 
@@ -192,20 +209,112 @@ export class NotesMirror {
         if (!location) {
             return;
         }
+        const report = this._install(location);
+        if (report) {
+            await this._announce(report, location);
+        }
+    }
+
+    /**
+     * The ⋯ menu, a mirror already set: build the new one, then take the old one down.
+     *
+     * The new mirror is made first, so a failed attempt leaves the working one alone. The old
+     * folder goes only when everything in it is a link of ours (see `_retireOldMirror`).
+     */
+    async changeLocation(): Promise<void> {
+        const previous = this.current();
+        if (!previous) {
+            await this.setUp();
+            return;
+        }
+        const location = await this._askLocation();
+        if (!location || location === previous.location) {
+            return;
+        }
+        const report = this._install(location);
+        if (!report) {
+            return;
+        }
+        report.findings.push(...this._retireOldMirror(previous.location));
+        await this._announce(report, location);
+    }
+
+    /** Make the folder, record it, and fill it. Undefined when the folder could not be made. */
+    private _install(location: string): MirrorReport | undefined {
         try {
             fs.mkdirSync(path.join(location, MIRROR_FOLDER), { recursive: true });
         } catch (error) {
             this._host.info(t('notesMirrorFolderFailed', location, describeError(error)));
-            return;
+            return undefined;
         }
         this._store.writeMirror({ location, agents: [] });
         this._host.mirrorSet(true);
         const setup = this.current();
-        if (!setup) {
-            return;
+        return setup ? this.sync(setup) : undefined;
+    }
+
+    /**
+     * The done notice: what it did, the folder in full, and a button that opens it.
+     *
+     * A notice with a button, not a bare line: the one thing the user wants after choosing a place
+     * is to look at it, and the path alone does not open anything.
+     */
+    private async _announce(report: MirrorReport, location: string): Promise<void> {
+        const answer = await this._host.choices.ask(this.summary(report, location), [t('notesMirrorOpenFolder')]);
+        if (answer === t('notesMirrorOpenFolder')) {
+            await this._host.choices.showInFileManager(path.join(location, MIRROR_FOLDER));
         }
-        const report = this.sync(setup);
-        this._host.info(this.summary(report, setup));
+    }
+
+    /**
+     * Take down the folder we are leaving — only when everything in it is a link of ours.
+     *
+     * A real file or folder inside it is the user's, so the whole folder is then left exactly as
+     * it is, links and all, and reported. No link is removed unless it points at an agent's notes
+     * folder that we know, and the folder itself goes only when it is empty afterwards.
+     */
+    private _retireOldMirror(location: string): string[] {
+        const folder = path.join(location, MIRROR_FOLDER);
+        let names: string[];
+        try {
+            names = fs.readdirSync(folder);
+        } catch {
+            return [];
+        }
+        const notesDirs = this._host.agents()
+            .map(agent => this._notes.paths(agent.sessionProfileId).dir);
+        const ours: string[] = [];
+        const foreign: string[] = [];
+        for (const name of names) {
+            const entry = path.join(folder, name);
+            const state = this._stateOf(entry);
+            const target = state.kind === 'link' && state.target ? state.target : '';
+            if (target && notesDirs.some(known => sameTarget(known, target, this._platform))) {
+                ours.push(entry);
+            } else {
+                foreign.push(name);
+            }
+        }
+        if (foreign.length > 0) {
+            return [t('notesMirrorOldKept', folder, foreign.join(', '))];
+        }
+        const findings: string[] = [];
+        for (const entry of ours) {
+            try {
+                fs.unlinkSync(entry);
+            } catch (error) {
+                findings.push(t('notesMirrorOldFailed', describeError(error)));
+            }
+        }
+        if (findings.length === 0) {
+            try {
+                fs.rmdirSync(folder);
+                this._host.log(`Notes mirror: ${folder} retired`);
+            } catch (error) {
+                findings.push(t('notesMirrorOldFailed', describeError(error)));
+            }
+        }
+        return findings;
     }
 
     /** The ⋯ menu, mirror already set: bring it in line with the agents, and say what changed. */
@@ -215,7 +324,7 @@ export class NotesMirror {
             return;
         }
         const report = this.sync(setup);
-        this._host.info(this.summary(report, setup));
+        this._host.info(this.summary(report, setup.location));
     }
 
     /** "Open notes location (current agent)": that agent's own folder, in the OS file manager. */
@@ -271,36 +380,66 @@ export class NotesMirror {
     }
 
     /** The one line the user reads: what went in, and how many things were left alone. */
-    private summary(report: MirrorReport, setup: MirrorSetup): string {
+    private summary(report: MirrorReport, location: string): string {
         const line = t('notesMirrorDone', report.created, report.renamed, report.findings.length);
         for (const finding of report.findings) {
             this._host.log(`Notes mirror: ${finding}`);
         }
-        return `${line} ${path.join(setup.location, MIRROR_FOLDER)}`;
+        return `${line} ${path.join(location, MIRROR_FOLDER)}`;
     }
 
-    /** Ask where the mirror goes: Obsidian's vaults, Documents, or a folder of the user's own. */
+    /**
+     * Ask where the mirror goes: Obsidian's vaults, Documents, or a folder of the user's own.
+     *
+     * Every row answers with the folder that will exist afterwards — the chosen folder is the
+     * *parent* of `PAs - AgentsProfileInfo`, and a picker that shows only the parent leaves the user
+     * guessing which of the two they are choosing. A folder from the OS dialog is confirmed with
+     * that same path before anything is created; "Back" returns to the list.
+     */
     private async _askLocation(): Promise<string | undefined> {
         const home = this._host.choices.home();
-        const choices: MirrorChoice[] = [];
-        for (const [index, vault] of readObsidianVaults(this._platform, home, this._env).entries()) {
-            choices.push({ id: vault.path, label: vault.name, detail: vault.path, suggested: index === 0 });
-        }
         const documents = path.join(home, 'Documents');
-        choices.push({ id: 'documents', label: t('notesMirrorDocuments'), detail: documents });
-        choices.push({ id: 'choose', label: t('notesMirrorChoose') });
+        for (;;) {
+            const choices: MirrorChoice[] = readObsidianVaults(this._platform, home, this._env)
+                .map((vault, index) => ({
+                    id: vault.path,
+                    label: vault.name,
+                    detail: path.join(vault.path, MIRROR_FOLDER),
+                    suggested: index === 0,
+                }));
+            choices.push({
+                id: 'documents',
+                label: t('notesMirrorDocuments'),
+                detail: path.join(documents, MIRROR_FOLDER),
+            });
+            choices.push({ id: 'choose', label: t('notesMirrorChoose') });
 
-        const picked = await this._host.choices.pick(t('notesMirrorTitle'), choices);
-        if (!picked) {
-            return undefined;
+            const picked = await this._host.choices.pick(t('notesMirrorTitle'), choices);
+            if (!picked) {
+                return undefined;
+            }
+            if (picked === 'documents') {
+                return documents;
+            }
+            if (picked !== 'choose') {
+                return picked;
+            }
+            const chosen = await this._host.choices.pickFolder(t('notesMirrorChoose'), home);
+            if (!chosen) {
+                return undefined;
+            }
+            const answer = await this._host.choices.ask(
+                t('notesMirrorConfirm', path.join(chosen, MIRROR_FOLDER)),
+                [t('notesMirrorCreateHere'), t('notesMirrorBack')],
+            );
+            if (answer === t('notesMirrorCreateHere')) {
+                return chosen;
+            }
+            if (!answer) {
+                return undefined;
+            }
+            // "Back": the list again, with nothing created.
         }
-        if (picked === 'choose') {
-            return this._host.choices.pickFolder(t('notesMirrorChoose'), home);
-        }
-        if (picked === 'documents') {
-            return documents;
-        }
-        return picked;
     }
 
     /** A renamed agent: move our own link to the new name, or say what stands in the way. */

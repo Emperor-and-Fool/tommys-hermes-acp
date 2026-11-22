@@ -38,13 +38,28 @@ const windowOn = (
     const flags: boolean[] = [];
     const shown: string[] = [];
     const asks: Array<{ message: string; actions: string[] }> = [];
+    const picks: Array<{ title: string; items: Array<{ id: string; label: string; detail?: string }> }> = [];
+    const folderDialogs: string[] = [];
+    // What the user does next: a queue per question, with the harness's answers as the default.
+    const user = {
+        pick: location as string | undefined,
+        picks: [] as Array<string | undefined>,
+        folder: location as string | undefined,
+        answers: [] as Array<string | undefined>,
+    };
     const choices = {
-        pick: async () => location,
-        pickFolder: async () => location,
+        pick: async (title: string, items: Array<{ id: string; label: string; detail?: string }>) => {
+            picks.push({ title, items });
+            return user.picks.length > 0 ? user.picks.shift() : user.pick;
+        },
+        pickFolder: async (title: string) => {
+            folderDialogs.push(title);
+            return user.folder;
+        },
         showInFileManager: async (folderPath: string) => { shown.push(folderPath); },
         ask: async (message: string, actions: string[]) => {
             asks.push({ message, actions });
-            return answer;
+            return user.answers.length > 0 ? user.answers.shift() : answer;
         },
         home: () => home,
     } as unknown as EditorChoices;
@@ -63,9 +78,10 @@ const windowOn = (
         agents: () => agents,
         mirrorSet: value => flags.push(value),
         otherWindowLive: () => otherWindow,
+        currentAgentId: () => agents[0]?.sessionProfileId || '',
     }, 'linux', {});
 
-    return { home, location, store, notes, mirror, logs, infos, flags, shown, asks, agents };
+    return { home, location, store, notes, mirror, logs, infos, flags, shown, asks, picks, folderDialogs, user, agents };
 };
 
 /** The mirror folder inside the location the user picked. */
@@ -114,8 +130,10 @@ describe('setting the mirror up', () => {
 
             const stored = w.store.readMirror();
             assert.strictEqual(stored?.location, location, 'the choice lives in the data home, not a setting');
-            assert.deepStrictEqual(w.flags, [true], 'the menu now offers "repair"');
-            assert.ok(w.infos.length === 1 && w.infos[0].includes(MIRROR_FOLDER), 'one short line, naming the folder');
+            assert.deepStrictEqual(w.flags, [true], 'the menu now offers repair and change');
+            const done = w.asks[w.asks.length - 1];
+            assert.ok(done.message.includes(path.join(w.location, MIRROR_FOLDER)), 'the done notice names the folder in full');
+            assert.deepStrictEqual(done.actions, [t('notesMirrorOpenFolder')], 'with a button that opens it');
         } finally {
             fs.rmSync(w.home, { recursive: true, force: true });
             fs.rmSync(location, { recursive: true, force: true });
@@ -316,8 +334,10 @@ describe('the first-run question', () => {
         const w = await due(t('notesAskDoIt'));
         try {
             assert.strictEqual(w.store.readMirror()?.location, w.location, 'the picker ran');
+            const asked = (): number => w.asks.filter(entry => entry.message === t('notesAskMirror')).length;
+            assert.strictEqual(asked(), 1);
             await w.mirror.askIfDue();
-            assert.strictEqual(w.asks.length, 1, 'a mirror is set: nothing to ask');
+            assert.strictEqual(asked(), 1, 'a mirror is set: nothing to ask');
         } finally {
             fs.rmSync(w.home, { recursive: true, force: true });
             fs.rmSync(w.location, { recursive: true, force: true });
@@ -329,6 +349,133 @@ describe('the first-run question', () => {
         try {
             assert.deepStrictEqual(w.asks, [], 'another window is running');
             assert.strictEqual(w.store.readAnswer(), undefined);
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+});
+
+/**
+ * What the picker promises: every row is the folder that will exist afterwards, and a folder from
+ * the OS dialog is confirmed with that same path before anything is created.
+ */
+describe('the picker says what it will create', () => {
+    it('names the folder in its title, and shows the result path for every row', async () => {
+        const w = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], dir());
+        try {
+            await w.mirror.setUp();
+            assert.strictEqual(w.picks[0].title, t('notesMirrorTitle'));
+            assert.ok(w.picks[0].title.includes(MIRROR_FOLDER), 'the title names the folder itself');
+
+            const rows = w.picks[0].items;
+            assert.deepStrictEqual(rows.map(row => row.label), [t('notesMirrorDocuments'), t('notesMirrorChoose')]);
+            assert.strictEqual(rows[0].detail, path.join(w.home, 'Documents', MIRROR_FOLDER),
+                'the row says the folder that will be created, not the parent it starts from');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('confirms a folder from the dialog with the result path, before creating anything', async () => {
+        const chosen = dir();
+        const w = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], chosen);
+        try {
+            w.user.pick = 'choose';
+            w.user.folder = chosen;
+            w.user.answers = [t('notesMirrorCreateHere')];
+            await w.mirror.setUp();
+
+            const confirm = w.asks.find(entry => entry.actions.includes(t('notesMirrorCreateHere')));
+            assert.ok(confirm, 'a confirm with Create here and Back');
+            assert.deepStrictEqual(confirm.actions, [t('notesMirrorCreateHere'), t('notesMirrorBack')]);
+            assert.strictEqual(confirm.message, t('notesMirrorConfirm', path.join(chosen, MIRROR_FOLDER)));
+            assert.ok(fs.existsSync(path.join(chosen, MIRROR_FOLDER)), 'and only then is it created');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(chosen, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('"Back" returns to the list and creates nothing in the folder it was asked about', async () => {
+        const asked = dir();
+        const w = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], asked);
+        try {
+            w.user.pick = 'documents';
+            w.user.picks = ['choose'];
+            w.user.folder = asked;
+            w.user.answers = [t('notesMirrorBack')];
+            await w.mirror.setUp();
+
+            assert.ok(!fs.existsSync(path.join(asked, MIRROR_FOLDER)), 'nothing where Back was pressed');
+            assert.strictEqual(w.store.readMirror()?.location, path.join(w.home, 'Documents'), 'the row chosen next won');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(asked, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+});
+
+/**
+ * Changing the location later: the new mirror is built first, and the folder left behind goes only
+ * when everything in it is a link of ours.
+ */
+describe('changing the mirror\'s location', () => {
+    const withMirror = async (agents: AgentRow[]) => {
+        const location = dir();
+        const w = windowOn(agents, location);
+        await w.mirror.setUp();
+        return w;
+    };
+
+    it('builds the new mirror, then removes the old folder and its links', async () => {
+        const w = await withMirror([{ sessionProfileId: 'id-a', agentName: 'kitt' }]);
+        const next = dir();
+        try {
+            w.user.pick = next;
+            await w.mirror.changeLocation();
+
+            assert.strictEqual(w.store.readMirror()?.location, next);
+            assert.strictEqual(kindOf(path.join(mirrorDir(next), 'kitt')).kind, 'link', 'the new mirror is there');
+            assert.ok(!fs.existsSync(mirrorDir(w.location)), 'and the folder we left is gone with its links');
+            assert.ok(w.asks[w.asks.length - 1].message.includes(mirrorDir(next)), 'the notice names the new folder');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+            fs.rmSync(next, { recursive: true, force: true });
+        }
+    });
+
+    it('a real file in the old folder keeps the old folder, links and all', async () => {
+        const w = await withMirror([{ sessionProfileId: 'id-a', agentName: 'kitt' }]);
+        const next = dir();
+        try {
+            const mine = path.join(mirrorDir(w.location), 'my own note.md');
+            fs.writeFileSync(mine, 'the user wrote this');
+            w.user.pick = next;
+            await w.mirror.changeLocation();
+
+            assert.ok(fs.existsSync(mine), 'the user\'s file is untouched');
+            assert.strictEqual(kindOf(path.join(mirrorDir(w.location), 'kitt')).kind, 'link', 'and the old link was not removed');
+            assert.ok(w.logs.some(line => line.includes(mirrorDir(w.location))), 'the folder is reported, not silently kept');
+            assert.strictEqual(w.store.readMirror()?.location, next, 'while the record points at the new mirror');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+            fs.rmSync(next, { recursive: true, force: true });
+        }
+    });
+
+    it('a dismissed picker changes nothing', async () => {
+        const w = await withMirror([{ sessionProfileId: 'id-a', agentName: 'kitt' }]);
+        try {
+            w.user.pick = undefined;
+            await w.mirror.changeLocation();
+            assert.strictEqual(w.store.readMirror()?.location, w.location);
+            assert.strictEqual(kindOf(path.join(mirrorDir(w.location), 'kitt')).kind, 'link');
         } finally {
             fs.rmSync(w.home, { recursive: true, force: true });
             fs.rmSync(w.location, { recursive: true, force: true });

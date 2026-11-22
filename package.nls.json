@@ -25,6 +25,7 @@
   "commands.tommys.openAgentNotes.title": "Open notes location (current agent)",
   "commands.tommys.setupNotesMirror.title": "Set up notes mirror…",
   "commands.tommys.repairNotesMirror.title": "Repair notes mirror",
+  "commands.tommys.changeNotesMirror.title": "Change notes mirror location…",
   "commands.tommys.detectEnvironment.title": "Environment detection",
   "commands.tommys.detectEnvironmentBusy.title": "Detecting environment....",
   "commands.tommys.configureEnvironment.title": "Environment configuration",

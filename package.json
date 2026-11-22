@@ -113,6 +113,10 @@
         "title": "%commands.tommys.repairNotesMirror.title%"
       },
       {
+        "command": "tommys.changeNotesMirror",
+        "title": "%commands.tommys.changeNotesMirror.title%"
+      },
+      {
         "command": "tommys.detectEnvironment",
         "title": "%commands.tommys.detectEnvironment.title%",
         "icon": "$(search)"
@@ -212,6 +216,11 @@
           "command": "tommys.repairNotesMirror",
           "when": "tommysNotesMirrorSet",
           "group": "0@3"
+        },
+        {
+          "command": "tommys.changeNotesMirror",
+          "when": "tommysNotesMirrorSet",
+          "group": "0@4"
         },
         {
           "command": "tommys.toggleChatSurface",

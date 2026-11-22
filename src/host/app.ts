@@ -92,12 +92,8 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
-    /** The ⋯ menu's agent group: this agent's folder, and the mirror of all of them. */
-    readonly notes = {
-        openLocation: () => this._mirror.openLocation(this._session.sessionProfileId),
-        setUp: () => this._mirror.setUp(),
-        repair: () => this._mirror.repair(),
-    };
+    /** The ⋯ menu's agent group: the folder this agent writes in, and the mirror of all of them. */
+    get notes() { return this._mirror.commands; }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
@@ -380,6 +376,7 @@ export class App implements vscode.WebviewViewProvider {
             agents: () => this._profiles.agents(),
             mirrorSet: value => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
             otherWindowLive: () => this._presence.live().length > 0,
+            currentAgentId: () => this._session.sessionProfileId,
         });
         this._mirror.repairOnStart();
         // Announced before anything asks who may run what: the pickers read the other windows'
