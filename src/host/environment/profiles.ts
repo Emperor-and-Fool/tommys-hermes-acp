@@ -304,6 +304,18 @@ export class Profiles {
         return { name, description: profileDescription(name, hermesHome) };
     }
 
+    /**
+     * Every agent we know: the id its folder is named by, and Hermes' name for it today.
+     *
+     * The one list a per-agent artefact needs (the notes mirror makes one link per row). A row is
+     * created by the first connect and kept across a rename, so this is wider than the profiles
+     * Hermes answers to right now — which is what a mirror of our own folders should be.
+     */
+    agents(): Array<{ sessionProfileId: string; agentName: string }> {
+        return this._host.store.all()
+            .map(row => ({ sessionProfileId: row.sessionProfileId, agentName: row.agentName }));
+    }
+
     labelFor(cliProfile: string): string {
         return normalizeHermesCliProfile(cliProfile) === 'default'
             ? t('defaultAgent')

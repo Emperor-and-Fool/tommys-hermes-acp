@@ -419,4 +419,17 @@ hermes --profile &lt;name&gt; acp</code></pre>
     steer: '引导',
     steerHint: '作为引导发送到正在运行的一轮中',
     approvalNoteLabel: '审批',
+
+    notesMirrorTitle: '笔记镜像放在哪里？',
+    notesMirrorDocuments: '主目录中的「文档」',
+    notesMirrorChoose: '选择文件夹…',
+    notesMirrorDone: '笔记镜像：新建 {0}，重命名 {1}，提示 {2}。',
+    notesMirrorCaseClash: '"{0}"：两个代理仅大小写不同 — 第二个未建立链接。',
+    notesMirrorRealEntry: '镜像中的 "{0}" 是真实文件或文件夹，不是我们的链接：未改动。',
+    notesMirrorNotOurs: '"{0}" 不是本扩展建立的链接：未改动。',
+    notesMirrorNameTaken: '"{0}" 已被占用：旧链接保持原样。',
+    notesMirrorTargetRestored: '"{0}" 指向的文件夹已不存在，已重新创建该文件夹。',
+    notesMirrorLinkFailed: '无法创建 "{0}"（{1}）。',
+    notesMirrorFolderFailed: '无法创建镜像文件夹 {0}（{1}）。',
+    notesOpenFailed: '无法打开笔记文件夹（{0}）。',
 };

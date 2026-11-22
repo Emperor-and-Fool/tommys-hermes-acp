@@ -369,6 +369,20 @@ export interface LocaleStrings {
     // Steer
     steer: string;
     steerHint: string;
+
+    // The agent notes mirror (the ⋯ menu's agent group)
+    notesMirrorTitle: string;
+    notesMirrorDocuments: string;
+    notesMirrorChoose: string;
+    notesMirrorDone: string;
+    notesMirrorCaseClash: string;
+    notesMirrorRealEntry: string;
+    notesMirrorNotOurs: string;
+    notesMirrorNameTaken: string;
+    notesMirrorTargetRestored: string;
+    notesMirrorLinkFailed: string;
+    notesMirrorFolderFailed: string;
+    notesOpenFailed: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

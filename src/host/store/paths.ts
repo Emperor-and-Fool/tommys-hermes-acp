@@ -28,6 +28,16 @@ export function notesDirFor(historyDir: string, sessionProfileId: string): strin
     return path.join(profileDir(historyDir, sessionProfileId), 'notes');
 }
 
+/**
+ * The notes mirror's record: where the user put it, and which link belongs to which agent.
+ *
+ * At the data home's root, not inside a profile: the mirror is one thing for the whole home, and
+ * both the primary and the secondant (each in its own data home) name their own.
+ */
+export function notesMirrorPathFor(historyDir: string): string {
+    return path.join(historyDir, 'notes-mirror.json');
+}
+
 /** The tabs of one profile. */
 export function sessionsPathFor(historyDir: string, sessionProfileId: string): string {
     return path.join(profileDir(historyDir, sessionProfileId), 'sessions.json');

@@ -33,6 +33,9 @@ const CHAT_COMMANDS: Array<[string, (app: App) => void | Promise<void>]> = [
     ['detectEnvironment', app => app.detectEnvironment()],
     ['detectEnvironmentBusy', () => undefined],
     ['configureEnvironment', app => app.configureEnvironment()],
+    ['openAgentNotes', app => app.notes.openLocation()],
+    ['setupNotesMirror', app => app.notes.setUp()],
+    ['repairNotesMirror', app => app.notes.repair()],
 ];
 
 /**

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { notesDirFor } from '../store/paths';
-import { writeAtomicText } from '../store/connection';
+import { notesDirFor, notesMirrorPathFor } from '../store/paths';
+import { writeAtomic, writeAtomicText } from '../store/connection';
 
 /**
  * The notes feature's one door to the data home (ST1).
@@ -21,6 +21,22 @@ export interface NoteFile {
 
 /** The generated index. A fixed name, so every agent and every reader finds its way. */
 export const INDEX_FILE = '00 Index.md';
+
+/** One agent's link in the mirror: the name Hermes had when it was made, and the file name used. */
+export interface MirrorLinkRow {
+    sessionProfileId: string;
+    /** The agent's name at the time the link was created: a rename is what makes it differ. */
+    name: string;
+    /** The link's file name in the mirror folder, after sanitising. */
+    link: string;
+}
+
+/** Where the mirror is, and what stands in it. Stored in the data home, never in a setting. */
+export interface MirrorSetup {
+    /** The folder the user chose; the mirror itself is `PAs - AgentsProfileInfo` inside it. */
+    location: string;
+    agents: MirrorLinkRow[];
+}
 
 export class NotesStore {
     constructor(private readonly _historyDir: string) {}
@@ -87,5 +103,28 @@ export class NotesStore {
             }
         }
         return files;
+    }
+
+    /** The mirror the user set up, or undefined when there is none yet. */
+    readMirror(): MirrorSetup | undefined {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(notesMirrorPathFor(this._historyDir), 'utf-8')) as MirrorSetup;
+            if (!parsed || typeof parsed.location !== 'string' || !parsed.location) {
+                return undefined;
+            }
+            return { location: parsed.location, agents: Array.isArray(parsed.agents) ? parsed.agents : [] };
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Store the mirror, or forget it when the user has none.
+     *
+     * Forgetting removes the record only: the links and the folder the user has are theirs, and
+     * nothing here deletes a file the user can see (the menu has no "remove the mirror" action).
+     */
+    writeMirror(setup: MirrorSetup): void {
+        writeAtomic(notesMirrorPathFor(this._historyDir), setup);
     }
 }

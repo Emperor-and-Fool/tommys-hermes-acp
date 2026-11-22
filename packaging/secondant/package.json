@@ -92,6 +92,19 @@
         "icon": "$(output)"
       },
       {
+        "command": "tommys2.openAgentNotes",
+        "title": "%commands.tommys2.openAgentNotes.title%",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "tommys2.setupNotesMirror",
+        "title": "%commands.tommys2.setupNotesMirror.title%"
+      },
+      {
+        "command": "tommys2.repairNotesMirror",
+        "title": "%commands.tommys2.repairNotesMirror.title%"
+      },
+      {
         "command": "tommys2.detectEnvironment",
         "title": "%commands.tommys2.detectEnvironment.title%",
         "icon": "$(search)"
@@ -171,32 +184,46 @@
       ],
       "tommys2.moreMenu": [
         {
-          "command": "tommys2.toggleChatSurface",
+          "command": "tommys2.openAgentNotes",
           "group": "0@1"
         },
         {
-          "command": "tommys2.openSettings",
+          "command": "tommys2.setupNotesMirror",
+          "when": "!tommys2NotesMirrorSet",
+          "group": "0@2"
+        },
+        {
+          "command": "tommys2.repairNotesMirror",
+          "when": "tommys2NotesMirrorSet",
+          "group": "0@3"
+        },
+        {
+          "command": "tommys2.toggleChatSurface",
           "group": "1@1"
         },
         {
-          "command": "tommys2.checkUpdate",
-          "group": "1@2"
-        },
-        {
-          "command": "tommys2.openAbout",
+          "command": "tommys2.openSettings",
           "group": "2@1"
         },
         {
-          "command": "tommys2.openHelp",
+          "command": "tommys2.checkUpdate",
           "group": "2@2"
         },
         {
+          "command": "tommys2.openAbout",
+          "group": "3@1"
+        },
+        {
+          "command": "tommys2.openHelp",
+          "group": "3@2"
+        },
+        {
           "command": "tommys2.openFaq",
-          "group": "2@3"
+          "group": "3@3"
         },
         {
           "command": "tommys2.openLogs",
-          "group": "3@1"
+          "group": "4@1"
         }
       ],
       "editor/context": [

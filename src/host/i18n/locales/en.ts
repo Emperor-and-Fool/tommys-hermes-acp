@@ -423,4 +423,17 @@ hermes --profile &lt;name&gt; acp</code></pre>
     steer: 'Steer',
     steerHint: 'Send this as guidance into the running turn',
     approvalNoteLabel: 'Approval',
+
+    notesMirrorTitle: 'Where should the notes mirror go?',
+    notesMirrorDocuments: 'Documents in your home folder',
+    notesMirrorChoose: 'Choose a folder…',
+    notesMirrorDone: 'Notes mirror: {0} created, {1} renamed, {2} findings.',
+    notesMirrorCaseClash: '"{0}": two agents differ only in case — the second is not linked.',
+    notesMirrorRealEntry: '"{0}" in the mirror is a real file or folder, not our link: left alone.',
+    notesMirrorNotOurs: '"{0}" is a link this extension did not make: left alone.',
+    notesMirrorNameTaken: '"{0}" is already taken: the old link was left as it was.',
+    notesMirrorTargetRestored: '"{0}" pointed at a folder that was gone; the folder was made again.',
+    notesMirrorLinkFailed: 'Could not create "{0}" ({1}).',
+    notesMirrorFolderFailed: 'Could not create the mirror folder {0} ({1}).',
+    notesOpenFailed: 'Could not open the notes folder ({0}).',
 };

@@ -100,6 +100,19 @@
         "icon": "$(output)"
       },
       {
+        "command": "tommys.openAgentNotes",
+        "title": "%commands.tommys.openAgentNotes.title%",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "tommys.setupNotesMirror",
+        "title": "%commands.tommys.setupNotesMirror.title%"
+      },
+      {
+        "command": "tommys.repairNotesMirror",
+        "title": "%commands.tommys.repairNotesMirror.title%"
+      },
+      {
         "command": "tommys.detectEnvironment",
         "title": "%commands.tommys.detectEnvironment.title%",
         "icon": "$(search)"
@@ -187,52 +200,66 @@
       ],
       "tommys.moreMenu": [
         {
-          "command": "tommys.toggleChatSurface",
+          "command": "tommys.openAgentNotes",
           "group": "0@1"
+        },
+        {
+          "command": "tommys.setupNotesMirror",
+          "when": "!tommysNotesMirrorSet",
+          "group": "0@2"
+        },
+        {
+          "command": "tommys.repairNotesMirror",
+          "when": "tommysNotesMirrorSet",
+          "group": "0@3"
+        },
+        {
+          "command": "tommys.toggleChatSurface",
+          "group": "1@1"
         },
         {
           "command": "tommys.installSecondant",
           "when": "!tommys2Installed",
-          "group": "0@2"
+          "group": "1@2"
         },
         {
           "command": "tommys.uninstallSecondant",
           "when": "tommys2Installed",
-          "group": "0@2"
+          "group": "1@2"
         },
         {
           "command": "tommys.installSystray",
           "when": "!tommysSystrayInstalled",
-          "group": "1@0"
+          "group": "2@0"
         },
         {
           "command": "tommys.uninstallSystray",
           "when": "tommysSystrayInstalled",
-          "group": "1@0"
+          "group": "2@0"
         },
         {
           "command": "tommys.openSettings",
-          "group": "1@1"
-        },
-        {
-          "command": "tommys.checkUpdate",
-          "group": "1@2"
-        },
-        {
-          "command": "tommys.openAbout",
           "group": "2@1"
         },
         {
-          "command": "tommys.openHelp",
+          "command": "tommys.checkUpdate",
           "group": "2@2"
         },
         {
+          "command": "tommys.openAbout",
+          "group": "3@1"
+        },
+        {
+          "command": "tommys.openHelp",
+          "group": "3@2"
+        },
+        {
           "command": "tommys.openFaq",
-          "group": "2@3"
+          "group": "3@3"
         },
         {
           "command": "tommys.openLogs",
-          "group": "3@1"
+          "group": "4@1"
         }
       ],
       "editor/context": [

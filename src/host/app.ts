@@ -4,6 +4,7 @@ import { Projects } from './workspace/projectGrouped';
 import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
 import { treeInputOf } from './workspace/workSpace';
 import { AgentNotes } from './notes/notes';
+import { NotesMirror } from './notes/mirror';
 import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
@@ -34,6 +35,7 @@ import { createEditorEnv } from './editor/env';
 import { createEditorFiles } from './editor/files';
 import { createEditorFolders } from './editor/folders';
 import { createEditorNotices } from './editor/notices';
+import { createEditorChoices } from './editor/choices';
 import { createEditorSettings } from './editor/settings';
 import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
@@ -90,6 +92,13 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
+    /** The ⋯ menu's agent group: this agent's folder, and the mirror of all of them. */
+    readonly notes = {
+        openLocation: () => this._mirror.openLocation(this._session.sessionProfileId),
+        setUp: () => this._mirror.setUp(),
+        repair: () => this._mirror.repair(),
+    };
+
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
 
@@ -130,6 +139,8 @@ export class App implements vscode.WebviewViewProvider {
     private _trees?: TreeStore;
     /** Each agent's own notes, in the data home beside its tabs (`host/notes`). */
     private _notes: AgentNotes;
+    /** The user's mirror of them: one link per agent, in a folder they chose. */
+    private _mirror: NotesMirror;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -163,7 +174,7 @@ export class App implements vscode.WebviewViewProvider {
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
         acpStatus: () => this._connection.acp?.status,
-        isViewingPromptSession: () => this._isViewingPromptSession(),
+        isViewingPromptSession: () => !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId,
         cancelPendingPermissions: () => this._turn.cancelPendingPermissions(),
         awaitSessionReady: () => this._connection.awaitSessionReady(),
         detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
@@ -173,7 +184,7 @@ export class App implements vscode.WebviewViewProvider {
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._session.saveMessage(role, text),
         savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
-        resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
+        resolvePermissionHistory: (id, outcome, optionId, label) => this._session.resolvePermissionHistory(id, outcome, optionId, label),
         permissionOptionLabel: (id, optionId) => this._approvals.optionLabel(id, optionId),
     });
 
@@ -193,7 +204,14 @@ export class App implements vscode.WebviewViewProvider {
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
         reconnect: () => this._connection.connect(this._profiles.selectionId || undefined),
-        resetViewTitle: () => this._resetViewTitleToDefault(),
+        // Detection puts its own title on the view; this takes it back.
+        resetViewTitle: () => {
+            const view = this._surfaces.view;
+            if (view) {
+                view.title = undefined;
+                view.description = undefined;
+            }
+        },
     });
 
     private _webviewLocale?: SupportedLocale;
@@ -222,7 +240,7 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _surfaces: Surfaces = new Surfaces({
         html: (webview) => this._getHtml(webview),
         wire: (webview, surface) => this._wireMessages(webview, surface),
-        activeTabTitle: () => this._activeTabTitle(),
+        activeTabTitle: () => this._session.tabs.find(item => item.id === this._session.activeId)?.title || t('newChat'),
         onViewResolved: () => { this._webviewLocale = getLocale(); },
         onViewVisible: () => {
             this._syncWebviewLocale();
@@ -348,12 +366,21 @@ export class App implements vscode.WebviewViewProvider {
             }),
         });
         this._profiles.seedStore();
-        // Each agent's own notes: a folder beside its tabs, and the index that names it. Built here
-        // because it needs the profile table (a name and a description) and the data home.
-        this._notes = new AgentNotes(new NotesStore(this._historyDir), {
+        // Each agent's own notes: a folder beside its tabs, and the index that names it; and the
+        // mirror the user reads them through. One store for both (ST1).
+        const notesStore = new NotesStore(this._historyDir);
+        this._notes = new AgentNotes(notesStore, {
             log: line => this._log(line),
             profileInfo: id => this._profiles.describeAgent(id),
         });
+        this._mirror = new NotesMirror(notesStore, this._notes, {
+            log: line => this._log(line),
+            info: message => this._notices.info(message),
+            choices: createEditorChoices(),
+            agents: () => this._profiles.agents(),
+            mirrorSet: value => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
+        });
+        this._mirror.repairOnStart();
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
         this._presence = new ProfilePresence({
@@ -506,7 +533,7 @@ export class App implements vscode.WebviewViewProvider {
                 primary: this._primary?.activeProfile || '',
                 elsewhere: this._presence.live(),
             }),
-            isViewingPromptSession: () => this._isViewingPromptSession(),
+            isViewingPromptSession: () => !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId,
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
         });
@@ -528,19 +555,6 @@ export class App implements vscode.WebviewViewProvider {
                 void this._onConfigurationChanged(affects);
             })
         );
-    }
-
-    private _resolvePermissionHistory(
-        id: string,
-        outcome: 'selected' | 'cancelled',
-        selectedOptionId?: string,
-        selectedLabel?: string
-    ): void {
-        this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
-    }
-
-    private _isViewingPromptSession(): boolean {
-        return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
     }
 
     private _otherSessionIsPrompting(): boolean {
@@ -1031,21 +1045,6 @@ export class App implements vscode.WebviewViewProvider {
             clearHistoryStaged: () => this.clearHistoryStaged(),
             detection: () => this._detection,
         };
-    }
-
-    private _activeTabTitle(): string {
-        const rec = this._session.tabs.find(item => item.id === this._session.activeId);
-        return rec?.title || t('newChat');
-    }
-
-    /** Clear the title the detection state put on the view. */
-    private _resetViewTitleToDefault(): void {
-        const view = this._surfaces.view;
-        if (!view) {
-            return;
-        }
-        view.title = undefined;
-        view.description = undefined;
     }
 
     /** One way to reach the pane: every call site stays as it was. */
