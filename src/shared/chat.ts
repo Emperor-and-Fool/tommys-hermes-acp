@@ -169,14 +169,6 @@ export interface Workspace {
     id: string;
     path: string;
     lastSeen: number;
-    /**
-     * The profile each pane last picked in this window.
-     *
-     * Per workspace because VSCodium opens a workspace in one window, and per pane because the two
-     * panes never run on one profile: the primary remembers its own, the secondant its own.
-     */
-    primarySelection?: string;
-    secondantSelection?: string;
 }
 
 /**

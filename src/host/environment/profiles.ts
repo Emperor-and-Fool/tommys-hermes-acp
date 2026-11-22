@@ -118,17 +118,21 @@ export interface ProfilesHost {
      *
      * Read before the workspace is registered: the pick is what a start is resolved from, so it
      * cannot wait for the rest of the window.
+     *
+     * Required, like every other port member: the start rule and the "never a held profile"
+     * guarantee are the feature, and a wiring that quietly leaves one out would delete them
+     * without an error.
      */
-    workspaceSelection?: () => string;
+    workspaceSelection: () => string;
     /** Remember this pane's pick for its workspace. The global key stays the fallback. */
-    saveWorkspaceSelection?: (selectionId: string) => void;
+    saveWorkspaceSelection: (selectionId: string) => void;
     /**
      * The CLI profiles other running instances hold.
      *
      * A start must never land on one of them: the window would connect, be refused by the
      * guarantee, and show an error where a profile was expected.
      */
-    heldElsewhere?: () => string[];
+    heldElsewhere: () => string[];
     /** Where Hermes keeps its profiles. Absent means the real home; a test passes a temp one. */
     hermesHome?: () => string;
 }
@@ -178,11 +182,11 @@ export class Profiles {
 
     /** The pick a start resolves from: this workspace's, else the last one anywhere, minus the held. */
     private _startingSelection(): string {
-        const held = new Set((this._host.heldElsewhere ? this._host.heldElsewhere() : [])
+        const held = new Set(this._host.heldElsewhere()
             .map(cliProfile => normalizeHermesCliProfile(cliProfile))
             .filter(Boolean));
         const candidates = [
-            this._host.workspaceSelection ? this._host.workspaceSelection() : '',
+            this._host.workspaceSelection(),
             this.persistedSelectionId,
         ];
         for (const candidate of candidates) {
@@ -380,7 +384,7 @@ export class Profiles {
     /** Remember the pick: in this workspace (the start rule) and globally (the fallback). */
     persistSelection(id: string): void {
         void this._host.globalState.update('activeSelectionId', id);
-        this._host.saveWorkspaceSelection?.(id);
+        this._host.saveWorkspaceSelection(id);
     }
 
     /** The agent list changed: the profiles on disk must be read again. */

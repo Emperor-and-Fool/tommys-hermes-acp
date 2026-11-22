@@ -42,10 +42,10 @@ function setup(
         store,
         hermesHome: hermesHome ? () => hermesHome : undefined,
         excludedProfiles: () => excluded,
-        // A start rule needs this window's saved pick and the profiles other windows hold; both
-        // are absent in the tests that only resolve a name.
-        workspaceSelection: start.workspace === undefined ? undefined : () => start.workspace as string,
-        heldElsewhere: start.held === undefined ? undefined : () => start.held as string[],
+        // The start rule's three: a test that only resolves a name supplies the empty answers.
+        workspaceSelection: () => start.workspace || '',
+        saveWorkspaceSelection: () => undefined,
+        heldElsewhere: () => start.held || [],
     });
     return { home, store, profiles };
 }

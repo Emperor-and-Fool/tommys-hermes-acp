@@ -55,9 +55,27 @@ import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './wo
  *   dropped, which is the same courtesy a migration backfill needs.
  */
 
+/**
+ * One workspace as this file holds it: the shared row, plus what only the host keeps.
+ *
+ * `Workspace` is the contract — what the pane is told — and it is deliberately smaller: a field
+ * added here must never travel, so the store projects instead of handing its rows out.
+ */
+export interface WorkspaceRow extends Workspace {
+    /** The profile the primary pane last picked in this workspace. */
+    primarySelection?: string;
+    /** The same for the secondant: the two panes never run on one profile. */
+    secondantSelection?: string;
+}
+
+/** A row as the pane is told about it: the three fields the contract knows, and nothing else. */
+export function publicWorkspace(row: WorkspaceRow): Workspace {
+    return { id: row.id, path: row.path, lastSeen: row.lastSeen };
+}
+
 /** The file's shape: the workspaces only. `projects` lived here until they moved per profile. */
 interface WorkspaceFile {
-    workspaces: Workspace[];
+    workspaces: WorkspaceRow[];
 }
 
 /**
@@ -73,17 +91,23 @@ export class WorkspaceStore {
         return workspacesPathFor(this._historyDir);
     }
 
+    /**
+     * The workspaces as the pane is told about them: `publicWorkspace` per row.
+     *
+     * Posting rows is what put the two profile picks on the wire; a projection here means a field
+     * added to the row tomorrow cannot leak by being in the same object.
+     */
     read(): Workspace[] {
-        return this._read().workspaces;
+        return this._read().workspaces.map(publicWorkspace);
     }
 
     /** The entry for a path, without recording it. What a tab needs when it is tagged. */
-    entryFor(workspacePath: string): Workspace | undefined {
+    entryFor(workspacePath: string): WorkspaceRow | undefined {
         return this._read().workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
     }
 
     /** The entry for a path, made if this is the first reference to it. For reading old files. */
-    ensure(workspacePath: string): Workspace {
+    ensure(workspacePath: string): WorkspaceRow {
         const file = this._read();
         const existing = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
         if (existing) {
@@ -96,7 +120,7 @@ export class WorkspaceStore {
     }
 
     /** Record that this workspace was opened now. An empty string is not a workspace. */
-    register(workspacePath: string): Workspace[] {
+    register(workspacePath: string): WorkspaceRow[] {
         const file = this._read();
         if (!workspacePath) {
             return file.workspaces;
@@ -170,11 +194,11 @@ export class WorkspaceStore {
     }
 
     private _read(): WorkspaceFile {
-        let list: Workspace[] = [];
+        let list: WorkspaceRow[] = [];
         try {
             const parsed = JSON.parse(fs.readFileSync(this.path, 'utf-8'));
             const raw = Array.isArray(parsed) ? parsed : (Array.isArray(parsed && parsed.workspaces) ? parsed.workspaces : []);
-            list = raw.filter((entry: Workspace) => !!entry && typeof entry.path === 'string');
+            list = raw.filter((entry: WorkspaceRow) => !!entry && typeof entry.path === 'string');
         } catch {
             return { workspaces: [] };
         }
@@ -185,7 +209,7 @@ export class WorkspaceStore {
         // A root recorded here by an older build is dropped in the same pass: the roots are per
         // agent now (ProfileRootsStore) and the migration has already moved them out.
         let moved = false;
-        list = list.map((entry: Workspace & { primaryRoot?: string; permissionRoot?: string }) => {
+        list = list.map((entry: WorkspaceRow & { primaryRoot?: string; permissionRoot?: string }) => {
             const { primaryRoot: _primary, permissionRoot: _permission, ...row } = entry;
             const id = typeof entry.id === 'string' && entry.id ? entry.id : workspaceIdFor(entry.path);
             if (entry.id !== id || _primary !== undefined || _permission !== undefined) {

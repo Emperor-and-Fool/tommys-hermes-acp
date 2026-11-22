@@ -417,3 +417,24 @@ describe('a real start: restoring a tab is not choosing a folder', () => {
     });
 });
 
+/**
+ * The contract is what the host and the pane exchange. A row the host keeps for itself — the two
+ * profile picks are the first — must not ride along because it happens to be in the same object.
+ */
+describe('the project list: the pane is told the workspace, not the host\'s row', () => {
+    it('carries exactly id, path and lastSeen, even when the stored row holds both picks', () => {
+        const home = dir();
+        const w = wiredWindow(home, '/work/public');
+        w.workspaces.setSelection('/work/public', 'primary', 'kitt');
+        w.workspaces.setSelection('/work/public', 'secondant', 'dev');
+        assert.deepStrictEqual(w.workspaces.entryFor('/work/public')?.primarySelection, 'kitt', 'the row does hold them');
+
+        w.posted.length = 0;
+        w.projects.postList();
+
+        const list = w.posted.find(msg => msg.type === 'projectList') as Extract<HostToPane, { type: 'projectList' }>;
+        assert.strictEqual(list.workspaces.length, 1);
+        assert.deepStrictEqual(Object.keys(list.workspaces[0]).sort(), ['id', 'lastSeen', 'path']);
+    });
+});
+
