@@ -152,6 +152,11 @@ export class App implements vscode.WebviewViewProvider {
         tabs: () => this._session.tabs,
         resolveCwd: () => this._cwd.defaultFolderPath(),
         resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
+        historyBlock: (tabId) => this._historyStages.block(tabId),
+        // The agent's own folder, and the id the tree is written under: one owner (see `treeInputOf`).
+        treeBlock: (tabId) => this._trees
+            ? this._trees.noticeBlock(this._session.sessionProfileId, this._projects.currentId(), tabId)
+            : '',
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
@@ -659,33 +664,9 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        const historyBlock = staged ? this._historyStages.block(tabId) : '';
-        // First turn in this session and workspace: say where the tree file is. Sent as its own
-        // block, so the transcript still shows only what was typed.
-        const treeBlock = this._trees
-            ? this._trees.noticeBlock(this._session.sessionProfileId, this._projects.currentId(), tabId)
-            : '';
-        if (imageCount > 0 || historyBlock || treeBlock) {
-            // Compose an ACP prompt: the attached conversation first, then the user's own text,
-            // then one image block per staged image. Hermes' ACP adapter advertises
-            // promptCapabilities.image=true and decodes these directly.
-            const blocks: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string }> = [];
-            if (historyBlock) {
-                blocks.push({ type: 'text', text: historyBlock });
-            }
-            if (treeBlock) {
-                blocks.push({ type: 'text', text: treeBlock });
-            }
-            if (text.length > 0) {
-                blocks.push({ type: 'text', text });
-            }
-            for (const img of images || []) {
-                blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
-            }
-            await this._connection.acp?.sendMessage(blocks as any);
-        } else {
-            await this._connection.acp?.sendMessage(text);
-        }
+        // The turn's own blocks: the attached conversation, the tree notice, what was typed, the
+        // images — composed by the runner, which is where the send lives.
+        await this._turn.sendUserTurn(tabId, text, images);
         if (staged) {
             this._historyStages.clear(tabId);
             if (this._session.activeId === tabId) {

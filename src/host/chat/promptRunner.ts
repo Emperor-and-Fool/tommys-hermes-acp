@@ -21,6 +21,15 @@ export interface PromptHost {
     resolveCwd(): string;
     /** The cwd of one tab's session: its own root, else the agent's default. */
     resolveCwdFor(sessionId: string): string;
+    /**
+     * This tab's staged conversation, as the block that carries it — '' when nothing is staged.
+     *
+     * Read at send time, from the tab the turn belongs to: a pick staged in one tab must never
+     * travel into another.
+     */
+    historyBlock(tabId: string): string;
+    /** The tree notice for this tab: the files named once per session and workspace, then ''. */
+    treeBlock(tabId: string): string;
     log(line: string): void;
     post(msg: HostToPane): void;
     otherSessionIsPrompting(): boolean;
@@ -45,6 +54,15 @@ export interface PromptHost {
     cancelPendingPermissions(): void;
     awaitSessionReady(): Promise<void>;
 }
+
+/** One image a turn carries: the pane's own payload, passed through untouched. */
+export interface PromptImage {
+    mimeType?: string;
+    data: string;
+}
+
+/** What one turn sends: text, in order, and images after it. */
+type PromptBlock = { type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string };
 
 /**
  * How long a permission card waits for an answer before the request is cancelled: Node's
@@ -297,6 +315,50 @@ export class PromptRunner {
             this.host.post({ type: 'permissionDismiss', id });
         }
         this.pendingPermissions.clear();
+    }
+
+    /**
+     * Send one user turn: the blocks it carries, then the images.
+     *
+     * The order is the contract — the attached conversation first, then the tree notice, then what
+     * the user typed, then one image block per image. A turn that carries nothing but text goes out
+     * as a plain string, which is what Hermes expects when there is nothing to wrap.
+     *
+     * The two blocks are asked for here, in this order, whether or not the turn ends up carrying
+     * both: asking is what puts the tree notice on the record, so it is said once for a session and
+     * workspace and not again.
+     */
+    async sendUserTurn(tabId: string, text: string, images?: PromptImage[]): Promise<void> {
+        const blocks = this._blocksFor(tabId, text, images);
+        if (blocks) {
+            await this.host.acp()?.sendMessage(blocks as any);
+            return;
+        }
+        await this.host.acp()?.sendMessage(text);
+    }
+
+    /** The blocks for one turn, or undefined when the turn is its text alone. */
+    private _blocksFor(tabId: string, text: string, images?: PromptImage[]): PromptBlock[] | undefined {
+        const historyBlock = this.host.historyBlock(tabId);
+        const treeBlock = this.host.treeBlock(tabId);
+        const imageCount = images?.length ?? 0;
+        if (imageCount === 0 && !historyBlock && !treeBlock) {
+            return undefined;
+        }
+        const blocks: PromptBlock[] = [];
+        if (historyBlock) {
+            blocks.push({ type: 'text', text: historyBlock });
+        }
+        if (treeBlock) {
+            blocks.push({ type: 'text', text: treeBlock });
+        }
+        if (text.length > 0) {
+            blocks.push({ type: 'text', text });
+        }
+        for (const img of images || []) {
+            blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
+        }
+        return blocks;
     }
 
     /**
