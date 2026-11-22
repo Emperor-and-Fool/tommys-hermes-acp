@@ -425,14 +425,12 @@ export class App implements vscode.WebviewViewProvider {
             // The active project follows the tab, and the workspace feature is the one that says so.
             activeChanged: () => this._projects.syncActiveProject(),
         }, tabs);
-        // The tree cache reads all three owners through one closure, so the hook that refreshes it
-        // stays a call and the mapping lives with the files it writes. `treeInputOf` reads the id
-        // and the tabs from one owner: see why there.
+        // The tree's own id and the name of that id's folder: `treeInputOf` asks for both this way.
         this._trees = new TreeStore(this._historyDir, line => this._log(line), () =>
             treeInputOf({
                 tabs: this._session,
                 projects: this._projects,
-                agentName: () => this._profiles.resolveTarget().agentName,
+                agentName: (id) => this._profiles.agentNameFor(id),
             }));
         this._session.init();
         this._startPaneMail();

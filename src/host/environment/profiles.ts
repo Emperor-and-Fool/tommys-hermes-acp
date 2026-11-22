@@ -244,7 +244,8 @@ export class Profiles {
     connectTarget(selectionId: string | undefined, sessionIds: string[]): { target: ConnectionTarget; missing: boolean } {
         const target = this.resolveTarget(selectionId);
         const hermesHome = this._host.hermesHome ? this._host.hermesHome() : resolveHermesRoot();
-        // A configured agent's key is its display name, not one of our ids: there is nothing to repair.
+        // Nothing to repair when the table has no row for this id (a name nobody has seen yet), or
+        // when Hermes still has the name the row holds.
         const stored = this._host.store.nameFor(target.sessionProfileId);
         if (!stored || isCurrentProfile(stored, hermesHome)) {
             return { target, missing: false };
@@ -276,6 +277,18 @@ export class Profiles {
             cliProfile,
             configPath,
         };
+    }
+
+    /**
+     * Hermes' name for a profile id: the name of that id's folder.
+     *
+     * The one lookup a caller has when it holds an id and needs a name — a tree file names the
+     * agent of the folder it sits in. Nothing is minted and nothing is renamed here. An id the
+     * table has no row for falls back to the name the selection resolves to, which is what this
+     * answered before the table could be asked, and the only answer left when there is no row.
+     */
+    agentNameFor(sessionProfileId: string): string {
+        return this._host.store.nameFor(sessionProfileId) || this.resolveTarget().agentName;
     }
 
     labelFor(cliProfile: string): string {

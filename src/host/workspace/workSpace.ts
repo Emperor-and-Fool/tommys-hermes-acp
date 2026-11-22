@@ -156,12 +156,19 @@ export function treeInputOf(owners: {
     tabs: { sessionProfileId: string; activeId: string; tabsInWindow(): SessionInfo[] };
     /** This window's folders: where it is and what it has open there. */
     projects: { current(): string; currentId(): string; projectsInWindow(): Project[] };
-    /** Hermes' name for the agent today, for the readers of the file. */
-    agentName(): string;
+    /**
+     * Hermes' name for a profile id, for the readers of the file.
+     *
+     * Asked with the id the file is written under, not with this window's selection: the selection
+     * is moved after the two rebinds, so it still names the previous agent while the first write
+     * goes out (2026-11-22, the same moment that put the tabs in the wrong folder).
+     */
+    agentName(sessionProfileId: string): string;
 }): TreeInput {
+    const sessionProfileId = owners.tabs.sessionProfileId;
     return {
-        sessionProfileId: owners.tabs.sessionProfileId,
-        profile: owners.agentName(),
+        sessionProfileId,
+        profile: owners.agentName(sessionProfileId),
         workspacePath: owners.projects.current(),
         workspaceId: owners.projects.currentId(),
         activeSessionId: owners.tabs.activeId,
