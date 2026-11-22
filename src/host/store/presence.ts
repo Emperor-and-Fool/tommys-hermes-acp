@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { writeAtomic } from './connection';
 
 /**
@@ -28,6 +28,25 @@ export interface PresenceRow {
  */
 export const PRESENCE_STALE_MS = 45_000;
 
+/** How much of the hash an id keeps: enough that two windows cannot collide, short enough to read. */
+const INSTANCE_ID_LENGTH = 12;
+
+/**
+ * This window's pane, as an identity that survives a reload.
+ *
+ * The editor opens a workspace in one window, so (workspace + role) names a pane steadily across
+ * starts; a random id per start left the previous row behind, and for `PRESENCE_STALE_MS` that row
+ * read as *another* window — which made a window's own profile look taken and skipped it. A window
+ * with no workspace has nothing stable to hash, so it keeps a random id.
+ */
+export function presenceInstanceId(workspaceIdentity: string, role: 'primary' | 'secondant'): string {
+    const workspace = (workspaceIdentity || '').trim();
+    if (!workspace) {
+        return randomUUID();
+    }
+    return createHash('sha256').update(`${role}\u0000${workspace}`).digest('hex').slice(0, INSTANCE_ID_LENGTH);
+}
+
 export function presenceDirFor(dataHome: string): string {
     return path.join(dataHome, 'presence');
 }
@@ -45,9 +64,11 @@ export function presenceDirFor(dataHome: string): string {
  */
 export class PresenceStore {
     /** This instance's own id: the file it writes, and the row every reader of it skips. */
-    readonly instanceId = randomUUID();
+    readonly instanceId: string;
 
-    constructor(private readonly _dataHome: string) {}
+    constructor(private readonly _dataHome: string, instanceId: string = randomUUID()) {
+        this.instanceId = instanceId;
+    }
 
     get dir(): string {
         return presenceDirFor(this._dataHome);
@@ -61,6 +82,53 @@ export class PresenceStore {
     write(row: { role: 'primary' | 'secondant'; cliProfile: string; liveAt: number }): void {
         fs.mkdirSync(this.dir, { recursive: true });
         writeAtomic(this.fileFor(this.instanceId), { instanceId: this.instanceId, ...row });
+    }
+
+    /**
+     * Remove the rows windows that went away left behind: older than `staleMs`, and never this
+     * instance's own file.
+     *
+     * A grid of ids per start (the random ones, before identity was stable) can pile up; this is
+     * the one place that clears them. A fresh row is never touched — it may be a window that is
+     * alive and simply has not been read yet.
+     */
+    sweep(now = Date.now(), staleMs = PRESENCE_STALE_MS): string[] {
+        let names: string[];
+        try {
+            names = fs.readdirSync(this.dir);
+        } catch {
+            return [];
+        }
+        const removed: string[] = [];
+        for (const name of names) {
+            if (!name.endsWith('.json')) {
+                continue;
+            }
+            const instanceId = name.slice(0, -'.json'.length);
+            if (instanceId === this.instanceId) {
+                continue;
+            }
+            const file = path.join(this.dir, name);
+            const row = this._read(file, instanceId);
+            let at = row ? row.liveAt : 0;
+            if (!row) {
+                try {
+                    at = fs.statSync(file).mtimeMs;
+                } catch {
+                    continue;
+                }
+            }
+            if (now - at <= staleMs) {
+                continue;
+            }
+            try {
+                fs.unlinkSync(file);
+                removed.push(instanceId);
+            } catch {
+                /* already gone: the next sweep has nothing to do */
+            }
+        }
+        return removed;
     }
 
     /** This instance is going away: take its row with it. Unreadable or absent is not an error. */

@@ -449,7 +449,6 @@ export class Connection {
         this._host.projects.bindProfileScope(target.sessionProfileId);
         this._host.profiles.selectionId = target.selectionId;
         this._host.profiles.displayName = target.displayName;
-        this._host.profiles.persistSelection(target.selectionId);
         // View reset only: the other profile's tab is restored by session.bindProfileScope above
         // and replayed by lifecycle.restoreMessages below, so nothing of the old profile stays on screen.
         this._host.post({ type: 'newChat' });

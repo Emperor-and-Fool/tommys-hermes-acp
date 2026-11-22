@@ -25,29 +25,30 @@ function setup(
     hermesHome?: string,
     excluded: Array<{ cliProfile: string }> = [],
     logs: string[] = [],
-    start: { persisted?: string; workspace?: string; held?: string[] } = {},
+    start: { workspace?: string; held?: string[] } = {},
+    role: 'primary' | 'secondant' = 'primary',
 ) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-profiles-target-'));
     const store = new ProfilesStore(home);
+    // What a connect would save for this pane: the role is the port's business, not Profiles'.
+    const saved: Array<{ role: 'primary' | 'secondant'; selectionId: string }> = [];
     const profiles = new Profiles({
         log: (line: string) => {
             logs.push(line);
         },
         post: () => undefined,
-        globalState: {
-            get: <T>(key: string) => (key === 'activeSelectionId' ? start.persisted as T | undefined : undefined as T | undefined),
-            update: () => Promise.resolve(),
-        },
         settings: { get: <T>(key: string) => settings[key] as T | undefined },
         store,
         hermesHome: hermesHome ? () => hermesHome : undefined,
         excludedProfiles: () => excluded,
         // The start rule's three: a test that only resolves a name supplies the empty answers.
         workspaceSelection: () => start.workspace || '',
-        saveWorkspaceSelection: () => undefined,
+        saveWorkspaceSelection: (selectionId: string) => {
+            saved.push({ role, selectionId });
+        },
         heldElsewhere: () => start.held || [],
     });
-    return { home, store, profiles };
+    return { home, store, profiles, saved, logs };
 }
 
 describe('the profile target', () => {
@@ -245,12 +246,13 @@ describe('the profile search says what it skipped', () => {
 });
 
 /**
- * The start rule: this workspace's pick, then the last pick anywhere, and never one another window
- * is running. The middle step is the fallback the global key still exists for.
+ * The start rule: this workspace's pick, then the configured profile (`default`), then the first
+ * profile no other window holds. A candidate another window is running is skipped — and there is
+ * no "last picked anywhere" step, so a start never lands on another window's profile.
  */
 describe('the profile a window starts on', () => {
-    it("this workspace's pick wins over the last pick anywhere", () => {
-        const { home, profiles } = setup({}, undefined, [], [], { workspace: 'kitt', persisted: 'dev' });
+    it("this workspace's pick is taken", () => {
+        const { home, profiles } = setup({}, undefined, [], [], { workspace: 'kitt' });
         try {
             assert.strictEqual(profiles.seed().cliProfile, 'kitt');
         } finally {
@@ -258,29 +260,48 @@ describe('the profile a window starts on', () => {
         }
     });
 
-    it('skips a pick another window is running, and takes the next one', () => {
-        const { home, profiles } = setup({}, undefined, [], [], { workspace: 'kitt', persisted: 'dev', held: ['kitt'] });
+    it('skips a pick another window is running, and takes the configured profile instead', () => {
+        const { home, profiles, logs } = setup({}, undefined, [], [], { workspace: 'kitt', held: ['kitt'] });
         try {
-            assert.strictEqual(profiles.seed().cliProfile, 'dev', 'the global fallback, which nobody holds');
+            assert.strictEqual(profiles.seed().cliProfile, 'default', 'the configured profile, not another window\'s pick');
+            assert.ok(logs.some(line => line.includes('is held by another window; skipping it')));
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }
     });
 
-    it('leaves the target on its configured profile when every pick is held elsewhere', () => {
-        const { home, profiles } = setup({}, undefined, [], [], { workspace: 'kitt', persisted: 'dev', held: ['kitt', 'dev'] });
+    it('takes the first profile nobody holds when this workspace\'s pick and the default are both taken', () => {
+        const { home, store, profiles } = setup({}, undefined, [], [], { workspace: 'kitt', held: ['kitt', 'default'] });
+        try {
+            store.seed(['kitt', 'dev']);
+            assert.strictEqual(profiles.seed().cliProfile, 'dev', 'the first free one in the table');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('a start saves nothing; the connect is what writes the pick', () => {
+        const { home, profiles, saved } = setup({}, undefined, [], [], { workspace: '' });
+        const secondant = setup({}, undefined, [], [], { workspace: '' }, 'secondant');
         try {
             const target = profiles.seed();
-            assert.strictEqual(target.agentName, 'default', 'nothing picked: the first-free behaviour, as before');
+            assert.deepStrictEqual(saved, [], 'seeding is not a pick');
+            profiles.persistSelection();
+            assert.deepStrictEqual(saved, [{ role: 'primary', selectionId: target.selectionId }]);
+
+            const other = secondant.profiles.seed();
+            secondant.profiles.persistSelection();
+            assert.deepStrictEqual(secondant.saved, [{ role: 'secondant', selectionId: other.selectionId }], 'its own column');
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(secondant.home, { recursive: true, force: true });
         }
     });
 
-    it('falls back to the last pick anywhere when this workspace never saved one', () => {
-        const { home, profiles } = setup({}, undefined, [], [], { persisted: 'dev' });
+    it('no saved pair and nothing configured starts on the default profile', () => {
+        const { home, profiles } = setup({}, undefined, [], [], {});
         try {
-            assert.strictEqual(profiles.seed().cliProfile, 'dev');
+            assert.strictEqual(profiles.seed().agentName, 'default');
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }

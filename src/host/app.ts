@@ -10,7 +10,7 @@ import { EnvironmentDetection } from './environment/detection';
 import { ensureDataHome, onStoreWriteError } from './store/connection';
 import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
-import { PresenceStore } from './store/presence';
+import { presenceInstanceId, PresenceStore } from './store/presence';
 import { ProfilePresence } from './environment/presence';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
@@ -325,7 +325,6 @@ export class App implements vscode.WebviewViewProvider {
         this._profiles = new Profiles({
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
-            globalState: context.globalState,
             settings: this._settings,
             store: new ProfilesStore(storagePath),
             // This pane's pick in this workspace: the start rule, ahead of the global fallback.
@@ -344,7 +343,9 @@ export class App implements vscode.WebviewViewProvider {
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
         this._presence = new ProfilePresence({
-            store: new PresenceStore(storagePath),
+            // The row this window writes is named by (workspace + role), so a reload overwrites it
+            // instead of leaving a row that reads as another window for 45 s.
+            store: new PresenceStore(storagePath, presenceInstanceId(this._cwd.workspaceIdentity(), this._id.role)),
             role: this._id.role,
             profile: () => this._profiles.resolveTarget().cliProfile,
             live: () => !!this._connection.acp,
@@ -500,8 +501,12 @@ export class App implements vscode.WebviewViewProvider {
             surfaceView: () => this._surfaces.view,
         });
         // The profile this window actually landed on, for the other windows to read: a connect that
-        // the exclusion guarantee refused never fires this, so it announces nothing.
-        this._connection.profileActive.on(() => this._presence.connected());
+        // the exclusion guarantee refused never fires this, so it announces nothing. The same
+        // moment is where the pick is saved — the one writer, for start, switch and reconnect.
+        this._connection.profileActive.on(() => {
+            this._presence.connected();
+            this._profiles.persistSelection();
+        });
 
         context.subscriptions.push(
             this._projects.start(),

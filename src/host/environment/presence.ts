@@ -44,8 +44,17 @@ export class ProfilePresence {
 
     constructor(private readonly _host: ProfilePresenceHost) {}
 
-    /** Start the beat. Nothing is announced until a connect has landed. */
+    /**
+     * Start the beat. Nothing is announced until a connect has landed.
+     *
+     * This instance's folder is swept first: rows a killed or reloaded window left behind are
+     * removed once they are stale, so they cannot be read as windows that are still running.
+     */
     start(): void {
+        const removed = this._host.store.sweep();
+        if (removed.length) {
+            this._host.log(`Presence: removed ${removed.length} row(s) left by closed windows`);
+        }
         this.beat();
         this._timer = setInterval(() => this.beat(), HEARTBEAT_MS);
     }

@@ -34,17 +34,6 @@ export interface ConnectionTarget {
     configPath?: string;
 }
 
-/**
- * What the editor's per-window store offers this feature: read one key, write one key.
- *
- * Declared here rather than importing `vscode.Memento`, so this file stays editor-free (F6). The
- * composition root hands it `context.globalState`, which fits without a cast.
- */
-export interface KeyValueState {
-    get<T>(key: string): T | undefined;
-    update(key: string, value: unknown): PromiseLike<void>;
-}
-
 /** The settings this feature reads, behind the same rule: the editor is not imported here (F6). */
 export interface SettingsReader {
     get<T>(key: string): T | undefined;
@@ -103,7 +92,6 @@ export function excludedProfiles(input: {
 export interface ProfilesHost {
     log(line: string): void;
     post(msg: HostToPane): void;
-    globalState: KeyValueState;
     settings: SettingsReader;
     /** The profile table: names to the ids our records will hang off (host/store/profiles.ts). */
     store: ProfilesStore;
@@ -152,25 +140,17 @@ export class Profiles {
 
     private discovered: string[] | null = null;
     private discovery: Promise<void> | undefined;
-    private readonly persistedSelectionId: string;
 
-    constructor(private readonly _host: ProfilesHost) {
-        // The profile/agent last picked in the UI outlives the window: without this the
-        // extension always reopened on the `tommys.profile` setting, not on the user's pick.
-        this.persistedSelectionId = this._host.globalState.get<string>('activeSelectionId') || '';
-    }
+    constructor(private readonly _host: ProfilesHost) {}
 
     /**
      * Seed the in-memory selection from this window's pick, and resolve it.
      *
-     * The order is the whole rule: this workspace's pick for this pane, then the profile last
-     * picked anywhere (the global key, kept as the fallback), then nothing — which leaves
-     * resolveTarget on its configured profile and the list's first agent, as it always was.
-     * A candidate presence reports as held elsewhere is skipped, so a start never lands on a
-     * profile another window is already running.
-     *
-     * resolveTarget() prefers the in-memory selection over the configured profile, and still
-     * falls back when the persisted id no longer resolves.
+     * The order is the whole rule: this workspace's pick for this pane, then the configured
+     * profile (`default`, as resolveTarget(undefined) answers), then the first profile presence
+     * does not show as held. A candidate another window is running is skipped, so a start never
+     * lands on one — and there is deliberately no "last picked anywhere" step: landing on the
+     * configured profile beats landing on another window's.
      */
     seed(): ConnectionTarget {
         this.selectionId = this._startingSelection();
@@ -180,14 +160,14 @@ export class Profiles {
         return target;
     }
 
-    /** The pick a start resolves from: this workspace's, else the last one anywhere, minus the held. */
+    /** The pick a start resolves from: this workspace's, then the configured one, then a free one. */
     private _startingSelection(): string {
         const held = new Set(this._host.heldElsewhere()
             .map(cliProfile => normalizeHermesCliProfile(cliProfile))
             .filter(Boolean));
         const candidates = [
             this._host.workspaceSelection(),
-            this.persistedSelectionId,
+            this.resolveTarget(undefined).selectionId,
         ];
         for (const candidate of candidates) {
             if (!candidate) {
@@ -199,6 +179,24 @@ export class Profiles {
                 continue;
             }
             return candidate;
+        }
+        const free = this._firstFreeSelection(held);
+        if (free) {
+            this._host.log(`Start profile "${free}": the first one no other window holds`);
+        }
+        return free;
+    }
+
+    /** The first known profile no other window runs: the list is the table's, in the order it was seeded. */
+    private _firstFreeSelection(held: Set<string>): string {
+        for (const row of this._host.store.all()) {
+            const name = row.agentName;
+            if (!name) {
+                continue;
+            }
+            if (!held.has(normalizeHermesCliProfile(this.resolveTarget(name).cliProfile))) {
+                return name;
+            }
         }
         return '';
     }
@@ -381,10 +379,18 @@ export class Profiles {
         });
     }
 
-    /** Remember the pick: in this workspace (the start rule) and globally (the fallback). */
-    persistSelection(id: string): void {
-        void this._host.globalState.update('activeSelectionId', id);
-        this._host.saveWorkspaceSelection(id);
+    /**
+     * Remember the profile a connect landed on, as this workspace's pick for this pane.
+     *
+     * The one writer, called from the connect's own success signal (`App`, on `profileActive`), so
+     * start, switch and reconnect all record what they proved. Nothing is written to globalState
+     * any more: the pick is per workspace, and no start reads a "last picked anywhere" value.
+     */
+    persistSelection(): void {
+        if (!this.selectionId) {
+            return;
+        }
+        this._host.saveWorkspaceSelection(this.selectionId);
     }
 
     /** The agent list changed: the profiles on disk must be read again. */
