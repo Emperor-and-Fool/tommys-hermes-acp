@@ -55,9 +55,27 @@ import { buildTreeSnapshot, mintId, treeNoticeBlock, workspaceIdFor } from './wo
  *   dropped, which is the same courtesy a migration backfill needs.
  */
 
+/**
+ * One workspace as this file holds it: the shared row, plus what only the host keeps.
+ *
+ * `Workspace` is the contract — what the pane is told — and it is deliberately smaller: a field
+ * added here must never travel, so the store projects instead of handing its rows out.
+ */
+export interface WorkspaceRow extends Workspace {
+    /** The profile the primary pane last picked in this workspace. */
+    primarySelection?: string;
+    /** The same for the secondant: the two panes never run on one profile. */
+    secondantSelection?: string;
+}
+
+/** A row as the pane is told about it: the three fields the contract knows, and nothing else. */
+export function publicWorkspace(row: WorkspaceRow): Workspace {
+    return { id: row.id, path: row.path, lastSeen: row.lastSeen };
+}
+
 /** The file's shape: the workspaces only. `projects` lived here until they moved per profile. */
 interface WorkspaceFile {
-    workspaces: Workspace[];
+    workspaces: WorkspaceRow[];
 }
 
 /**
@@ -73,17 +91,23 @@ export class WorkspaceStore {
         return workspacesPathFor(this._historyDir);
     }
 
+    /**
+     * The workspaces as the pane is told about them: `publicWorkspace` per row.
+     *
+     * Posting rows is what put the two profile picks on the wire; a projection here means a field
+     * added to the row tomorrow cannot leak by being in the same object.
+     */
     read(): Workspace[] {
-        return this._read().workspaces;
+        return this._read().workspaces.map(publicWorkspace);
     }
 
     /** The entry for a path, without recording it. What a tab needs when it is tagged. */
-    entryFor(workspacePath: string): Workspace | undefined {
+    entryFor(workspacePath: string): WorkspaceRow | undefined {
         return this._read().workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
     }
 
     /** The entry for a path, made if this is the first reference to it. For reading old files. */
-    ensure(workspacePath: string): Workspace {
+    ensure(workspacePath: string): WorkspaceRow {
         const file = this._read();
         const existing = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
         if (existing) {
@@ -96,7 +120,7 @@ export class WorkspaceStore {
     }
 
     /** Record that this workspace was opened now. An empty string is not a workspace. */
-    register(workspacePath: string): Workspace[] {
+    register(workspacePath: string): WorkspaceRow[] {
         const file = this._read();
         if (!workspacePath) {
             return file.workspaces;
@@ -109,6 +133,41 @@ export class WorkspaceStore {
         }
         this._write(file);
         return file.workspaces;
+    }
+
+    /**
+     * The profile one pane last picked in this workspace: '' when it never picked one.
+     *
+     * The key is the workspace — the window, since the editor opens one workspace in one window —
+     * and the role separates the two panes, which never run on one profile. It is read before the
+     * workspace is registered, so it must not depend on anything but the path.
+     */
+    selectionFor(workspacePath: string, role: 'primary' | 'secondant'): string {
+        const entry = this.entryFor(workspacePath);
+        if (!entry) {
+            return '';
+        }
+        return (role === 'secondant' ? entry.secondantSelection : entry.primarySelection) || '';
+    }
+
+    /** Remember that pick. A window that connects before its workspace is filed gets a row here. */
+    setSelection(workspacePath: string, role: 'primary' | 'secondant', selectionId: string): void {
+        if (!workspacePath || !selectionId) {
+            return;
+        }
+        const file = this._read();
+        let row = file.workspaces.find(entry => sameFolderPath(entry.path, workspacePath));
+        if (!row) {
+            row = { id: workspaceIdFor(workspacePath), path: workspacePath, lastSeen: Date.now() };
+            file.workspaces.push(row);
+        }
+        const field: 'primarySelection' | 'secondantSelection' =
+            role === 'secondant' ? 'secondantSelection' : 'primarySelection';
+        if (row[field] === selectionId) {
+            return;
+        }
+        row[field] = selectionId;
+        this._write(file);
     }
 
     /**
@@ -135,11 +194,11 @@ export class WorkspaceStore {
     }
 
     private _read(): WorkspaceFile {
-        let list: Workspace[] = [];
+        let list: WorkspaceRow[] = [];
         try {
             const parsed = JSON.parse(fs.readFileSync(this.path, 'utf-8'));
             const raw = Array.isArray(parsed) ? parsed : (Array.isArray(parsed && parsed.workspaces) ? parsed.workspaces : []);
-            list = raw.filter((entry: Workspace) => !!entry && typeof entry.path === 'string');
+            list = raw.filter((entry: WorkspaceRow) => !!entry && typeof entry.path === 'string');
         } catch {
             return { workspaces: [] };
         }
@@ -150,7 +209,7 @@ export class WorkspaceStore {
         // A root recorded here by an older build is dropped in the same pass: the roots are per
         // agent now (ProfileRootsStore) and the migration has already moved them out.
         let moved = false;
-        list = list.map((entry: Workspace & { primaryRoot?: string; permissionRoot?: string }) => {
+        list = list.map((entry: WorkspaceRow & { primaryRoot?: string; permissionRoot?: string }) => {
             const { primaryRoot: _primary, permissionRoot: _permission, ...row } = entry;
             const id = typeof entry.id === 'string' && entry.id ? entry.id : workspaceIdFor(entry.path);
             if (entry.id !== id || _primary !== undefined || _permission !== undefined) {
@@ -183,10 +242,12 @@ export class WorkspaceStore {
     }
 }
 
-/** One agent's rows for one workspace: its default folder, and the session it was last on. */
+/** One agent's rows for one workspace: its default folder, the session it was last on, and the pair of projects the tree keeps open. */
 export interface ProfileWorkspaceRow {
     defaultFolderId: string;
     activeSessionId: string;
+    /** The folder the pane works in, then the one before it ('' = the root). Absent until saved. */
+    openProjects?: [string, string];
 }
 
 /** Where one agent's per-workspace rows live: beside its projects and tabs. */
@@ -242,6 +303,26 @@ export class ProfileWorkspaceStore implements RootsSource {
     /** The tab this agent was last on in this workspace. */
     setActiveSessionId(workspaceId: string, sessionId: string): void {
         this._update(workspaceId, row => ({ ...row, activeSessionId: sessionId }));
+    }
+
+    /**
+     * The project pair the tree keeps open: the active folder, then the one before it.
+     *
+     * Undefined means this workspace never saved one, which is a different fact from a pair of two
+     * empty ids: the first is "read it off the active tab", the second is "the root, and nothing
+     * before it".
+     */
+    openProjects(workspaceId: string): [string, string] | undefined {
+        const pair = this.row(workspaceId).openProjects;
+        if (!Array.isArray(pair) || pair.length !== 2) {
+            return undefined;
+        }
+        return [String(pair[0] || ''), String(pair[1] || '')];
+    }
+
+    /** Write the pair the tree is showing. '' is the root, on either side of it. */
+    setOpenProjects(workspaceId: string, active: string, other: string): void {
+        this._update(workspaceId, row => ({ ...row, openProjects: [active, other] }));
     }
 
     /**

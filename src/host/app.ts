@@ -10,7 +10,7 @@ import { EnvironmentDetection } from './environment/detection';
 import { ensureDataHome, onStoreWriteError } from './store/connection';
 import { runMigrations } from './store/migrations';
 import { ProfilesStore } from './store/profiles';
-import { PresenceStore } from './store/presence';
+import { presenceInstanceId, PresenceStore } from './store/presence';
 import { ProfilePresence } from './environment/presence';
 import { getLocale, getWebviewLocale, initI18n, t } from './i18n';
 import { SupportedLocale } from '../shared/i18n';
@@ -313,14 +313,26 @@ export class App implements vscode.WebviewViewProvider {
         onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
+        // The workspace registry and its per-workspace rows are built first: a pane's profile
+        // pick is saved per workspace, and the start reads it before anything connects. The roots
+        // live with the workspace record, so the locator reads and writes them there; the store
+        // only exists from here on, which is why the locator is built at this point.
+        const workspaces = new WorkspaceStore(this._historyDir);
+        const profileWorkspaces = new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId);
+        this._cwd = new WorkspaceCwd(this._folders, profileWorkspaces);
         // The profile table is built here, before the feature that resolves names to ids (C2): the
         // seed is the first thing the window does with it.
         this._profiles = new Profiles({
             log: (line) => this._log(line),
             post: (msg) => this._postMessage(msg),
-            globalState: context.globalState,
             settings: this._settings,
             store: new ProfilesStore(storagePath),
+            // This pane's pick in this workspace: the start rule, ahead of the global fallback.
+            workspaceSelection: () => workspaces.selectionFor(this._cwd.workspaceIdentity(), this._id.role),
+            saveWorkspaceSelection: (selectionId) =>
+                workspaces.setSelection(this._cwd.workspaceIdentity(), this._id.role, selectionId),
+            // A start must never take a profile another window is running.
+            heldElsewhere: () => this._presence.live().map(row => row.cliProfile).filter(Boolean),
             excludedProfiles: () => excludedProfiles({
                 primary: this._primary?.activeProfile || '',
                 sibling: this._siblingProfile,
@@ -331,7 +343,9 @@ export class App implements vscode.WebviewViewProvider {
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
         this._presence = new ProfilePresence({
-            store: new PresenceStore(storagePath),
+            // The row this window writes is named by (workspace + role), so a reload overwrites it
+            // instead of leaving a row that reads as another window for 45 s.
+            store: new PresenceStore(storagePath, presenceInstanceId(this._cwd.workspaceIdentity(), this._id.role)),
             role: this._id.role,
             profile: () => this._profiles.resolveTarget().cliProfile,
             live: () => !!this._connection.acp,
@@ -342,13 +356,6 @@ export class App implements vscode.WebviewViewProvider {
         runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
         const initialTarget = this._profiles.seed();
-        // The workspace feature's three stores: built once, here, and handed to the two
-        // features that use them (C2). A profile switch reaches them through those
-        // features' bindProfileScope, so nothing below builds a store of its own.
-        const workspaces = new WorkspaceStore(this._historyDir);
-        // The roots live with the workspace record, so the locator reads and writes them there;
-        // the store only exists from here on, which is why the locator is built at this point.
-        this._cwd = new WorkspaceCwd(this._folders, new ProfileWorkspaceStore(this._historyDir, () => this._session.sessionProfileId));
         // Permissions keeps its own record and its own deny backups, in the profile's folder.
         this._approvals = new Approvals(
             {
@@ -401,7 +408,7 @@ export class App implements vscode.WebviewViewProvider {
                 const unsubscribe = this._folders.onFoldersChanged(handler);
                 return { dispose: unsubscribe };
             },
-        });
+        }, profileWorkspaces);
         this._session = new Sessions(this._historyDir, initialTarget.sessionProfileId, {
             post: (msg) => this._postMessage(msg),
             log: (line) => this._log(line),
@@ -409,6 +416,8 @@ export class App implements vscode.WebviewViewProvider {
             modelLabel: () => this._models.currentLabel,
             currentWorkspaceId: () => this._projects.currentId(),
             knownWorkspaceIds: () => this._projects.knownWorkspaceIds(),
+            // The active project follows the tab, and the workspace feature is the one that says so.
+            activeChanged: () => this._projects.syncActiveProject(),
         }, tabs);
         // The tree cache reads all three owners through one closure, so the hook that refreshes it
         // stays a call and the mapping lives with the files it writes.
@@ -430,6 +439,7 @@ export class App implements vscode.WebviewViewProvider {
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
             resolveCwd: () => this._cwd.defaultFolderPath(),
+            activeProject: () => this._projects.activeProject,
             resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
             attachments: this._attachments,
             promptSessionId: () => this._turn.promptSessionId,
@@ -491,8 +501,12 @@ export class App implements vscode.WebviewViewProvider {
             surfaceView: () => this._surfaces.view,
         });
         // The profile this window actually landed on, for the other windows to read: a connect that
-        // the exclusion guarantee refused never fires this, so it announces nothing.
-        this._connection.profileActive.on(() => this._presence.connected());
+        // the exclusion guarantee refused never fires this, so it announces nothing. The same
+        // moment is where the pick is saved — the one writer, for start, switch and reconnect.
+        this._connection.profileActive.on(() => {
+            this._presence.connected();
+            this._profiles.persistSelection();
+        });
 
         context.subscriptions.push(
             this._projects.start(),
@@ -580,7 +594,11 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        if (this._session.tabs.length === 0) {
+        if (!this._session.hasOpenChat()) {
+            // A chat is open when a tab is on screen, or a blank one `+` minted: an empty window
+            // used to refuse here even after `+`, because the check asked for a record that only
+            // the first turn writes.
+            this._log('Send refused: no chat is open in this window');
             this._postMessage({ type: 'noActiveTab' });
             return;
         }
@@ -731,7 +749,8 @@ export class App implements vscode.WebviewViewProvider {
             this._notices.warn(t('hermesNotConnected'));
             return;
         }
-        if (this._session.tabs.length === 0) {
+        if (!this._session.hasOpenChat()) {
+            this._log('Send refused: no chat is open in this window');
             this._notices.warn(t('noActiveTabHint'));
             return;
         }

@@ -127,6 +127,9 @@ export function handleWebviewMessage(message: PaneToHost, host: RouterHost): voi
         case 'setTabProject':
             host.projects.moveTabToProject(message.sessionId, message.projectId);
             break;
+        case 'setActiveProject':
+            host.projects.setActiveProject(message.projectId);
+            break;
         case 'sessionExport':
             host.handleSessionExport(message.sessionId, message.action, message.indices);
             break;

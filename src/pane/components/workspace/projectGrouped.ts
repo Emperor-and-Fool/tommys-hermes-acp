@@ -3,7 +3,9 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
-import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
+import { collapsedFromPair, projectClickAction } from './projectTree';
+import type { FoldOverrides } from './projectTree';
+import type { Project, Workspace } from '../../../shared/chat';
 
 /**
  * A project group in the pane: its markup as a parent of tabs, the fold, the rename, its own menu,
@@ -26,64 +28,6 @@ function applyProjectCollapsed(group: HTMLElement): void {
     group.classList.toggle('is-collapsed', collapsed);
     const caret = group.querySelector('.tab-group-caret');
     if (caret) caret.textContent = collapsed ? '▸' : '▾';
-}
-
-/**
- * Projects are parents: their tabs are drawn inside them. A tab in no project — or in one that no
- * longer exists — sorts below all of them, unindented, which is what tells the two apart.
- */
-export function projectTreeHtml(
-    sessions: SessionInfo[],
-    tabsHtml: (list: SessionInfo[]) => string,
-    projects: Project[],
-    workspaces: Workspace[],
-): string {
-    const groups: Array<{ project: Project; sessions: SessionInfo[] }> = [];
-    projects.forEach(function(project) {
-        groups.push({ project: project, sessions: [] });
-    });
-    const plane: SessionInfo[] = [];
-    sessions.forEach(function(s) {
-        const group = s.project ? groups.find(function(g) { return g.project.id === s.project; }) : undefined;
-        (group ? group.sessions : plane).push(s);
-    });
-
-    const parts: string[] = [];
-    groups.forEach(function(group, index) {
-        parts.push('<div class="tab-group" data-project="' + escapeHtml(group.project.id) + '"' +
-            ' style="--project-accent:' + projectAccent(index, groups.length) + '">' +
-            '<div class="tab-group-header" title="' + escapeHtml(workspacePathOf(workspaces, group.project.workspaceId)) + '">' +
-                '<span class="tab-group-caret"></span>' +
-                '<span class="tab-group-name">' + escapeHtml(group.project.name) + '</span>' +
-            '</div>' +
-            '<div class="tab-group-tabs">' + tabsHtml(group.sessions) + '</div>' +
-            '</div>');
-    });
-    if (plane.length) {
-        parts.push('<div class="tab-group tab-group--plane"><div class="tab-group-tabs">' + tabsHtml(plane) + '</div></div>');
-    }
-    return parts.join('');
-}
-
-/**
- * The colour of the project at `index` of `total`: the rainbow from red at the top to deep purple
- * at the bottom, spread over the projects that are drawn.
- *
- * It spans the list rather than stepping by a fixed amount, so with two projects the second is
- * purple and not amber. The colour means *where* a project sits, so a new one re-spaces the ones
- * around it — which is the same statement, told again.
- */
-function projectAccent(index: number, total: number): string {
-    const RED = 5;
-    const DEEP_PURPLE = 280;
-    const hue = total > 1 ? Math.round(RED + (DEEP_PURPLE - RED) * (index / (total - 1))) : RED;
-    return `hsl(${hue} 62% 42%)`;
-}
-
-/** The path behind a workspace id, for a tooltip. The list the host sent is the whole truth. */
-function workspacePathOf(workspaces: Workspace[], workspaceId: string): string {
-    const entry = workspaces.find(function(workspace) { return workspace.id === workspaceId; });
-    return entry ? entry.path : '';
 }
 
 /**
@@ -207,15 +151,22 @@ function showProjectContextMenu(projectId: string, clientX: number, clientY: num
 /**
  * The projects, as the tab menu's second level, with the plane as a row of its own: a tab that was
  * moved in has to have a way back out.
+ *
+ * The workspace path under each row is handed in rather than looked up here: the parent owns the
+ * workspace list, and this file only draws what it is given (F7).
  */
-export function showProjectPicker(sessionId: string, projects: Project[], workspaces: Workspace[]): void {
+export function showProjectPicker(
+    sessionId: string,
+    projects: Project[],
+    pathOf: (workspaceId: string) => string,
+): void {
     if (!tabContextMenu) {
         return;
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveProject) + '</div>';
     html += '<button type="button" class="tab-ctx-item" data-project="">' + escapeHtml(locale.tabContextNoProject) + '</button>';
     projects.forEach(function(project) {
-        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(workspacePathOf(workspaces, project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
+        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(pathOf(project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
     });
     tabContextMenu.innerHTML = html;
     tabContextMenu.querySelectorAll<HTMLElement>('.tab-ctx-item[data-project]').forEach(function(item) {
@@ -229,57 +180,41 @@ export function showProjectPicker(sessionId: string, projects: Project[], worksp
 }
 
 /**
- * Leave the folder you are working in open, and one more to fetch context from.
+ * Fold everything the pair does not hold open.
  *
- * A start shows every folder, because that is how the workspace reads at a glance. From the first
- * switch onwards, the open set is the active session's project plus the most recently *opened*
- * other one — so a session can be opened just to read it, the working one returned to, and both
- * still be there. The rule is applied only when the active session changes, so dragging, renaming
- * and manual folding in between are left alone.
+ * Two projects are open at most — the active one and the one before it — and the root counts as
+ * one of the two. A manual fold (a ctrl-click, or a click on the active project) is carried in
+ * `foldOverride` and applies to its own project only. The rule is a function of the pair, so it is
+ * re-applied on every list the host sends: a rename does not pop a folder open, and a pair change
+ * is what moves the tree.
  */
-export function applyProjectFocus(projects: Project[]): void {
-    const activeId = state.lastActiveSessionId;
-    if (!activeId || state.focusAppliedFor === activeId) {
-        return;
-    }
-    const firstApplication = state.focusAppliedFor === '';
-    state.focusAppliedFor = activeId;
-    const activeProject = state.lastSessions.find(tab => tab.id === activeId)?.project || '';
-    // Recency is the pane's own: a session that was opened *is* the evidence, and the tab list it
-    // came from is already here — no round trip, and no dependence on which list the host posts.
-    if (activeProject) {
-        state.recentProjects = [activeProject, ...state.recentProjects.filter(id => id !== activeProject)].slice(0, 8);
-    }
-    if (firstApplication) {
-        // A fresh window: every folder open.
-        state.collapsedProjects = new Set<string>();
-        return;
-    }
-    const open: string[] = [];
-    if (activeProject) {
-        open.push(activeProject);
-    }
-    for (const id of state.recentProjects) {
-        if (id !== activeProject) {
-            open.push(id);
-            break;
-        }
-    }
-    if (!activeProject) {
-        for (const id of state.recentProjects.slice(0, 2)) {
-            if (open.indexOf(id) < 0) open.push(id);
-        }
-    }
-    state.collapsedProjects = new Set(
-        projects.filter(project => open.indexOf(project.id) < 0).map(project => project.id)
-    );
+export function applyProjectFocus(
+    projects: Project[],
+    activeProjectId: string,
+    otherOpenProjectId: string,
+    foldOverrides: FoldOverrides | null,
+): void {
+    state.collapsedProjects = collapsedFromPair(projects, activeProjectId, otherOpenProjectId, foldOverrides);
 }
 
 /**
- * Wire the groups the parent just drew: the fold, the header's menu, and the drop target that
- * moves a tab into this project — plus the plane, which is the way back out.
+ * Wire the groups the parent just drew: the fold, the header's menu and its pick, the root space,
+ * and the drop target that moves a tab into this project — plus the plane, which is the way back
+ * out.
+ *
+ * A header click follows `projectClickAction`: a click on a folder that is not the working one
+ * selects it and never folds it; a click on the working folder folds it and posts nothing; a
+ * ctrl-click folds this one project by hand, selecting nothing. The root space is the same click
+ * with no project, and the parent owns it.
  */
-export function wireProjectGroups(container: HTMLElement, projects: Project[], workspaces: Workspace[]): void {
+export function wireProjectGroups(
+    container: HTMLElement,
+    projects: Project[],
+    workspaces: Workspace[],
+    activeProjectId: string,
+    setActiveProject: (projectId: string) => void,
+    setFoldOverride: (projectId: string, collapsed: boolean | null) => void,
+): void {
     container.querySelectorAll<HTMLElement>('.tab-group[data-project]').forEach(function(group) {
         const header = group.querySelector<HTMLElement>('.tab-group-header');
         if (!header) return;
@@ -289,12 +224,25 @@ export function wireProjectGroups(container: HTMLElement, projects: Project[], w
             if (e.target && (e.target as HTMLElement).classList.contains('tab-rename-input')) return;
             const id = group.dataset.project || '';
             if (!id) return;
-            if (state.collapsedProjects.has(id)) {
-                state.collapsedProjects.delete(id);
-            } else {
-                state.collapsedProjects.add(id);
+            const action = projectClickAction(id, activeProjectId, !!(e.ctrlKey || e.metaKey));
+            if (action.clearOverride) {
+                setFoldOverride(id, null);
             }
-            applyProjectCollapsed(group);
+            if (action.post) {
+                setActiveProject(id);
+            }
+            if (action.fold) {
+                const collapsed = !state.collapsedProjects.has(id);
+                if (collapsed) {
+                    state.collapsedProjects.add(id);
+                } else {
+                    state.collapsedProjects.delete(id);
+                }
+                applyProjectCollapsed(group);
+                // The fold is the user's, not the pair's: it survives the next redraw. A
+                // ctrl-click adds to the set; a plain click on the working folder starts it over.
+                setFoldOverride(id, collapsed);
+            }
         });
         header.addEventListener('contextmenu', function(e: MouseEvent) {
             e.preventDefault();
@@ -306,6 +254,8 @@ export function wireProjectGroups(container: HTMLElement, projects: Project[], w
     });
     const planeGroup = container.querySelector<HTMLElement>('.tab-group--plane');
     if (planeGroup) {
+        // A drop target only: the root space is the background of the rail (the wrapper in
+        // chat.html), and the parent owns that click.
         wireProjectDropTarget(planeGroup, '');
     }
 }

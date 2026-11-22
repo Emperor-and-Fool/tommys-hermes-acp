@@ -1,0 +1,37 @@
+/* The folder the pane is working in, and the folder the chat on screen lives in.
+ *
+ * Two marks, one outline: `is-active` is the folder a new chat opens in — outlined, and tinted in
+ * the rail; `holds-chat` is the folder the chat on screen belongs to, so a session stays findable
+ * after another folder was clicked. A project that is both carries `is-active` alone (one mark,
+ * one outline), which the markup guarantees.
+ */
+.tab-group.is-active[data-project] > .tab-group-header,
+.tab-group.holds-chat[data-project] > .tab-group-header {
+    box-shadow: inset 0 0 0 2px var(--project-accent);
+    color: var(--project-accent);
+}
+
+body.surface-rail .tab-group.is-active[data-project] {
+    background: color-mix(in srgb, var(--project-accent) 16%, transparent);
+}
+
+/* The root space: the background of the rail's tree and the space below it (the wrapper in
+ * chat.html). It is marked when the pane is working in no folder, and it is what a click on empty
+ * space selects. In the side-bar surface the wrapper is only a wrapper — the strip and the footer
+ * keep their own layout there — so it takes no box and no marker. */
+#railTree {
+    display: contents;
+}
+
+body.surface-rail #railTree {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+body.surface-rail #railTree.is-active {
+    box-shadow: inset 0 0 0 1px var(--border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--dim) 10%, transparent);
+}

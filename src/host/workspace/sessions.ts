@@ -26,6 +26,13 @@ export interface SessionsHost {
     currentWorkspaceId(): string;
     /** Every workspace id the registry holds. */
     knownWorkspaceIds(): string[];
+    /**
+     * The tab on screen changed — everywhere, through one setter.
+     *
+     * The active project is the workspace feature's, not ours: this says the fact and lets the
+     * composition root hand it on, so neither feature has to know the other (F5).
+     */
+    activeChanged(): void;
 }
 
 /**
@@ -37,6 +44,14 @@ export class Sessions {
     activeId: string = '';
     /** The project a blank chat was opened in; it becomes the record's own at the first message. */
     private _blankProject: string = '';
+    /**
+     * The id of a chat `+` minted and no record has claimed yet.
+     *
+     * A blank chat is a chat you can send in, so this is half of "is anything open". It is
+     * cleared the moment a record exists — by `ensureRegistered`, by `saveCurrent`'s first turn,
+     * by leaving the tab, or by a profile switch.
+     */
+    private _blankId: string = '';
     /** The pending-user entry of the turn that is in flight, settled when the agent takes it. */
     private _pendingId: string = '';
     /** Which tab wrote it: the active tab can change while a turn is in flight. */
@@ -68,8 +83,43 @@ export class Sessions {
     /** Load the catalog, restore the active id, and register it. Its transcript is Hermes'. */
     init(): void {
         this.loadCatalog();
-        this.activeId = this.restoreActive();
+        // Restoring a tab is not a tab change: the workspace feature reads its own saved pair on
+        // the first post, and this would overwrite it with the restored tab's folder.
+        this.setActiveId(this.restoreActive(), { quiet: true });
         this.ensureRegistered();
+    }
+
+    /**
+     * The one assignment of `activeId`, and the notification that comes with it.
+     *
+     * Every path that puts another tab on screen funnels through here — restore, catalog adopt,
+     * profile rebind, a click, a close, a move — so the workspace feature hears about each one
+     * the same way (funnel kept on purpose: `activeId` is written nowhere else).
+     *
+     * `keepActiveProject` is `createBlankTab`'s: `+` is not a tab change, it opens a chat *in* the
+     * folder the pane is already working in. `quiet` is for a caller that must move the id before
+     * the tab list it reads is consistent, and notifies once it is.
+     */
+    setActiveId(id: string, options?: { keepActiveProject?: boolean; quiet?: boolean }): void {
+        this.activeId = id;
+        if (options?.keepActiveProject || options?.quiet) {
+            return;
+        }
+        this.host.activeChanged();
+    }
+
+    /**
+     * Is there a chat a send can land in?
+     *
+     * A tab on screen, or the blank chat `+` minted and nothing has written a record for yet.
+     * A window whose last tab was closed has neither — the id still names the tab that left, and
+     * that is not a chat.
+     */
+    hasOpenChat(): boolean {
+        if (this.tabs.some(tab => tab.id === this.activeId)) {
+            return true;
+        }
+        return !!this._blankId && this._blankId === this.activeId;
     }
 
     /**
@@ -128,6 +178,8 @@ export class Sessions {
                 ...(this._blankProject ? { project: this._blankProject } : {}),
             });
             this._blankProject = '';
+            // The chat has a record now: it is a tab, not the placeholder `+` minted.
+            this._blankId = '';
         }
         if (this.saveCatalog()) {
             this.saveActive();
@@ -138,6 +190,8 @@ export class Sessions {
     /** A new chat carries the project it was opened in until it becomes a session. */
     beginBlank(project: string): void {
         this._blankProject = project;
+        // A chat you can send in: the send check asks this, not the tab list.
+        this._blankId = this.activeId;
     }
 
     /**
@@ -159,6 +213,7 @@ export class Sessions {
             project: this._blankProject,
         });
         this._blankProject = '';
+        this._blankId = '';
         if (next === this.tabs) {
             return;
         }
@@ -277,13 +332,14 @@ export class Sessions {
             activeId: this.activeId,
             activeLinked: this.activeIsLinked(),
         });
-        if (result.activeChanged) {
-            // The tab the pane showed is gone from the catalog, so it points at the newest.
-            this.activeId = result.activeId;
-            this.messages = [];
-        }
         this.tabs = result.sessions;
         this.hiddenSessions = result.hiddenRows;
+        if (result.activeChanged) {
+            // The tab the pane showed is gone from the catalog, so it points at the newest. Moved
+            // after the list it describes, so whoever follows the tab reads the list it moved in.
+            this.messages = [];
+            this.setActiveId(result.activeId);
+        }
         this.saveCatalog();
         this.postList();
         this.postHidden();
@@ -318,7 +374,10 @@ export class Sessions {
         this.store.setProfile(sessionProfileId);
         this.tabs = [];
         this.loadCatalog();
-        this.activeId = this.restoreActive();
+        this._blankId = '';
+        // The saved pair for this profile is the truth here too: a rebind restores a tab, it does
+        // not choose a folder.
+        this.setActiveId(this.restoreActive(), { quiet: true });
         this.messages = [];
         this.ensureRegistered();
         this.postList();
@@ -346,7 +405,8 @@ export class Sessions {
         }
         // Leaving a blank chat discards it: it carried a project and nothing else.
         this._blankProject = '';
-        this.activeId = sessionId;
+        this._blankId = '';
+        this.setActiveId(sessionId);
         this.messages = [];
         this.host.post({ type: 'newChat' });
         this.postList();
@@ -633,7 +693,7 @@ export class Sessions {
         if (visible.some(tab => tab.id === this.activeId)) {
             return;
         }
-        this.activeId = visible.length ? visible[0].id : mintId();
+        this.setActiveId(visible.length ? visible[0].id : mintId());
         this.saveActive();
     }
 

@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { PresenceStore, PRESENCE_STALE_MS, presenceDirFor } from '../../host/store/presence';
+import { presenceInstanceId, PresenceStore, PRESENCE_STALE_MS, presenceDirFor } from '../../host/store/presence';
 import { ProfilePresence } from '../../host/environment/presence';
 
 function tempHome(): string {
@@ -209,5 +209,79 @@ describe('the heartbeat', () => {
         } finally {
             fs.rmSync(h.home, { recursive: true, force: true });
         }
+    });
+});
+
+/**
+ * A row's identity: (workspace + role) when the window has a workspace, a random id otherwise.
+ *
+ * A random id per start left the previous row behind, and for 45 s it read as *another* window —
+ * which made a window's own profile look taken and skipped it on the next start.
+ */
+describe('the presence identity', () => {
+    it('is the workspace and the role, so a reload lands on the same row', () => {
+        const a = presenceInstanceId('/w/one.code-workspace', 'primary');
+        assert.strictEqual(a, presenceInstanceId('/w/one.code-workspace', 'primary'), 'the same pane of the same window');
+        assert.match(a, /^[0-9a-f]{12}$/);
+        assert.notStrictEqual(a, presenceInstanceId('/w/two.code-workspace', 'primary'), 'two workspaces, two ids');
+        assert.notStrictEqual(a, presenceInstanceId('/w/one.code-workspace', 'secondant'), 'two panes, two ids');
+    });
+
+    it('is random for a window with no workspace', () => {
+        assert.notStrictEqual(presenceInstanceId('', 'primary'), presenceInstanceId('', 'primary'));
+        assert.notStrictEqual(presenceInstanceId(presenceInstanceId('', 'primary'), 'primary'), presenceInstanceId('', 'primary'));
+    });
+
+    it('a reload inside the stale window does not read as another window', () => {
+        const home = tempHome();
+        try {
+            const id = presenceInstanceId('/w/one', 'primary');
+            new PresenceStore(home, id).write({ role: 'primary', cliProfile: 'kitt', liveAt: 1000 });
+
+            const reloaded = new PresenceStore(home, id);
+            assert.deepStrictEqual(reloaded.live(1000 + 60_000), [], 'its own previous row is skipped, not "elsewhere"');
+            assert.ok(fs.existsSync(path.join(presenceDirFor(home), `${id}.json`)), 'and the file is the one it writes');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('two workspaces keep two rows, side by side', () => {
+        const home = tempHome();
+        try {
+            const one = new PresenceStore(home, presenceInstanceId('/w/one', 'primary'));
+            const two = new PresenceStore(home, presenceInstanceId('/w/two', 'primary'));
+            one.write({ role: 'primary', cliProfile: 'kitt', liveAt: 1000 });
+            two.write({ role: 'primary', cliProfile: 'dev', liveAt: 1000 });
+            assert.deepStrictEqual(one.live(1000).map(row => row.cliProfile), ['dev']);
+            assert.deepStrictEqual(two.live(1000).map(row => row.cliProfile), ['kitt']);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('the sweep at start', () => {
+    it('removes rows windows that are gone left behind, and leaves fresh ones alone', () => {
+        const home = tempHome();
+        try {
+            const dir = presenceDirFor(home);
+            const mine = new PresenceStore(home, presenceInstanceId('/w/one', 'primary'));
+            const now = 1000 + PRESENCE_STALE_MS + 1;
+            new PresenceStore(home, 'id-of-a-window-that-died').write({ role: 'primary', cliProfile: 'iris', liveAt: 1000 });
+            new PresenceStore(home, 'id-of-a-live-window').write({ role: 'secondant', cliProfile: 'kitt', liveAt: now - 1000 });
+            fs.writeFileSync(path.join(dir, 'notes.txt'), 'not a row');
+
+            assert.deepStrictEqual(mine.sweep(now), ['id-of-a-window-that-died']);
+            assert.strictEqual(fs.existsSync(path.join(dir, 'id-of-a-window-that-died.json')), false);
+            assert.strictEqual(fs.existsSync(path.join(dir, 'id-of-a-live-window.json')), true, 'a fresh row stays');
+            assert.strictEqual(fs.existsSync(path.join(dir, 'notes.txt')), true, 'and a file that is not a row');
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('has nothing to do on a home with no presence folder', () => {
+        assert.deepStrictEqual(new PresenceStore(path.join(tempHome(), 'nope')).sweep(), []);
     });
 });

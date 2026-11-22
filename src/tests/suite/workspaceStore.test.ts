@@ -30,6 +30,31 @@ describe('workspace store: the shared list', () => {
         assert.deepStrictEqual(store.read().map(entry => entry.path), ['/proj/old']);
     });
 
+    it('remembers each pane\'s profile pick, per workspace and per role', () => {
+        store.register('/proj/a');
+        store.register('/proj/b');
+        assert.strictEqual(store.selectionFor('/proj/a', 'primary'), '', 'a window that never picked one');
+
+        store.setSelection('/proj/a', 'primary', 'kitt');
+        store.setSelection('/proj/a', 'secondant', 'dev');
+        store.setSelection('/proj/b', 'primary', 'iris');
+
+        assert.strictEqual(store.selectionFor('/proj/a', 'primary'), 'kitt');
+        assert.strictEqual(store.selectionFor('/proj/a', 'secondant'), 'dev', 'the two panes keep their own');
+        assert.strictEqual(store.selectionFor('/proj/b', 'primary'), 'iris', 'and each workspace its own');
+        assert.strictEqual(store.selectionFor('/proj/b', 'secondant'), '');
+        // A second reader sees the same file: this is read before the workspace is registered.
+        const reopened = new WorkspaceStore(dir);
+        assert.strictEqual(reopened.selectionFor('/proj/a', 'primary'), 'kitt');
+        assert.strictEqual(reopened.selectionFor('/proj/never-seen', 'primary'), '');
+    });
+
+    it('files a pick for a workspace the registry has not seen yet', () => {
+        store.setSelection('/proj/late', 'primary', 'kitt');
+        assert.strictEqual(store.read().length, 1);
+        assert.strictEqual(store.selectionFor('/proj/late', 'primary'), 'kitt');
+    });
+
     it('holds workspaces only, and writes no temp file behind it', () => {
         store.register('/proj/a');
         assert.ok(!fs.existsSync(store.path + '.tmp'), 'the temp is renamed away, not left');

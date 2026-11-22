@@ -24,6 +24,7 @@ describe('tab switch: a session that will not replay', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => '',
             knownWorkspaceIds: () => [],
+            activeChanged: () => {},
         }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-a';
         session.tabs = [
@@ -98,6 +99,7 @@ describe('tab move: the workspace cwd decides, not the tab record', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => '/work/new',
             knownWorkspaceIds: () => ['/work/new'],
+            activeChanged: () => {},
         }, new TabStore(dir, 'scope'));
         session.activeId = 'tab-moved';
         session.tabs = [
@@ -162,6 +164,7 @@ describe('resumeOrAdopt: the load goes to the tab\'s own folder', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => '',
             knownWorkspaceIds: () => [],
+            activeChanged: () => {},
         }, new TabStore(dir, 'scope'));
 
         const loaded: Array<{ cwd: string; sessionId: string }> = [];

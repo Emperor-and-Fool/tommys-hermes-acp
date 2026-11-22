@@ -32,6 +32,7 @@ describe('sessions: an untagged tab is never claimed by its cwd', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => 'current-window',
             knownWorkspaceIds: () => ['current-window'],
+            activeChanged: () => {},
         }, store);
         session.init();
 
@@ -68,6 +69,7 @@ describe('sessions: what Closed Sessions lists', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => 'current-window',
             knownWorkspaceIds: () => ['current-window'],
+            activeChanged: () => {},
         }, store);
         session.init();
         session.hiddenSessions = [{ sessionId: 'hermes-hidden', title: 'Closed', hidden: true,
@@ -99,6 +101,7 @@ describe('sessions: opening one from Closed Sessions claims it', () => {
             modelLabel: () => undefined,
             currentWorkspaceId: () => 'current-window',
             knownWorkspaceIds: () => ['current-window'],
+            activeChanged: () => {},
         }, store);
         session.init();
         return { dir, session };
