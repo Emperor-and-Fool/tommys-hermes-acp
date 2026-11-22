@@ -150,6 +150,8 @@ export interface EditorChoices {
     pickFolder(title: string, startAt: string): Promise<string | undefined>;
     /** Show a folder in the OS file manager — the user's own browser, not the editor's explorer. */
     showInFileManager(folderPath: string): Promise<void>;
+    /** A notice with buttons: the action the user took, or undefined when it was closed. */
+    ask(message: string, actions: string[]): Promise<string | undefined>;
     /** The user's home folder: where Documents is, and where a folder dialog starts. */
     home(): string;
 }

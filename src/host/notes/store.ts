@@ -38,6 +38,30 @@ export interface MirrorSetup {
     agents: MirrorLinkRow[];
 }
 
+/** What the user said to the first-run question, when the answer was not "yes". */
+export type MirrorAnswer = 'later' | 'never';
+
+/** The question's state: the answer, and when a `later` comes due again. */
+export interface MirrorQuestion {
+    answer: MirrorAnswer;
+    /** For `later`: the moment it is asked again, in ms. Ignored for `never`. */
+    askAfter: number;
+}
+
+/**
+ * The whole file: the mirror and the question live in one record.
+ *
+ * One file, because both are the same subject — whether the user wants a mirror, and where. A
+ * location means there is nothing left to ask; an answer without a location means the question is
+ * waiting for its date or is closed for good.
+ */
+interface MirrorRecord {
+    location?: string;
+    agents?: MirrorLinkRow[];
+    answer?: MirrorAnswer;
+    askAfter?: number;
+}
+
 export class NotesStore {
     constructor(private readonly _historyDir: string) {}
 
@@ -107,15 +131,20 @@ export class NotesStore {
 
     /** The mirror the user set up, or undefined when there is none yet. */
     readMirror(): MirrorSetup | undefined {
-        try {
-            const parsed = JSON.parse(fs.readFileSync(notesMirrorPathFor(this._historyDir), 'utf-8')) as MirrorSetup;
-            if (!parsed || typeof parsed.location !== 'string' || !parsed.location) {
-                return undefined;
-            }
-            return { location: parsed.location, agents: Array.isArray(parsed.agents) ? parsed.agents : [] };
-        } catch {
+        const record = this.readRecord();
+        if (!record || typeof record.location !== 'string' || !record.location) {
             return undefined;
         }
+        return { location: record.location, agents: Array.isArray(record.agents) ? record.agents : [] };
+    }
+
+    /** The first-run question's answer, or undefined when it was never answered. */
+    readAnswer(): MirrorQuestion | undefined {
+        const record = this.readRecord();
+        if (!record || (record.answer !== 'later' && record.answer !== 'never')) {
+            return undefined;
+        }
+        return { answer: record.answer, askAfter: typeof record.askAfter === 'number' ? record.askAfter : 0 };
     }
 
     /**
@@ -125,6 +154,27 @@ export class NotesStore {
      * nothing here deletes a file the user can see (the menu has no "remove the mirror" action).
      */
     writeMirror(setup: MirrorSetup): void {
-        writeAtomic(notesMirrorPathFor(this._historyDir), setup);
+        writeAtomic(notesMirrorPathFor(this._historyDir), { location: setup.location, agents: setup.agents });
+    }
+
+    /**
+     * Record what the user said to the first-run question, leaving any mirror alone.
+     *
+     * The location and the links are kept as they are: an answer is about the question, and a
+     * "remind me later" must not drop a mirror the user set up from the menu in the meantime.
+     */
+    writeAnswer(answer: MirrorAnswer, askAfter: number): void {
+        const record = this.readRecord() ?? {};
+        writeAtomic(notesMirrorPathFor(this._historyDir), { ...record, answer, askAfter });
+    }
+
+    /** The file as it is, or undefined when it is missing or unreadable. */
+    private readRecord(): MirrorRecord | undefined {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(notesMirrorPathFor(this._historyDir), 'utf-8')) as MirrorRecord;
+            return parsed && typeof parsed === 'object' ? parsed : undefined;
+        } catch {
+            return undefined;
+        }
     }
 }

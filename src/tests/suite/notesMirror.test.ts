@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { AgentNotes } from '../../host/notes/notes';
+import { t } from '../../host/i18n';
 import { MIRROR_FOLDER, NotesMirror, linkNameFor } from '../../host/notes/mirror';
 import { NotesStore } from '../../host/notes/store';
 import { notesDirFor } from '../../host/store/paths';
@@ -25,16 +26,26 @@ interface AgentRow {
 }
 
 /** A window's notes features over temp folders, with every port answer recorded. */
-const windowOn = (agents: AgentRow[], location: string) => {
-    const home = dir();
+const windowOn = (
+    agents: AgentRow[],
+    location: string,
+    answer?: string,
+    otherWindow = false,
+    home = dir(),
+) => {
     const logs: string[] = [];
     const infos: string[] = [];
     const flags: boolean[] = [];
     const shown: string[] = [];
+    const asks: Array<{ message: string; actions: string[] }> = [];
     const choices = {
         pick: async () => location,
         pickFolder: async () => location,
         showInFileManager: async (folderPath: string) => { shown.push(folderPath); },
+        ask: async (message: string, actions: string[]) => {
+            asks.push({ message, actions });
+            return answer;
+        },
         home: () => home,
     } as unknown as EditorChoices;
     const store = new NotesStore(home);
@@ -51,9 +62,10 @@ const windowOn = (agents: AgentRow[], location: string) => {
         choices,
         agents: () => agents,
         mirrorSet: value => flags.push(value),
+        otherWindowLive: () => otherWindow,
     }, 'linux', {});
 
-    return { home, location, store, notes, mirror, logs, infos, flags, shown, agents };
+    return { home, location, store, notes, mirror, logs, infos, flags, shown, asks, agents };
 };
 
 /** The mirror folder inside the location the user picked. */
@@ -222,6 +234,101 @@ describe('a start: the menu item, and a quiet repair', () => {
             w.mirror.repairOnStart();
             assert.deepStrictEqual(w.flags, [false], 'set up, not repair');
             assert.deepStrictEqual(w.logs, []);
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+});
+
+/**
+ * The first-run question: asked once, and its answer decides the next start.
+ *
+ * The file is the whole state: no record asks, `never` stops, `later` waits for its date, and a
+ * close writes nothing so the next start asks again. A second window does not ask at all.
+ */
+describe('the first-run question', () => {
+    const due = async (answer: string | undefined, otherWindow = false) => {
+        const location = dir();
+        const w = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], location, answer, otherWindow);
+        await w.mirror.askIfDue();
+        return w;
+    };
+
+    it('asks once when there is no record, with the three answers', async () => {
+        const w = await due(undefined);
+        try {
+            assert.strictEqual(w.asks.length, 1);
+            assert.deepStrictEqual(w.asks[0].actions, [
+                t('notesAskDoIt'), t('notesAskLater'), t('notesAskNever'),
+            ]);
+            assert.strictEqual(w.store.readAnswer(), undefined, 'a closed notice writes nothing');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('"Remind me in 2 weeks" records the date, and the next start stays quiet', async () => {
+        const w = await due(t('notesAskLater'));
+        try {
+            const stored = w.store.readAnswer();
+            assert.strictEqual(stored?.answer, 'later');
+            const days = (stored!.askAfter - Date.now()) / (24 * 60 * 60 * 1000);
+            assert.ok(days > 13 && days < 15, `two weeks ahead, got ${days}`);
+
+            // A second start over the same data home, as a reload or another window would be.
+            const again = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], w.location, undefined, false, w.home);
+            await again.mirror.askIfDue();
+            assert.deepStrictEqual(again.asks, [], 'the date has not passed');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('a postpone whose date has passed is asked again', async () => {
+        const w = await due(undefined);
+        try {
+            w.store.writeAnswer('later', Date.now() - 1000);
+            const before = w.asks.length;
+            await w.mirror.askIfDue();
+            assert.strictEqual(w.asks.length, before + 1, 'due again');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('"Don\'t ask again" is final', async () => {
+        const w = await due(t('notesAskNever'));
+        try {
+            assert.strictEqual(w.store.readAnswer()?.answer, 'never');
+            await w.mirror.askIfDue();
+            assert.strictEqual(w.asks.length, 1, 'asked once, then never again');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('"Let\'s do it" runs the set-up, and the question is not asked again', async () => {
+        const w = await due(t('notesAskDoIt'));
+        try {
+            assert.strictEqual(w.store.readMirror()?.location, w.location, 'the picker ran');
+            await w.mirror.askIfDue();
+            assert.strictEqual(w.asks.length, 1, 'a mirror is set: nothing to ask');
+        } finally {
+            fs.rmSync(w.home, { recursive: true, force: true });
+            fs.rmSync(w.location, { recursive: true, force: true });
+        }
+    });
+
+    it('a window that is not the first does not ask', async () => {
+        const w = await due(undefined, true);
+        try {
+            assert.deepStrictEqual(w.asks, [], 'another window is running');
+            assert.strictEqual(w.store.readAnswer(), undefined);
         } finally {
             fs.rmSync(w.home, { recursive: true, force: true });
             fs.rmSync(w.location, { recursive: true, force: true });

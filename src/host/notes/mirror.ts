@@ -51,7 +51,17 @@ export interface NotesMirrorHost {
     agents(): Array<{ sessionProfileId: string; agentName: string }>;
     /** Turn the ⋯ menu's item: set up when there is no mirror, repair when there is one. */
     mirrorSet(value: boolean): void;
+    /**
+     * Is another window — either extension — already running?
+     *
+     * The question is asked once per start, and this is how one window knows it is not the first:
+     * `ProfilePresence` announces a window that has a connect, and both extensions share the table.
+     */
+    otherWindowLive(): boolean;
 }
+
+/** How long "Remind me in 2 weeks" waits. */
+export const ASK_AGAIN_MS = 14 * 24 * 60 * 60 * 1000;
 
 /** What one sync did: one line for the user, the detail to the log. */
 export interface MirrorReport {
@@ -90,6 +100,9 @@ function describeError(error: unknown): string {
 }
 
 export class NotesMirror {
+    /** Whether this window has put the question up in this start: a profile switch is not a start. */
+    private _asked = false;
+
     constructor(
         private readonly _store: NotesStore,
         private readonly _notes: AgentNotes,
@@ -119,6 +132,54 @@ export class NotesMirror {
         if (report.created || report.renamed || report.findings.length) {
             this._host.log(this.summary(report, setup));
         }
+    }
+
+    /**
+     * The first-run question, when it is due — once per start, in one window.
+     *
+     * Called when a connect lands, which is the moment this window has something to announce
+     * (`ProfilePresence`); before that, every window looks like the only one. The file decides the
+     * rest: a location means there is nothing to ask, "never" is final, and "later" waits its date.
+     */
+    async askIfDue(): Promise<void> {
+        if (this._asked || this.current() || !this._due()) {
+            return;
+        }
+        if (this._host.otherWindowLive()) {
+            this._host.log('Notes mirror: another window is running; the question is asked there');
+            return;
+        }
+        const doIt = t('notesAskDoIt');
+        this._asked = true;
+        const answer = await this._host.choices.ask(t('notesAskMirror'), [
+            doIt,
+            t('notesAskLater'),
+            t('notesAskNever'),
+        ]);
+        if (!answer) {
+            // Closed: nothing written, so the next start asks again.
+            return;
+        }
+        if (answer === doIt) {
+            await this.setUp();
+            return;
+        }
+        if (answer === t('notesAskLater')) {
+            this._store.writeAnswer('later', Date.now() + ASK_AGAIN_MS);
+            return;
+        }
+        if (answer === t('notesAskNever')) {
+            this._store.writeAnswer('never', 0);
+        }
+    }
+
+    /** Is the question due? No answer at all, or a `later` whose date has passed. */
+    private _due(now = Date.now()): boolean {
+        const answer = this._store.readAnswer();
+        if (!answer) {
+            return true;
+        }
+        return answer.answer === 'later' && now >= answer.askAfter;
     }
 
     /**

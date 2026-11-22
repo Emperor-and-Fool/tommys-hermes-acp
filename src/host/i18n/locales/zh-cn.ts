@@ -432,4 +432,8 @@ hermes --profile &lt;name&gt; acp</code></pre>
     notesMirrorLinkFailed: '无法创建 "{0}"（{1}）。',
     notesMirrorFolderFailed: '无法创建镜像文件夹 {0}（{1}）。',
     notesOpenFailed: '无法打开笔记文件夹（{0}）。',
+    notesAskMirror: '你的代理各有自己的笔记。要在你能随手查看的地方镜像一份吗？推荐使用 Obsidian。',
+    notesAskDoIt: '开始设置',
+    notesAskLater: '两周后再提醒',
+    notesAskNever: '不再询问',
 };

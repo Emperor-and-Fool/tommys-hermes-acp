@@ -379,6 +379,7 @@ export class App implements vscode.WebviewViewProvider {
             choices: createEditorChoices(),
             agents: () => this._profiles.agents(),
             mirrorSet: value => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
+            otherWindowLive: () => this._presence.live().length > 0,
         });
         this._mirror.repairOnStart();
         // Announced before anything asks who may run what: the pickers read the other windows'
@@ -543,8 +544,10 @@ export class App implements vscode.WebviewViewProvider {
         this._connection.profileActive.on(() => {
             this._presence.connected();
             this._profiles.persistSelection();
-            // The agent's notes exist before it reads the notice that names them.
+            // The agent's notes exist before it reads the notice that names them; the mirror's
+            // first-run question waits for this moment, when another window can be seen at all.
             this._notes.ensure(this._session.sessionProfileId);
+            void this._mirror.askIfDue();
         });
 
         context.subscriptions.push(
@@ -743,13 +746,9 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Commands from extension.ts. The work lives in environment/detection.ts. */
-    public detectEnvironment(): Promise<void> {
-        return this._detection.detectEnvironment();
-    }
+    public detectEnvironment(): Promise<void> { return this._detection.detectEnvironment(); }
 
-    public configureEnvironment(): void {
-        this._detection.configureEnvironment();
-    }
+    public configureEnvironment(): void { this._detection.configureEnvironment(); }
 
     private async _onConfigurationChanged(affects: (key: string) => boolean): Promise<void> {
         if (affects('showThoughts') || affects('showToolCalls')) {

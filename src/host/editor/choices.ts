@@ -42,6 +42,14 @@ export function createEditorChoices(): EditorChoices {
             await vscode.env.openExternal(vscode.Uri.file(folderPath));
         },
 
+        ask: async (message, actions) => {
+            // Closing the notice answers nothing: no button is the same as undefined.
+            const picked = actions.length > 0
+                ? await vscode.window.showInformationMessage(message, ...actions)
+                : undefined;
+            return picked ?? undefined;
+        },
+
         home: () => os.homedir(),
     };
 }

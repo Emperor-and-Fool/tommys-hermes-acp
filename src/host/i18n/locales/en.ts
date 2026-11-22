@@ -436,4 +436,9 @@ hermes --profile &lt;name&gt; acp</code></pre>
     notesMirrorLinkFailed: 'Could not create "{0}" ({1}).',
     notesMirrorFolderFailed: 'Could not create the mirror folder {0} ({1}).',
     notesOpenFailed: 'Could not open the notes folder ({0}).',
+    notesAskMirror: 'Your agents have their own notes. Mirror them where you can read along? '
+        + 'Obsidian is recommended.',
+    notesAskDoIt: "Let's do it",
+    notesAskLater: 'Remind me in 2 weeks',
+    notesAskNever: "Don't ask again",
 };

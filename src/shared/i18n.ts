@@ -383,6 +383,10 @@ export interface LocaleStrings {
     notesMirrorLinkFailed: string;
     notesMirrorFolderFailed: string;
     notesOpenFailed: string;
+    notesAskMirror: string;
+    notesAskDoIt: string;
+    notesAskLater: string;
+    notesAskNever: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;
