@@ -264,7 +264,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. What changes when I switch Profile?</h3>
             <p>Switching Profile <strong>reconnects the Hermes subprocess</strong> (like restarting <code>hermes --profile &lt;name&gt; acp</code>).</p>
             <ul>
-                <li><strong>Different session list</strong> — each Profile / named agent in <code>tommys.agents</code> has separate local storage; tab history, active tab, and model preferences do not carry over</li>
+                <li><strong>Different session list</strong> — each Profile has separate local storage; tab history, active tab, and model preferences do not carry over</li>
                 <li><strong>Model list refreshes</strong> — from models exposed by Hermes under the new Profile; may differ completely</li>
                 <li><strong>Chat content</strong> — reloads the active session under the new Profile</li>
                 <li><strong>Settings changes</strong> — editing <code>tommys.profile</code>, <code>tommys.path</code>, etc. also reconnects, similar to switching Profile</li>
@@ -323,7 +323,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '(empty file)',
     noMatchingFiles: 'No matching files',
     searchingFiles: 'Searching files…',
-    configureAgents: 'Configure tommys.agents in Settings',
+    noHermesProfiles: 'No Hermes profiles found — check tommys.path',
     noModels: 'No models — check Hermes profile or tommys.models',
     modelFromAgent: 'Model from Hermes profile',
     modelLocalPreference: 'Local model preference (Settings fallback)',

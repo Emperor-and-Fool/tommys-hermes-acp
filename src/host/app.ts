@@ -779,17 +779,13 @@ export class App implements vscode.WebviewViewProvider {
             }
             void this._models.sync();
         }
-        if (affects('agents')) {
-            this._profiles.forgetDiscovered();
-            this._profiles.postList();
-        }
         const reconnectKeys = ['path', 'profile'];
         if (affects('profile')) {
             // Another profile means another approvals.mode.
             this._approvals.onProfileChanged();
         }
         if (reconnectKeys.some(key => affects(key))) {
-            if (affects('profile') && this._profiles.readAgentConfigs().length === 0) {
+            if (affects('profile')) {
                 this._profiles.selectionId = normalizeHermesCliProfile(this._settings.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();

@@ -8,15 +8,8 @@ import {
     profileNameFromPreviousNames,
     profileNameHoldingSessions,
 } from './profileFallback';
-import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
 import { resolveHermesRoot } from './hermesPaths';
 import type { ProfilesStore } from '../store/profiles';
-
-export interface HermesAgentConfig {
-    name: string;
-    path?: string;
-    profile?: string;
-}
 
 export interface ProfileListEntry {
     id: string;
@@ -128,9 +121,9 @@ export interface ProfilesHost {
 /**
  * Which Hermes profile/agent we connect to, and which ones the picker offers.
  *
- * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`,
- * `tommys.agents`), the agent list, discovery of profiles on disk, and the selection that survives a
- * window. The working folder is not a profile question: the cwd owner answers that.
+ * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`),
+ * discovery of profiles on disk, and the selection that survives a window. The working folder is
+ * not a profile question: the cwd owner answers that.
  */
 export class Profiles {
     /** Agent name or CLI profile id used for reconnect / switch. */
@@ -271,23 +264,6 @@ export class Profiles {
     resolveTarget(selectionId?: string): ConnectionTarget {
         const configPath = this._host.settings.get<string>('path') || undefined;
         const configProfile = this._host.settings.get<string>('profile') || undefined;
-        const agents = this.readAgentConfigs();
-
-        if (agents.length > 0) {
-            const resolvedId = selectionId || this.selectionId || agents[0].name;
-            const agent = agents.find(a => a.name === resolvedId) || agents[0];
-            return {
-                // A configured agent is not a Hermes profile, so it keeps the display-name key it
-                // has always had; nothing but a real profile has an id of ours.
-                sessionProfileId: sanitizeProfileScopeKey(agent.name),
-                agentName: agent.name,
-                selectionId: agent.name,
-                displayName: agent.name,
-                cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
-                configPath: agent.path || configPath,
-            };
-        }
-
         const resolvedId = selectionId || this.selectionId || normalizeHermesCliProfile(configProfile);
         const cliProfile = normalizeHermesCliProfile(resolvedId);
         return {
@@ -309,10 +285,6 @@ export class Profiles {
     }
 
     async ensureDiscovered(): Promise<void> {
-        if (this.readAgentConfigs().length > 0) {
-            this.discovered = null;
-            return;
-        }
         if (this.discovered) {
             return;
         }
@@ -338,10 +310,8 @@ export class Profiles {
     }
 
     entries(): ProfileListEntry[] {
-        const agents = this.readAgentConfigs();
-        const list: ProfileListEntry[] = agents.length > 0
-            ? agents.map(a => ({ id: a.name, label: a.name }))
-            : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
+        const list: ProfileListEntry[] =
+            (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
 
         // The rule the extensions live by: two panes may not run on one profile, in this window or
         // in any other. Compare what the agent will run on (`cliProfile`), not the id or label an
@@ -353,24 +323,6 @@ export class Profiles {
             return list;
         }
         return list.filter(entry => !excluded.includes(this.resolveTarget(entry.id).cliProfile));
-    }
-
-    readAgentConfigs(): HermesAgentConfig[] {
-        const raw = this._host.settings.get<unknown>('agents');
-        if (!Array.isArray(raw)) {
-            return [];
-        }
-        return raw.flatMap(entry => {
-            if (!entry || typeof entry !== 'object') {
-                return [];
-            }
-            const name = (entry as { name?: unknown }).name;
-            if (typeof name !== 'string' || !name.trim()) {
-                return [];
-            }
-            const agent = entry as HermesAgentConfig;
-            return [{ ...agent, name: name.trim() }];
-        });
     }
 
     postList(): void {

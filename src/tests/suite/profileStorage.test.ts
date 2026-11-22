@@ -3,19 +3,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    sanitizeProfileScopeKey,
     saveProfileState,
     loadProfileState,
 } from '../../host/workspace/profileStorage';
 import { sessionsPathFor } from '../../host/store/paths';
 
 describe('profileStorage', () => {
-    it('sanitizeProfileScopeKey removes unsafe characters', () => {
-        assert.strictEqual(sanitizeProfileScopeKey('jove'), 'jove');
-        assert.strictEqual(sanitizeProfileScopeKey('a/b:c'), 'a_b_c');
-        assert.strictEqual(sanitizeProfileScopeKey(''), '__default__');
-    });
-
     it('stores sessions and profile state per scope', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-profile-'));
         try {

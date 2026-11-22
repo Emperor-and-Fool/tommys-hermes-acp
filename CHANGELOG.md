@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **The `tommys.agents` setting.** A hand-written agent list that switched Hermes' own profile
+  discovery off; `profiles.json`, filled by discovery, already does that job, and the setting was
+  the one place an agent's folder was not `profiles/<uuid>/`. Nothing set it. Agents configured
+  through it are gone; use the Profile picker, which lists what Hermes has.
+
 ## [2.5.1] - 2026-11-22
 
 ### What changed along the way

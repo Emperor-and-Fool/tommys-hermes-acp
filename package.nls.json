@@ -36,7 +36,5 @@
   "configuration.tommys.showToolCalls.description": "Show tool call notifications in the chat.",
   "configuration.tommys.models.description": "Fallback model list when Hermes does not expose ACP session config options.",
   "configuration.tommys.models.markdownDescription": "Used when the agent does not return `configOptions` with a model selector. Example:\n```json\n[\n  { \"id\": \"claude-sonnet\", \"name\": \"Claude Sonnet\" },\n  { \"id\": \"gpt-4o\", \"name\": \"GPT-4o\" }\n]\n```",
-  "configuration.tommys.defaultModel.description": "Default model id from hermes.models (fallback list only).",
-  "configuration.tommys.agents.description": "List of named agent configurations for quick switching via the chat UI.",
-  "configuration.tommys.agents.markdownDescription": "List of named agent configurations for quick switching. Each agent can have a different `path`, `profile`, and `cwd`. Example:\n```json\n[\n  { \"name\": \"Default\", \"profile\": \"\" },\n  { \"name\": \"Fast\", \"path\": \"/path/to/hermes\", \"profile\": \"fast\" }\n]\n```"
+  "configuration.tommys.defaultModel.description": "Default model id from hermes.models (fallback list only)."
 }

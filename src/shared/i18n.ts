@@ -250,7 +250,7 @@ export interface LocaleStrings {
     emptyFile: string;
     noMatchingFiles: string;
     searchingFiles: string;
-    configureAgents: string;
+    noHermesProfiles: string;
     noModels: string;
     modelFromAgent: string;
     modelLocalPreference: string;

@@ -263,7 +263,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. 切换 Profile 会引起什么变化？</h3>
             <p>Profile 切换等于<strong>重连 Hermes 子进程</strong>（类似 <code>hermes --profile &lt;name&gt; acp</code> 重新启动）。</p>
             <ul>
-                <li><strong>会话列表换一套</strong> — 每个 Profile / <code>tommys.agents</code> 命名 Agent 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
+                <li><strong>会话列表换一套</strong> — 每个 Profile 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
                 <li><strong>模型列表刷新</strong> — 来自新 Profile 下 Hermes 暴露的可用模型，可能与旧 Profile 完全不同</li>
                 <li><strong>聊天内容</strong> — 按新 Profile 下的活跃会话重新加载</li>
                 <li><strong>Settings 变更</strong> — 修改 <code>tommys.profile</code>、<code>tommys.path</code> 等连接项也会自动重连，效果类似切换 Profile</li>
@@ -322,7 +322,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '（空文件）',
     noMatchingFiles: '没有匹配的文件',
     searchingFiles: '搜索文件中…',
-    configureAgents: '请在 Settings 中配置 tommys.agents',
+    noHermesProfiles: '未找到 Hermes 配置 —— 请检查 tommys.path',
     noModels: '无可用模型 — 请检查 Hermes profile 或 tommys.models',
     modelFromAgent: '来自 Hermes profile 的模型',
     modelLocalPreference: '本地模型偏好（Settings 回退）',

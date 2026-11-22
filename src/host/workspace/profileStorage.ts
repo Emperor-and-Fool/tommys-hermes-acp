@@ -6,15 +6,6 @@ export interface ProfileState {
     modelLabel?: string;
 }
 
-/** A filesystem key for a name that is not a Hermes profile (a configured agent's display name). */
-export function sanitizeProfileScopeKey(name: string, fallback = '__default__'): string {
-    const trimmed = (name || '').trim();
-    if (!trimmed) {
-        return fallback;
-    }
-    return trimmed.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || fallback;
-}
-
 export function loadProfileState(historyDir: string, sessionProfileId: string): ProfileState {
     try {
         const p = profileStatePathFor(historyDir, sessionProfileId);

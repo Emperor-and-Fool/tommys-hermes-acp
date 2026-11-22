@@ -291,29 +291,6 @@
           "default": "",
           "description": "%configuration.tommys.defaultModel.description%"
         },
-        "tommys.agents": {
-          "type": "array",
-          "default": [],
-          "description": "%configuration.tommys.agents.description%",
-          "markdownDescription": "%configuration.tommys.agents.markdownDescription%",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              },
-              "profile": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "name"
-            ]
-          }
-        },
         "tommys.chatSurface": {
           "type": "string",
           "default": "sidebar",
