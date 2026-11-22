@@ -3,7 +3,7 @@ import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
-import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
+import type { Project, Workspace } from '../../../shared/chat';
 
 /**
  * A project group in the pane: its markup as a parent of tabs, the fold, the rename, its own menu,
@@ -26,68 +26,6 @@ function applyProjectCollapsed(group: HTMLElement): void {
     group.classList.toggle('is-collapsed', collapsed);
     const caret = group.querySelector('.tab-group-caret');
     if (caret) caret.textContent = collapsed ? '▸' : '▾';
-}
-
-/**
- * Projects are parents: their tabs are drawn inside them. A tab in no project — or in one that no
- * longer exists — sorts below all of them, unindented, which is what tells the two apart.
- *
- * The plane is drawn even when it holds no tab: it is the root the pane can be working in, so it
- * has to be clickable and marked whether or not a tab is in it.
- */
-export function projectTreeHtml(
-    sessions: SessionInfo[],
-    tabsHtml: (list: SessionInfo[]) => string,
-    projects: Project[],
-    workspaces: Workspace[],
-    activeProjectId: string,
-): string {
-    const groups: Array<{ project: Project; sessions: SessionInfo[] }> = [];
-    projects.forEach(function(project) {
-        groups.push({ project: project, sessions: [] });
-    });
-    const plane: SessionInfo[] = [];
-    sessions.forEach(function(s) {
-        const group = s.project ? groups.find(function(g) { return g.project.id === s.project; }) : undefined;
-        (group ? group.sessions : plane).push(s);
-    });
-
-    const parts: string[] = [];
-    groups.forEach(function(group, index) {
-        const active = group.project.id === activeProjectId ? ' is-active' : '';
-        parts.push('<div class="tab-group' + active + '" data-project="' + escapeHtml(group.project.id) + '"' +
-            ' style="--project-accent:' + projectAccent(index, groups.length) + '">' +
-            '<div class="tab-group-header" title="' + escapeHtml(workspacePathOf(workspaces, group.project.workspaceId)) + '">' +
-                '<span class="tab-group-caret"></span>' +
-                '<span class="tab-group-name">' + escapeHtml(group.project.name) + '</span>' +
-            '</div>' +
-            '<div class="tab-group-tabs">' + tabsHtml(group.sessions) + '</div>' +
-            '</div>');
-    });
-    const rootActive = activeProjectId === '' ? ' is-active' : '';
-    parts.push('<div class="tab-group tab-group--plane' + rootActive + '"><div class="tab-group-tabs">' + tabsHtml(plane) + '</div></div>');
-    return parts.join('');
-}
-
-/**
- * The colour of the project at `index` of `total`: the rainbow from red at the top to deep purple
- * at the bottom, spread over the projects that are drawn.
- *
- * It spans the list rather than stepping by a fixed amount, so with two projects the second is
- * purple and not amber. The colour means *where* a project sits, so a new one re-spaces the ones
- * around it — which is the same statement, told again.
- */
-function projectAccent(index: number, total: number): string {
-    const RED = 5;
-    const DEEP_PURPLE = 280;
-    const hue = total > 1 ? Math.round(RED + (DEEP_PURPLE - RED) * (index / (total - 1))) : RED;
-    return `hsl(${hue} 62% 42%)`;
-}
-
-/** The path behind a workspace id, for a tooltip. The list the host sent is the whole truth. */
-function workspacePathOf(workspaces: Workspace[], workspaceId: string): string {
-    const entry = workspaces.find(function(workspace) { return workspace.id === workspaceId; });
-    return entry ? entry.path : '';
 }
 
 /**
@@ -211,15 +149,22 @@ function showProjectContextMenu(projectId: string, clientX: number, clientY: num
 /**
  * The projects, as the tab menu's second level, with the plane as a row of its own: a tab that was
  * moved in has to have a way back out.
+ *
+ * The workspace path under each row is handed in rather than looked up here: the parent owns the
+ * workspace list, and this file only draws what it is given (F7).
  */
-export function showProjectPicker(sessionId: string, projects: Project[], workspaces: Workspace[]): void {
+export function showProjectPicker(
+    sessionId: string,
+    projects: Project[],
+    pathOf: (workspaceId: string) => string,
+): void {
     if (!tabContextMenu) {
         return;
     }
     let html = '<div class="tab-ctx-sid-label">' + escapeHtml(locale.tabContextMoveProject) + '</div>';
     html += '<button type="button" class="tab-ctx-item" data-project="">' + escapeHtml(locale.tabContextNoProject) + '</button>';
     projects.forEach(function(project) {
-        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(workspacePathOf(workspaces, project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
+        html += '<button type="button" class="tab-ctx-item" data-project="' + escapeHtml(project.id) + '" title="' + escapeHtml(pathOf(project.workspaceId)) + '">' + escapeHtml(project.name) + '</button>';
     });
     tabContextMenu.innerHTML = html;
     tabContextMenu.querySelectorAll<HTMLElement>('.tab-ctx-item[data-project]').forEach(function(item) {
@@ -321,15 +266,9 @@ export function wireProjectGroups(
     });
     const planeGroup = container.querySelector<HTMLElement>('.tab-group--plane');
     if (planeGroup) {
+        // A drop target only: the root space is the background of the rail (the wrapper in
+        // chat.html), and the parent owns that click.
         wireProjectDropTarget(planeGroup, '');
-        // The root space: the plane and the empty area it now keeps. A tab in it is a tab, and the
-        // host follows a tab on its own — so a click on one is left to the tab.
-        planeGroup.addEventListener('click', function(e) {
-            if (e.target && (e.target as HTMLElement).closest && (e.target as HTMLElement).closest('.session-tab')) {
-                return;
-            }
-            setActiveProject('');
-        });
     }
 }
 

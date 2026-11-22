@@ -94,12 +94,16 @@
     <div class="secondant-badge-row" aria-hidden="true">
         <img class="secondant-badge-icon" src="{{SECONDANT_ICON_URI}}" alt="" aria-hidden="true">
     </div>
+<!-- The rail's tree and the space below it are one root space: "no project" is a place the pane
+     can be working in, so the background of both is what a click on nothing selects. -->
+<div id="railTree">
 <div id="tab-bar"></div>
 <!-- The rail's own action: the space the chat list leaves empty is where a folder can be made. -->
 <div id="rail-footer">
     <button type="button" id="createFolderBtn" class="button"></button>
     <!-- What the create actually did. Empty and hidden unless the host refuses it. -->
     <div id="projectNotice" class="project-notice" role="status" hidden></div>
+</div>
 </div>
 <div id="tabContextMenu" class="tab-context-menu" hidden></div>
 <div id="chat-body" class="chat-body">

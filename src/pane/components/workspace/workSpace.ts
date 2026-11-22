@@ -1,9 +1,10 @@
-import { tabBar, tabContextMenu } from '../../dom';
+import { byId, tabBar, tabContextMenu } from '../../dom';
 import { post } from '../../post';
 import { state } from '../../state';
 import { escapeHtml } from '../../util/html';
 import { clearPopup, placePopup } from '../../util/popup';
-import { applyProjectFocus, projectTreeHtml, showProjectNotice, showProjectPicker, wireProjectGroups } from './projectGrouped';
+import { applyProjectFocus, showProjectNotice, showProjectPicker, wireProjectGroups } from './projectGrouped';
+import { chatProjectOf, isRootSpaceTarget, projectTreeHtml, workspacePathOf } from './projectTree';
 import { tabEntriesHtml, wireTabs, withBlankChat } from './sessionTab';
 import type { Project, SessionInfo, Workspace } from '../../../shared/chat';
 import type { HostToPane } from '../../../shared/webview';
@@ -32,6 +33,32 @@ let activeProjectId = '';
 export function workspaceLabel(workspacePath: string): string {
     const base = workspacePath.split(/[\\/]/).filter(Boolean).pop() || workspacePath;
     return base.replace(/\.code-workspace$/i, '');
+}
+
+/** The workspace path under a picker row: the list the host sent is the whole truth. */
+function pathOf(workspaceId: string): string {
+    return workspacePathOf(workspaces, workspaceId);
+}
+
+/**
+ * The root space, once: a click on the background of the rail — the tree's own empty space and
+ * the area below the projects — means "the pane works in no folder".
+ *
+ * One handler on the wrapper in `chat.html`, because the background is a layout fact and not a
+ * tab: every element drawn on it (a tab, a header, the folder button, its input) handles its own
+ * click first, and the filter keeps their clicks out of ours.
+ */
+export function initRootSpace(): void {
+    const root = byId<HTMLElement>('railTree');
+    if (!root) {
+        return;
+    }
+    root.addEventListener('click', function(e) {
+        if (!isRootSpaceTarget(e.target as HTMLElement | null)) {
+            return;
+        }
+        setActiveProject('');
+    });
 }
 
 /**
@@ -73,6 +100,12 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
     const list = withBlankChat(sessions || []);
     state.lastSessions = list;
     state.lastActiveSessionId = state.activeSessionId;
+    // The root space is the background around the tree, and it says "no project" — marked even
+    // when there is no tree to draw, because the pane can be working in it either way.
+    const root = byId<HTMLElement>('railTree');
+    if (root) {
+        root.classList.toggle('is-active', activeProjectId === '');
+    }
     if (list.length === 0) {
         tabBar.innerHTML = '';
         return;
@@ -81,14 +114,15 @@ export function renderTree(sessions: SessionInfo[], activeId: string): void {
         state.pendingTabsRender = { sessions: sessions, activeId: activeId };
         return;
     }
-    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml, projects, workspaces, activeProjectId);
+    const chatProjectId = chatProjectOf(list, state.activeSessionId);
+    tabBar.innerHTML = projectTreeHtml(list, tabEntriesHtml, projects, workspaces, activeProjectId, chatProjectId);
 
     wireTabs(tabBar, {
         rerender: renderTree,
         showWorkspacePicker: showWorkspacePicker,
         // The project picker is the other child's: this is where the two are joined, so the tab
         // menu can open it without either child knowing the other.
-        showProjectPicker: (sessionId: string) => showProjectPicker(sessionId, projects, workspaces),
+        showProjectPicker: (sessionId: string) => showProjectPicker(sessionId, projects, pathOf),
         hasWorkspaces: workspaces.length > 0,
         hasProjects: projects.length > 0,
     });

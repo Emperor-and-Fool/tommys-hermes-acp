@@ -25,6 +25,7 @@ import * as modelPicker from './components/pickers/modelPicker';
 import * as profilePicker from './components/pickers/profilePicker';
 import * as search from './components/search';
 import * as projectGrouped from './components/workspace/projectGrouped';
+import * as workSpace from './components/workspace/workSpace';
 import * as statusBar from './components/status/statusBar';
 import * as viewer from './components/viewer/historyViewer';
 import * as i18n from './i18n';
@@ -43,6 +44,8 @@ export function boot(): void {
     messageList.initJumpControl();
     search.initChatSearchFab();
     projectGrouped.initCreateProjectButton();
+    // The rail's background is the root space: one handler, though it is drawn by every render.
+    workSpace.initRootSpace();
     // The selection toolbar carries the same search, as a second bar over one query.
     const msInput = byId<HTMLInputElement>('msSearchInput');
     if (msInput) {
