@@ -40,9 +40,11 @@ export interface BudgetView {
     text: string;
     /** Plain markdown, one line per row; the item turns it into the editor's own tooltip. */
     tooltip: string;
+    /**
+     * A background, and the only two the editor allows. Either one also brings the theme's paired
+     * foreground, so nothing here chooses a colour: a connected pane keeps the status bar's own.
+     */
     background?: 'error' | 'warning';
-    /** The one thing VS Code has no background for: the item's foreground. */
-    color?: 'green';
 }
 
 /** The editor's status bar item, as the feature sees it (`editor/statusBar.ts` answers). */
@@ -256,7 +258,6 @@ export class Budget {
             text: `${icon} ${shown.label}${amount}`,
             tooltip: this._tooltip(shown),
             background: shown.link === 'off' ? 'error' : low ? 'warning' : undefined,
-            color: shown.link === 'on' && !low ? 'green' : undefined,
         });
     }
 

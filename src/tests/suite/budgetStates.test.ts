@@ -83,7 +83,6 @@ describe('the budget item’s states', () => {
             await h.budget.refresh();
             assert.strictEqual(textOf(h.item), '$(circle-slash) dev-vsc');
             assert.strictEqual(h.item.view?.background, 'error');
-            assert.strictEqual(h.item.view?.color, undefined, 'no green while it is down');
             assert.ok(!textOf(h.item).includes('42.50'), 'no amount on a pane that is down');
         } finally {
             h.budget.dispose();
@@ -97,7 +96,6 @@ describe('the budget item’s states', () => {
             h.budget.noteStatus('connecting');
             assert.strictEqual(textOf(h.item), '$(sync~spin) dev-vsc');
             assert.strictEqual(h.item.view?.background, undefined);
-            assert.strictEqual(h.item.view?.color, undefined);
 
             h.state.connected = false;
             h.budget.noteStatus('ready');
@@ -107,13 +105,12 @@ describe('the budget item’s states', () => {
         }
     });
 
-    it('draws the amount and currency in green when connected', async () => {
+    it('draws the amount and currency in the status bar’s own colour when connected', async () => {
         const h = harness();
         try {
             await h.budget.refresh();
             assert.match(textOf(h.item), /^\$\(dashboard\) dev-vsc · 42\.50 USD \$\((flame|moon)\)$/);
-            assert.strictEqual(h.item.view?.color, 'green');
-            assert.strictEqual(h.item.view?.background, undefined);
+            assert.strictEqual(h.item.view?.background, undefined, 'no background of its own');
             assert.ok(tooltipOf(h.item).includes('connected'));
         } finally {
             h.budget.dispose();
@@ -126,7 +123,6 @@ describe('the budget item’s states', () => {
             await h.budget.refresh();
             assert.match(textOf(h.item), /^\$\(warning\) dev-vsc · 3\.20 USD \$\((flame|moon)\)$/);
             assert.strictEqual(h.item.view?.background, 'warning');
-            assert.strictEqual(h.item.view?.color, undefined, 'a warning is not green');
         } finally {
             h.budget.dispose();
         }
@@ -137,7 +133,6 @@ describe('the budget item’s states', () => {
         try {
             await h.budget.refresh();
             assert.strictEqual(textOf(h.item), '$(dashboard) dev-vsc');
-            assert.strictEqual(h.item.view?.color, 'green');
             assert.ok(tooltipOf(h.item).includes('no balance API for the "custom:hgsene" provider'));
             assert.deepStrictEqual(h.calls, [], 'nothing is asked of an endpoint that does not exist');
         } finally {
@@ -150,7 +145,6 @@ describe('the budget item’s states', () => {
         try {
             await h.budget.refresh();
             assert.strictEqual(textOf(h.item), '$(dashboard) dev-vsc');
-            assert.strictEqual(h.item.view?.color, 'green');
             assert.ok(tooltipOf(h.item).includes('balance unavailable: HTTP 401'));
         } finally {
             h.budget.dispose();

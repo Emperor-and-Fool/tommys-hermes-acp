@@ -27,7 +27,6 @@ export function createEditorStatusBar(): BudgetItem {
                 : view.background === 'warning'
                     ? new vscode.ThemeColor('statusBarItem.warningBackground')
                     : undefined;
-            item.color = view.color === 'green' ? new vscode.ThemeColor('charts.green') : undefined;
         },
 
         onClick: (handler: () => void) => {
