@@ -840,8 +840,7 @@ export class AcpClient {
         if (!response || !Array.isArray(response.sessions)) {
             return { answered: false, reason: 'the agent answered no session catalog' };
         }
-        const rows = response.sessions;
-        return rows
+        const sessions: CatalogSession[] = response.sessions
             .map((row: any) => ({
                 sessionId: String(row?.session_id ?? row?.sessionId ?? ''),
                 title: typeof row?.title === 'string' ? row.title : undefined,
@@ -852,7 +851,7 @@ export class AcpClient {
                 updatedAt: Number(row?.updated_at ?? row?.updatedAt ?? 0) * 1000 || 0,
             }))
             .filter((row: CatalogSession) => row.sessionId.length > 0);
-        return { answered: true, sessions: rows };
+        return { answered: true, sessions };
     }
 
     /** Hide/unhide one Hermes session. The tab list is exactly this flag. */
