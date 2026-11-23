@@ -251,6 +251,8 @@ const shared = [
     // The patches a user applies to their own Hermes install: an installed copy is the only copy a
     // Windows user has (the VSIX carries them too, and this keeps a deploy identical to one).
     ...walk(path.join('packaging', 'hermes-patches')),
+    // …and the Windows launcher scripts, which the tray step copies to the data home.
+    ...walk(path.join('packaging', 'windows')),
 ];
 const bundledSecondant = walk('secondant');
 const secondantPackaging = path.join('packaging', 'secondant');

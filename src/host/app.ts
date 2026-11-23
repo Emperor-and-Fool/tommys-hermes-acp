@@ -58,6 +58,7 @@ import { DesktopSetup } from './desktop/desktop';
 import { DesktopStore } from './desktop/store';
 import { createEditorProgress } from './editor/progress';
 import { desktopPresence } from './environment/desktopBuild';
+import { startupFolder } from './environment/desktopTray';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -98,6 +99,8 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The ⋯ menu's agent group: the notes folder, the mirror, the memory limit. */
     get notes() { return { ...this._mirror.commands, memorySize: () => this._size.run(this._session.sessionProfileId) }; }
+
+    get desktop() { return { setUpTray: () => this._desktop.setUpTray(), removeTray: () => this._desktop.removeTray() }; }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
@@ -368,6 +371,9 @@ export class App implements vscode.WebviewViewProvider {
             choices: createEditorChoices(),
             log: (line) => this._log(line),
             now: () => Date.now(),
+            scriptFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'windows'),
+            startupFolder: () => startupFolder(),
+            setContext: (key, value) => this._commands.setContext(key, value),
         });
         // The workspace registry and its per-workspace rows are built first: a pane's profile
         // pick is saved per workspace, and the start reads it before anything connects. The roots
@@ -598,8 +604,7 @@ export class App implements vscode.WebviewViewProvider {
         // Last, and only here: the item draws once as it starts, and its first draw asks this
         // window for the connection, the profile and the presence table — all three exist now.
         this._budget.start();
-        // Last: the machine's Desktop is the one step that outlives a window, so it starts when the
-        // window it reports into is whole. It never blocks the first chat.
+        // Last: it is per machine, so it starts once the window it reports into is whole.
         void this._desktop.start();
     }
 

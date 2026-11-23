@@ -491,4 +491,13 @@ hermes --profile &lt;name&gt; acp</code></pre>
     desktopFailedBody: 'Hermes\' last lines:\n{0}',
     desktopTryAgain: 'Try again',
     desktopDetails: 'Details',
+    trayAsk: 'Start Hermes Desktop in the tray when you log in?',
+    trayAskYes: 'Yes, start in the tray',
+    trayAskLater: 'Remind me in 2 weeks',
+    trayAskNever: 'Don\'t ask again',
+    traySettingOff: 'Hermes Desktop only starts in the tray when its own setting is on: Settings → Appearance → Window layout → Minimize to tray, in Hermes Desktop. Until then it starts as a normal window and stays open.',
+    trayInstalled: 'Hermes Desktop will start in the tray when you log in. The shortcut is in {0}; the ⋯ menu turns it off again.',
+    trayRemoved: 'The login shortcut is gone ({0}).',
+    trayFailed: 'Hermes Desktop could not be set to start in the tray: {0}',
+    trayWindowsOnly: 'Starting Hermes Desktop in the tray is a Windows feature.',
 };

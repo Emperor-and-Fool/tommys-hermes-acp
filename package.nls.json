@@ -41,5 +41,7 @@
   "configuration.tommys.showToolCalls.description": "Show tool call notifications in the chat.",
   "configuration.tommys.models.description": "Fallback model list when Hermes does not expose ACP session config options.",
   "configuration.tommys.models.markdownDescription": "Used when the agent does not return `configOptions` with a model selector. Example:\n```json\n[\n  { \"id\": \"claude-sonnet\", \"name\": \"Claude Sonnet\" },\n  { \"id\": \"gpt-4o\", \"name\": \"GPT-4o\" }\n]\n```",
-  "configuration.tommys.defaultModel.description": "Default model id from hermes.models (fallback list only)."
+  "configuration.tommys.defaultModel.description": "Default model id from hermes.models (fallback list only).",
+  "commands.tommys.setupDesktopTray.title": "Start Hermes Desktop in the tray at login",
+  "commands.tommys.removeDesktopTray.title": "Stop starting Hermes Desktop in the tray"
 }

@@ -57,6 +57,9 @@ const setup = (options: {
     platform?: NodeJS.Platform;
     answer?: string;
     now?: number;
+    scriptFolder?: string;
+    startupFolder?: string;
+    dataHome?: string;
 }) => {
     const builds: string[] = [];
     const runs: string[] = [];
@@ -64,6 +67,7 @@ const setup = (options: {
     const warns: string[] = [];
     const asked: Array<{ message: string; actions: string[] }> = [];
     const logs: string[] = [];
+    const contexts: Array<{ key: string; value: boolean }> = [];
     let answer = options.answer;
     const host: DesktopHost = {
         platform: () => options.platform ?? 'win32',
@@ -99,10 +103,13 @@ const setup = (options: {
         },
         log: (line) => { logs.push(line); },
         now: () => options.now ?? Date.now(),
+        scriptFolder: () => options.scriptFolder ?? '/ext/packaging/windows',
+        startupFolder: () => options.startupFolder ?? path.join(options.dataHome ?? '/nonexistent', 'Startup'),
+        setContext: (key, value) => { contexts.push({ key, value }); },
     };
     return {
         desktop: new DesktopSetup(options.store, host),
-        builds, runs, infos, warns, asked, logs,
+        builds, runs, infos, warns, asked, logs, contexts,
         answerWith: (value: string) => { answer = value; },
     };
 };

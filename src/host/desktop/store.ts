@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { writeAtomic } from '../store/connection';
 import { desktopDirFor } from '../store/paths';
+import { TRAY_LAUNCHER, TRAY_SCRIPTS } from '../environment/desktopTray';
 
 /**
  * The Desktop step's one door to the data home (ST1).
@@ -25,15 +26,31 @@ export interface DesktopAttempt {
     failure?: string;
 }
 
+/**
+ * What the user said to the start-in-tray question, and when a "remind me later" comes due.
+ *
+ * The same shape as the notes-mirror question (one file, one record), because it is the same kind of
+ * thing: a first-run question with three answers, of which one expires.
+ */
+export type TrayAnswer = 'later' | 'never';
+
+export interface TrayQuestion {
+    answer: TrayAnswer;
+    /** For `later`: when to ask again, ms since the epoch. Ignored for `never`. */
+    askAfter: number;
+}
+
 export class DesktopStore {
     private readonly _dir: string;
     private readonly _record: string;
     private readonly _lock: string;
+    private readonly _question: string;
 
     constructor(historyDir: string) {
         this._dir = desktopDirFor(historyDir);
         this._record = path.join(this._dir, 'build.json');
         this._lock = path.join(this._dir, 'build.lock');
+        this._question = path.join(this._dir, 'tray.json');
     }
 
     /** The last attempt, or undefined when this machine has never tried. */
@@ -82,6 +99,55 @@ export class DesktopStore {
         }
         fs.writeFileSync(this._lock, content);
         return true;
+    }
+
+    /** The tray question's state, or undefined when it was never answered. */
+    readTrayQuestion(): TrayQuestion | undefined {
+        try {
+            const raw = JSON.parse(fs.readFileSync(this._question, 'utf8')) as Partial<TrayQuestion>;
+            if (raw?.answer !== 'later' && raw?.answer !== 'never') {
+                return undefined;
+            }
+            return { answer: raw.answer, askAfter: typeof raw.askAfter === 'number' ? raw.askAfter : 0 };
+        } catch {
+            return undefined;
+        }
+    }
+
+    writeTrayQuestion(answer: TrayAnswer, askAfter: number): void {
+        fs.mkdirSync(this._dir, { recursive: true });
+        writeAtomic(this._question, { answer, askAfter });
+    }
+
+    /** The login item's scripts, copied out of the extension so a new version folder cannot break it. */
+    trayScriptsDir(): string {
+        return path.join(this._dir, 'tray');
+    }
+
+    /**
+     * Copy the shipped scripts into our data home, and answer where they are.
+     *
+     * `sourceDir` is the extension's own `packaging/windows/`. Missing files are named rather than
+     * guessed at: a login item that runs nothing is worse than an answer that says so.
+     */
+    installScripts(sourceDir: string): { dir: string; missing: string[] } {
+        const dir = this.trayScriptsDir();
+        fs.mkdirSync(dir, { recursive: true });
+        const missing: string[] = [];
+        for (const name of TRAY_SCRIPTS) {
+            const from = path.join(sourceDir, name);
+            try {
+                fs.copyFileSync(from, path.join(dir, name));
+            } catch {
+                missing.push(name);
+            }
+        }
+        return { dir, missing };
+    }
+
+    /** The launcher a login item runs, once it is in our data home. */
+    trayLauncher(): string {
+        return path.join(this.trayScriptsDir(), TRAY_LAUNCHER);
     }
 
     unlock(): void {

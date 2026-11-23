@@ -486,4 +486,13 @@ hermes --profile &lt;name&gt; acp</code></pre>
     desktopFailedBody: 'Hermes 的最后几行输出：\n{0}',
     desktopTryAgain: '重试',
     desktopDetails: '详情',
+    trayAsk: '登录时让 Hermes 桌面版启动到托盘吗？',
+    trayAskYes: '是，启动到托盘',
+    trayAskLater: '两周后提醒我',
+    trayAskNever: '不再询问',
+    traySettingOff: '只有在 Hermes 桌面版自身设置开启时才会启动到托盘：在 Hermes 桌面版中打开 设置 → 外观 → 窗口布局 → 最小化到托盘。在此之前，它按普通窗口启动并保持打开。',
+    trayInstalled: '登录时 Hermes 桌面版将启动到托盘。快捷方式位于 {0}；可用 ⋯ 菜单关闭。',
+    trayRemoved: '登录快捷方式已移除（{0}）。',
+    trayFailed: '无法将 Hermes 桌面版设置为启动到托盘：{0}',
+    trayWindowsOnly: '让 Hermes 桌面版启动到托盘是 Windows 功能。',
 };

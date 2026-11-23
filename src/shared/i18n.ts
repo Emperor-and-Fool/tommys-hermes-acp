@@ -439,6 +439,16 @@ export interface LocaleStrings {
     desktopFailedBody: string;
     desktopTryAgain: string;
     desktopDetails: string;
+    /** Windows' start-in-tray: the first-run question, and what came of the answer. */
+    trayAsk: string;
+    trayAskYes: string;
+    trayAskLater: string;
+    trayAskNever: string;
+    traySettingOff: string;
+    trayInstalled: string;
+    trayRemoved: string;
+    trayFailed: string;
+    trayWindowsOnly: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

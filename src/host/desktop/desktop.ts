@@ -1,5 +1,7 @@
-import type { EditorChoices, EditorNotices, EditorProgress } from '../../shared/editor';
+import type { EditorProgress } from '../../shared/editor';
 import type { DesktopAttempt, DesktopStore } from './store';
+import { DesktopTray } from './tray';
+import type { TrayHost } from './tray';
 import type { DesktopBuildResult, DesktopPresence } from '../environment/desktopBuild';
 import { t } from '../i18n';
 
@@ -22,12 +24,7 @@ import { t } from '../i18n';
 export const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** What the setup needs: the machine's answer, the CLI, and the editor's three ways of speaking. */
-export interface DesktopHost {
-    /**
-     * What this machine is. Hermes' Electron Desktop is a Windows install; on Linux the window the
-     * user wants is our own dashboard, and building Electron here is 344 MB nobody asked for.
-     */
-    platform(): NodeJS.Platform;
+export interface DesktopHost extends TrayHost {
     /** Only the primary prepares the machine: this is one Desktop per machine, not per window. */
     isPrimary(): boolean;
     /** What is on disk right now, read from the checkout. */
@@ -35,14 +32,25 @@ export interface DesktopHost {
     /** Hermes' own build, run unattended; the lines arrive as the notification's phase. */
     build(report: (phase: string) => void): Promise<DesktopBuildResult>;
     progress: EditorProgress;
-    notices: EditorNotices;
-    choices: EditorChoices;
-    log(line: string): void;
-    now(): number;
 }
 
 export class DesktopSetup {
-    constructor(private readonly _store: DesktopStore, private readonly _host: DesktopHost) {}
+    /** The tray half: the login question, the shortcut, and the notice about Desktop's own setting. */
+    private readonly _tray: DesktopTray;
+
+    constructor(private readonly _store: DesktopStore, private readonly _host: DesktopHost) {
+        this._tray = new DesktopTray(_store, _host);
+    }
+
+    /** The ⋯ menu's first entry: put the login item in place, asking nothing. */
+    async setUpTray(): Promise<void> {
+        await this._tray.install();
+    }
+
+    /** The ⋯ menu's other entry: remove our shortcut, and nothing else in that folder. */
+    async removeTray(): Promise<void> {
+        await this._tray.remove();
+    }
 
     /**
      * The whole step, once per window start. Never throws and never blocks the caller: a window
@@ -50,30 +58,38 @@ export class DesktopSetup {
      */
     async start(): Promise<void> {
         try {
-            await this._start();
+            // The tray question is asked after the build, so a first run is not two dialogs at once,
+            // and only when there is a Desktop to start: `_start` answers the build it left there.
+            const build = await this._start();
+            // The login item belongs to the user, not to a window: one window asks, and it is the
+            // primary's, the same one that owns the machine's build.
+            if (this._host.isPrimary()) {
+                await this._tray.askIfDue(build !== null);
+            }
         } catch (error) {
             this._host.log(`Desktop setup stopped: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
-    private async _start(): Promise<void> {
+    /** The build this machine has now, or null when there is nothing to start at login. */
+    private async _start(): Promise<string | null> {
         if (this._host.platform() !== 'win32') {
             // Not a bug and not a warning: on Linux and macOS there is nothing here to prepare.
             this._host.log('Desktop: not built on this platform');
-            return;
+            return null;
         }
         if (!this._host.isPrimary()) {
             this._host.log('Desktop setup: the secondant leaves the machine\'s Desktop to the primary');
-            return;
+            return null;
         }
         const presence = await this._host.presence();
         if (!presence.source) {
             this._host.log('Desktop setup: Hermes is not a source checkout, so its Desktop is its own');
-            return;
+            return null;
         }
         if (presence.build) {
             this._host.log(`Desktop setup: a build is already there (${presence.build})`);
-            return;
+            return presence.build;
         }
         this._host.log(`Desktop setup: no build in ${presence.checkout}; stamp ${presence.stamp ? 'present' : 'absent'}`);
         const last = this._store.read();
@@ -83,26 +99,28 @@ export class DesktopSetup {
                 'not rebuilding before the 24 h retry',
             );
             await this._offer(last.failure ?? last.build ?? '');
-            return;
+            return last.build ?? null;
         }
-        await this._build();
+        return await this._build();
     }
 
     /** One attempt under the lock and the notification, then the failure notice outside both. */
-    private async _build(): Promise<void> {
-        const failure = await this._attempt();
-        if (failure !== null) {
-            await this._offer(failure);
+    private async _build(): Promise<string | null> {
+        const outcome = await this._attempt();
+        if (outcome.failure !== null) {
+            await this._offer(outcome.failure);
         }
+        return outcome.build;
     }
 
-    private async _attempt(): Promise<string | null> {
+    private async _attempt(): Promise<{ build: string | null; failure: string | null }> {
         const at = this._host.now();
         if (!this._store.lock(at)) {
             this._host.log('Desktop setup: another window is building it; this one leaves it alone');
-            return null;
+            return { build: null, failure: null };
         }
         let failure: string | null = null;
+        let built: string | null = null;
         try {
             await this._host.progress.run(t('desktopPreparing'), async report => {
                 const result = await this._host.build(line => {
@@ -119,6 +137,7 @@ export class DesktopSetup {
                 };
                 this._store.write(attempt);
                 if (result.ok) {
+                    built = result.build;
                     this._host.log(`Desktop build finished: ${result.build}`);
                     this._host.notices.info(t('desktopReady', result.build ?? ''));
                     return;
@@ -129,7 +148,7 @@ export class DesktopSetup {
         } finally {
             this._store.unlock();
         }
-        return failure;
+        return { build: failure === null ? built : null, failure };
     }
 
     /** Hermes' own last word plus the tail: the part a user can act on, in one string. */
