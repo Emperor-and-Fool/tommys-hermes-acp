@@ -22,6 +22,11 @@
   "commands.tommys.uninstallSystray.title": "卸载 Desktop GUI",
   "commands.tommys.uninstallSecondant.title": "卸载副手",
   "commands.tommys.openLogs.title": "日志",
+  "commands.tommys.openAgentNotes.title": "打开笔记位置（当前代理）",
+  "commands.tommys.setupNotesMirror.title": "设置笔记镜像…",
+  "commands.tommys.repairNotesMirror.title": "修复笔记镜像",
+  "commands.tommys.changeNotesMirror.title": "更改笔记镜像位置…",
+  "commands.tommys.agentMemorySize.title": "代理记忆大小…",
   "commands.tommys.detectEnvironment.title": "环境检测",
   "commands.tommys.detectEnvironmentBusy.title": "环境检测中....",
   "commands.tommys.configureEnvironment.title": "环境配置",
@@ -36,7 +41,5 @@
   "configuration.tommys.showToolCalls.description": "在聊天中显示工具调用通知。",
   "configuration.tommys.models.description": "当 Hermes 未暴露 ACP 会话配置选项时使用的备用模型列表。",
   "configuration.tommys.models.markdownDescription": "当 Agent 未返回带模型选择器的 `configOptions` 时使用。示例：\n```json\n[\n  { \"id\": \"claude-sonnet\", \"name\": \"Claude Sonnet\" },\n  { \"id\": \"gpt-4o\", \"name\": \"GPT-4o\" }\n]\n```",
-  "configuration.tommys.defaultModel.description": "hermes.models 中的默认模型 id（仅备用列表）。",
-  "configuration.tommys.agents.description": "用于在聊天界面快速切换的命名 Agent 配置列表。",
-  "configuration.tommys.agents.markdownDescription": "用于快速切换的命名 Agent 配置。每个 Agent 可有不同的 `path`、`profile` 和 `cwd`。示例：\n```json\n[\n  { \"name\": \"Default\", \"profile\": \"\" },\n  { \"name\": \"Fast\", \"path\": \"/path/to/hermes\", \"profile\": \"fast\" }\n]\n```"
+  "configuration.tommys.defaultModel.description": "hermes.models 中的默认模型 id（仅备用列表）。"
 }

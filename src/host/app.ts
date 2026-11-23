@@ -2,6 +2,11 @@ import type * as vscode from 'vscode';
 import { AttachmentStore } from './cache/attachments';
 import { Projects } from './workspace/projectGrouped';
 import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from './workspace/store';
+import { treeInputOf } from './workspace/workSpace';
+import { AgentNotes } from './notes/notes';
+import { NotesMirror } from './notes/mirror';
+import { MemorySize } from './notes/memory';
+import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
@@ -31,6 +36,7 @@ import { createEditorEnv } from './editor/env';
 import { createEditorFiles } from './editor/files';
 import { createEditorFolders } from './editor/folders';
 import { createEditorNotices } from './editor/notices';
+import { createEditorChoices } from './editor/choices';
 import { createEditorSettings } from './editor/settings';
 import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
@@ -87,6 +93,9 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
+    /** The ⋯ menu's agent group: the notes folder, the mirror, the memory limit. */
+    get notes() { return { ...this._mirror.commands, memorySize: () => this._size.run(this._session.sessionProfileId) }; }
+
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
 
@@ -125,16 +134,15 @@ export class App implements vscode.WebviewViewProvider {
     /** The project group: workspaces, the projects named against them, and tab membership. */
     private _projects: Projects;
     private _trees?: TreeStore;
+    /** Each agent's own notes, in the data home beside its tabs (`host/notes`). */
+    private _notes: AgentNotes;
+    /** The user's mirror of them: one link per agent, in a folder they chose. */
+    private _mirror: NotesMirror;
+    /** How much memory the current agent may keep: shown, chosen, and set through Hermes' CLI. */
+    private _size: MemorySize;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
-
-
-
-
-
-
-
 
     // ---- Lifecycle ----
     /** Every live renderer: the sidebar view and/or the single chat panel. */
@@ -151,11 +159,21 @@ export class App implements vscode.WebviewViewProvider {
         tabs: () => this._session.tabs,
         resolveCwd: () => this._cwd.defaultFolderPath(),
         resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
+        historyBlock: (tabId) => this._historyStages.block(tabId),
+        // The agent's own folder, and the id the tree is written under: one owner (see `treeInputOf`).
+        // The notes section rides in the same notice, so one "once" covers both.
+        treeBlock: (tabId) => this._trees
+            ? this._trees.noticeBlock(
+                this._session.sessionProfileId,
+                this._projects.currentId(),
+                tabId,
+                this._notes.notice(this._session.sessionProfileId))
+            : '',
         log: (line) => this._log(line),
         post: (msg) => this._postMessage(msg),
         otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
         acpStatus: () => this._connection.acp?.status,
-        isViewingPromptSession: () => this._isViewingPromptSession(),
+        isViewingPromptSession: () => !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId,
         cancelPendingPermissions: () => this._turn.cancelPendingPermissions(),
         awaitSessionReady: () => this._connection.awaitSessionReady(),
         detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
@@ -165,7 +183,7 @@ export class App implements vscode.WebviewViewProvider {
         setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
         saveMessage: (role, text) => this._session.saveMessage(role, text),
         savePermissionRequest: (id, request) => this._session.savePermissionRequest(id, request),
-        resolvePermissionHistory: (id, outcome, optionId, label) => this._resolvePermissionHistory(id, outcome, optionId, label),
+        resolvePermissionHistory: (id, outcome, optionId, label) => this._session.resolvePermissionHistory(id, outcome, optionId, label),
         permissionOptionLabel: (id, optionId) => this._approvals.optionLabel(id, optionId),
     });
 
@@ -185,7 +203,14 @@ export class App implements vscode.WebviewViewProvider {
         post: (msg) => this._postMessage(msg),
         log: (line) => this._log(line),
         reconnect: () => this._connection.connect(this._profiles.selectionId || undefined),
-        resetViewTitle: () => this._resetViewTitleToDefault(),
+        // Detection puts its own title on the view; this takes it back.
+        resetViewTitle: () => {
+            const view = this._surfaces.view;
+            if (view) {
+                view.title = undefined;
+                view.description = undefined;
+            }
+        },
     });
 
     private _webviewLocale?: SupportedLocale;
@@ -214,7 +239,7 @@ export class App implements vscode.WebviewViewProvider {
     private readonly _surfaces: Surfaces = new Surfaces({
         html: (webview) => this._getHtml(webview),
         wire: (webview, surface) => this._wireMessages(webview, surface),
-        activeTabTitle: () => this._activeTabTitle(),
+        activeTabTitle: () => this._session.tabs.find(item => item.id === this._session.activeId)?.title || t('newChat'),
         onViewResolved: () => { this._webviewLocale = getLocale(); },
         onViewVisible: () => {
             this._syncWebviewLocale();
@@ -340,6 +365,28 @@ export class App implements vscode.WebviewViewProvider {
             }),
         });
         this._profiles.seedStore();
+        // The agent notes feature: the folder beside an agent's tabs, the index that names it, the
+        // mirror the user reads them through, and the memory limit only Hermes may raise. One port
+        // for the three, one store under it (ST1).
+        const notesStore = new NotesStore(this._historyDir);
+        const notesHost = {
+            log: (line: string) => this._log(line),
+            info: (message: string) => this._notices.info(message),
+            choices: createEditorChoices(),
+            profileInfo: (id: string) => this._profiles.describeAgent(id),
+            protectedSection: (id: string, notesDir: string) => this._profiles.notesProtection(id, notesDir),
+            agents: () => this._profiles.agents(),
+            mirrorSet: (value: boolean) => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
+            otherWindowLive: () => this._presence.live().length > 0,
+            currentAgentId: () => this._session.sessionProfileId,
+            usage: (id: string) => this._profiles.memoryUsage(id),
+            setLimit: async (id: string, limit: number) =>
+                this._profiles.setMemoryLimit(id, await this._resolveHermesExecutable(), limit),
+        };
+        this._notes = new AgentNotes(notesStore, notesHost);
+        this._mirror = new NotesMirror(notesStore, this._notes, notesHost);
+        this._size = new MemorySize(notesHost);
+        this._mirror.repairOnStart();
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
         this._presence = new ProfilePresence({
@@ -419,17 +466,13 @@ export class App implements vscode.WebviewViewProvider {
             // The active project follows the tab, and the workspace feature is the one that says so.
             activeChanged: () => this._projects.syncActiveProject(),
         }, tabs);
-        // The tree cache reads all three owners through one closure, so the hook that refreshes it
-        // stays a call and the mapping lives with the files it writes.
-        this._trees = new TreeStore(this._historyDir, line => this._log(line), () => ({
-            sessionProfileId: this._projects.sessionProfileId,
-            profile: this._profiles.resolveTarget().agentName,
-            workspacePath: this._projects.current(),
-            workspaceId: this._projects.currentId(),
-            activeSessionId: this._session.activeId,
-            projects: this._projects.projectsInWindow(),
-            tabs: this._session.tabsInWindow(),
-        }));
+        // The tree's own id and the name of that id's folder: `treeInputOf` asks for both this way.
+        this._trees = new TreeStore(this._historyDir, line => this._log(line), () =>
+            treeInputOf({
+                tabs: this._session,
+                projects: this._projects,
+                agentName: (id) => this._profiles.agentNameFor(id),
+            }));
         this._session.init();
         this._startPaneMail();
         this._lifecycle = new TabLifecycle({
@@ -496,7 +539,7 @@ export class App implements vscode.WebviewViewProvider {
                 primary: this._primary?.activeProfile || '',
                 elsewhere: this._presence.live(),
             }),
-            isViewingPromptSession: () => this._isViewingPromptSession(),
+            isViewingPromptSession: () => !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId,
             setBoundSessionId: (id) => { this._acpBoundSessionId = id; },
             surfaceView: () => this._surfaces.view,
         });
@@ -506,6 +549,10 @@ export class App implements vscode.WebviewViewProvider {
         this._connection.profileActive.on(() => {
             this._presence.connected();
             this._profiles.persistSelection();
+            // The agent's notes exist before it reads the notice that names them; the mirror's
+            // first-run question waits for this moment, when another window can be seen at all.
+            this._notes.ensure(this._session.sessionProfileId);
+            void this._mirror.askIfDue();
         });
 
         context.subscriptions.push(
@@ -516,19 +563,6 @@ export class App implements vscode.WebviewViewProvider {
                 void this._onConfigurationChanged(affects);
             })
         );
-    }
-
-    private _resolvePermissionHistory(
-        id: string,
-        outcome: 'selected' | 'cancelled',
-        selectedOptionId?: string,
-        selectedLabel?: string
-    ): void {
-        this._session.resolvePermissionHistory(id, outcome, selectedOptionId, selectedLabel);
-    }
-
-    private _isViewingPromptSession(): boolean {
-        return !this._turn.promptSessionId || this._turn.promptSessionId === this._session.activeId;
     }
 
     private _otherSessionIsPrompting(): boolean {
@@ -562,24 +596,6 @@ export class App implements vscode.WebviewViewProvider {
             });
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
         // The tab whose pane sent this. Captured before any await: `promptSessionId` is only set
@@ -660,33 +676,9 @@ export class App implements vscode.WebviewViewProvider {
         if (epoch !== this._turn.sendEpoch) {
             return;
         }
-        const historyBlock = staged ? this._historyStages.block(tabId) : '';
-        // First turn in this session and workspace: say where the tree file is. Sent as its own
-        // block, so the transcript still shows only what was typed.
-        const treeBlock = this._trees
-            ? this._trees.noticeBlock(this._projects.sessionProfileId, this._projects.currentId(), tabId)
-            : '';
-        if (imageCount > 0 || historyBlock || treeBlock) {
-            // Compose an ACP prompt: the attached conversation first, then the user's own text,
-            // then one image block per staged image. Hermes' ACP adapter advertises
-            // promptCapabilities.image=true and decodes these directly.
-            const blocks: Array<{ type: 'text'; text: string } | { type: 'image'; mimeType: string; data: string }> = [];
-            if (historyBlock) {
-                blocks.push({ type: 'text', text: historyBlock });
-            }
-            if (treeBlock) {
-                blocks.push({ type: 'text', text: treeBlock });
-            }
-            if (text.length > 0) {
-                blocks.push({ type: 'text', text });
-            }
-            for (const img of images || []) {
-                blocks.push({ type: 'image', mimeType: img.mimeType || 'image/png', data: img.data });
-            }
-            await this._connection.acp?.sendMessage(blocks as any);
-        } else {
-            await this._connection.acp?.sendMessage(text);
-        }
+        // The turn's own blocks: the attached conversation, the tree notice, what was typed, the
+        // images — composed by the runner, which is where the send lives.
+        await this._turn.sendUserTurn(tabId, text, images);
         if (staged) {
             this._historyStages.clear(tabId);
             if (this._session.activeId === tabId) {
@@ -694,8 +686,6 @@ export class App implements vscode.WebviewViewProvider {
             }
         }
     }
-
-
 
     /**
      * Text aimed at the running turn.
@@ -761,13 +751,9 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** Commands from extension.ts. The work lives in environment/detection.ts. */
-    public detectEnvironment(): Promise<void> {
-        return this._detection.detectEnvironment();
-    }
+    public detectEnvironment(): Promise<void> { return this._detection.detectEnvironment(); }
 
-    public configureEnvironment(): void {
-        this._detection.configureEnvironment();
-    }
+    public configureEnvironment(): void { this._detection.configureEnvironment(); }
 
     private async _onConfigurationChanged(affects: (key: string) => boolean): Promise<void> {
         if (affects('showThoughts') || affects('showToolCalls')) {
@@ -779,17 +765,13 @@ export class App implements vscode.WebviewViewProvider {
             }
             void this._models.sync();
         }
-        if (affects('agents')) {
-            this._profiles.forgetDiscovered();
-            this._profiles.postList();
-        }
         const reconnectKeys = ['path', 'profile'];
         if (affects('profile')) {
             // Another profile means another approvals.mode.
             this._approvals.onProfileChanged();
         }
         if (reconnectKeys.some(key => affects(key))) {
-            if (affects('profile') && this._profiles.readAgentConfigs().length === 0) {
+            if (affects('profile')) {
                 this._profiles.selectionId = normalizeHermesCliProfile(this._settings.get<string>('profile'));
             }
             await this._connection.reconnectForConfig();
@@ -821,12 +803,6 @@ export class App implements vscode.WebviewViewProvider {
             await this._models.applySessionPreference();
         }
     }
-
-
-
-
-
-
 
     /** Phase 3: another session's transcript, read-only, in one temporary editor tab. */
     public openHistoryViewer(hermesSessionId: string, title: string): void {
@@ -958,17 +934,13 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.resolveView(webviewView);
     }
 
-    public toggleChatSurface(): void {
-        this._surfaces.toggle();
-    }
+    public toggleChatSurface(): void { this._surfaces.toggle(); }
 
     /** Show our side panel, unless it is already on screen: the rail lists the chats. */
     public revealRail(trigger: RevealTrigger): void { this._surfaces.revealRail(trigger); }
 
     /** Called by the panel serializer so the tab comes back after a reload. */
-    public restoreChatPanel(panel: vscode.WebviewPanel): void {
-        this._surfaces.restorePanel(panel);
-    }
+    public restoreChatPanel(panel: vscode.WebviewPanel): void { this._surfaces.restorePanel(panel); }
 
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
@@ -1075,21 +1047,6 @@ export class App implements vscode.WebviewViewProvider {
         };
     }
 
-    private _activeTabTitle(): string {
-        const rec = this._session.tabs.find(item => item.id === this._session.activeId);
-        return rec?.title || t('newChat');
-    }
-
-    /** Clear the title the detection state put on the view. */
-    private _resetViewTitleToDefault(): void {
-        const view = this._surfaces.view;
-        if (!view) {
-            return;
-        }
-        view.title = undefined;
-        view.description = undefined;
-    }
-
     /** One way to reach the pane: every call site stays as it was. */
     private _postMessage(msg: HostToPane): void {
         this._surfaces.post(msg);
@@ -1156,9 +1113,7 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    private _postWebviewLog(line: string, level: LogLevel): void {
-        this._postMessage({ type: 'log', line, level });
-    }
+    private _postWebviewLog(line: string, level: LogLevel): void { this._postMessage({ type: 'log', line, level }); }
 
     private _enqueueChatOp(op: () => Promise<void>): void {
         this._chatOpChain = this._chatOpChain
@@ -1169,9 +1124,7 @@ export class App implements vscode.WebviewViewProvider {
             });
     }
 
-    public insertIntoInput(text: string): void {
-        this._postMessage({ type: 'insertInput', text });
-    }
+    public insertIntoInput(text: string): void { this._postMessage({ type: 'insertInput', text }); }
 
     /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
     public forwardMessage(text?: string, sourceMessageId?: string, history?: HistoryRef, body?: string): void {
@@ -1444,37 +1397,21 @@ export class App implements vscode.WebviewViewProvider {
         this._mail.presence.start();
     }
 
-    public openSettings(): void {
-        void this._commands.openSettings(this._extensionId);
-    }
+    public openSettings(): void { void this._commands.openSettings(this._extensionId); }
 
-    public openLogs(): void {
-        this._postMessage({ type: 'openLogs' });
-    }
+    public openLogs(): void { this._postMessage({ type: 'openLogs' }); }
 
-    public openAbout(): void {
-        this._postMessage({ type: 'openAbout' });
-    }
+    public openAbout(): void { this._postMessage({ type: 'openAbout' }); }
 
-    public openHelp(): void {
-        this._postMessage({ type: 'openHelp' });
-    }
+    public openHelp(): void { this._postMessage({ type: 'openHelp' }); }
 
-    public openFaq(): void {
-        this._postMessage({ type: 'openFaq' });
-    }
+    public openFaq(): void { this._postMessage({ type: 'openFaq' }); }
 
-    public reloadSession(): void {
-        void this._handleReloadSession();
-    }
+    public reloadSession(): void { void this._handleReloadSession(); }
 
-    public reloadExtension(): void {
-        void this._handleReloadExtension();
-    }
+    public reloadExtension(): void { void this._handleReloadExtension(); }
 
-    public checkForUpdate(): void {
-        void this._checkForUpdate();
-    }
+    public checkForUpdate(): void { void this._checkForUpdate(); }
 
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');

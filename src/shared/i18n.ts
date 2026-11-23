@@ -250,7 +250,7 @@ export interface LocaleStrings {
     emptyFile: string;
     noMatchingFiles: string;
     searchingFiles: string;
-    configureAgents: string;
+    noHermesProfiles: string;
     noModels: string;
     modelFromAgent: string;
     modelLocalPreference: string;
@@ -369,6 +369,46 @@ export interface LocaleStrings {
     // Steer
     steer: string;
     steerHint: string;
+
+    // The agent notes mirror (the ⋯ menu's agent group)
+    notesMirrorTitle: string;
+    notesMirrorConfirm: string;
+    notesMirrorCreateHere: string;
+    notesMirrorBack: string;
+    notesMirrorOpenFolder: string;
+    notesMirrorOldKept: string;
+    notesMirrorOldFailed: string;
+    notesMirrorDocuments: string;
+    notesMirrorChoose: string;
+    notesMirrorDone: string;
+    notesMirrorCaseClash: string;
+    notesMirrorRealEntry: string;
+    notesMirrorNotOurs: string;
+    notesMirrorNameTaken: string;
+    notesMirrorTargetRestored: string;
+    notesMirrorLinkFailed: string;
+    notesMirrorFolderFailed: string;
+    notesOpenFailed: string;
+    notesAskMirror: string;
+    notesAskDoIt: string;
+    notesAskLater: string;
+    notesAskNever: string;
+    memorySizeTitle: string;
+    memorySizeRecommended: string;
+    memorySizeKeep: string;
+    memorySizeOther: string;
+    memorySizeInput: string;
+    memorySizeInvalid: string;
+    memorySizeConfirmAdd: string;
+    memorySizeConfirmFewer: string;
+    memorySizeLower: string;
+    memorySizeLowerConfirm: string;
+    memorySizeApply: string;
+    memorySizeCancel: string;
+    memorySizeDone: string;
+    memorySizeFailed: string;
+    memorySizeUnchanged: string;
+    memorySizeNoAgent: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

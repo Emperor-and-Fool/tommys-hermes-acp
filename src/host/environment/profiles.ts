@@ -2,21 +2,18 @@ import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
 import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
+import { hasNotesProtectedSection, memoryFill, memoryLimitFor } from './profileMemory';
+import { setHermesConfig } from './hermesConfig';
+import type { ConfigSetResult } from './hermesConfig';
 import {
     hasProfilesRoot,
     isCurrentProfile,
+    profileDescription,
     profileNameFromPreviousNames,
     profileNameHoldingSessions,
 } from './profileFallback';
-import { sanitizeProfileScopeKey } from '../workspace/profileStorage';
 import { resolveHermesRoot } from './hermesPaths';
 import type { ProfilesStore } from '../store/profiles';
-
-export interface HermesAgentConfig {
-    name: string;
-    path?: string;
-    profile?: string;
-}
 
 export interface ProfileListEntry {
     id: string;
@@ -128,9 +125,9 @@ export interface ProfilesHost {
 /**
  * Which Hermes profile/agent we connect to, and which ones the picker offers.
  *
- * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`,
- * `tommys.agents`), the agent list, discovery of profiles on disk, and the selection that survives a
- * window. The working folder is not a profile question: the cwd owner answers that.
+ * One question, one owner. Everything here answers it: settings (`tommys.path`, `tommys.profile`),
+ * discovery of profiles on disk, and the selection that survives a window. The working folder is
+ * not a profile question: the cwd owner answers that.
  */
 export class Profiles {
     /** Agent name or CLI profile id used for reconnect / switch. */
@@ -251,7 +248,8 @@ export class Profiles {
     connectTarget(selectionId: string | undefined, sessionIds: string[]): { target: ConnectionTarget; missing: boolean } {
         const target = this.resolveTarget(selectionId);
         const hermesHome = this._host.hermesHome ? this._host.hermesHome() : resolveHermesRoot();
-        // A configured agent's key is its display name, not one of our ids: there is nothing to repair.
+        // Nothing to repair when the table has no row for this id (a name nobody has seen yet), or
+        // when Hermes still has the name the row holds.
         const stored = this._host.store.nameFor(target.sessionProfileId);
         if (!stored || isCurrentProfile(stored, hermesHome)) {
             return { target, missing: false };
@@ -271,23 +269,6 @@ export class Profiles {
     resolveTarget(selectionId?: string): ConnectionTarget {
         const configPath = this._host.settings.get<string>('path') || undefined;
         const configProfile = this._host.settings.get<string>('profile') || undefined;
-        const agents = this.readAgentConfigs();
-
-        if (agents.length > 0) {
-            const resolvedId = selectionId || this.selectionId || agents[0].name;
-            const agent = agents.find(a => a.name === resolvedId) || agents[0];
-            return {
-                // A configured agent is not a Hermes profile, so it keeps the display-name key it
-                // has always had; nothing but a real profile has an id of ours.
-                sessionProfileId: sanitizeProfileScopeKey(agent.name),
-                agentName: agent.name,
-                selectionId: agent.name,
-                displayName: agent.name,
-                cliProfile: normalizeHermesCliProfile(agent.profile ?? configProfile),
-                configPath: agent.path || configPath,
-            };
-        }
-
         const resolvedId = selectionId || this.selectionId || normalizeHermesCliProfile(configProfile);
         const cliProfile = normalizeHermesCliProfile(resolvedId);
         return {
@@ -302,6 +283,82 @@ export class Profiles {
         };
     }
 
+    /**
+     * Hermes' name for a profile id: the name of that id's folder.
+     *
+     * The one lookup a caller has when it holds an id and needs a name — a tree file names the
+     * agent of the folder it sits in. Nothing is minted and nothing is renamed here. An id the
+     * table has no row for falls back to the name the selection resolves to, which is what this
+     * answered before the table could be asked, and the only answer left when there is no row.
+     */
+    agentNameFor(sessionProfileId: string): string {
+        return this._host.store.nameFor(sessionProfileId) || this.resolveTarget().agentName;
+    }
+
+    /**
+     * What a generated file may say about an agent: today's name, and the description Hermes keeps.
+     *
+     * The name comes from the id's own row, like `agentNameFor`. The description is read from that
+     * profile's `profile.yaml`, and is empty when Hermes has none — read, never written (H2).
+     */
+    describeAgent(sessionProfileId: string): { name: string; description: string } {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        return { name, description: profileDescription(name, hermesHome) };
+    }
+
+    /**
+     * Read this agent's MEMORY.md for the protected section, and record the answer on its row.
+     *
+     * Hermes' file, read only (H1, H2): nothing here writes it. The answer is kept on the row so the
+     * notice can name the setup block without opening Hermes' home again on every turn.
+     */
+    notesProtection(sessionProfileId: string, notesDir: string): boolean {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        const present = name ? hasNotesProtectedSection(name, notesDir, hermesHome) : false;
+        this._host.store.setPsSet(sessionProfileId, present);
+        return present;
+    }
+
+    /**
+     * The agent's memory, as a dialog shows it: its name, what MEMORY.md holds, and its limit.
+     *
+     * Both numbers come from Hermes' own files (H1, H2: read only): the fill is the character count
+     * of the memory file, the limit is `memory.memory_char_limit` or Hermes' default of 2200.
+     */
+    memoryUsage(sessionProfileId: string): { name: string; fill: number; limit: number } {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        return { name, fill: memoryFill(name, hermesHome), limit: memoryLimitFor(name, hermesHome) };
+    }
+
+    /**
+     * Raise an agent's memory limit through Hermes' CLI — the one setting H2a names for this.
+     *
+     * The value is Hermes' to write; nothing here opens config.yaml. What the CLI answered is
+     * handed back for the dialog to say, failure included.
+     */
+    setMemoryLimit(sessionProfileId: string, executable: string | undefined, limit: number): Promise<ConfigSetResult> {
+        const name = this.agentNameFor(sessionProfileId);
+        if (!executable) {
+            return Promise.resolve({ ok: false, message: 'no Hermes executable found' });
+        }
+        return setHermesConfig(executable, name, 'memory.memory_char_limit', String(limit));
+    }
+
+    /**
+     * Every agent we know: the id its folder is named by, and Hermes' name for it today.
+     *
+     * The one list a per-agent artefact needs (the notes mirror makes one link per row). A row is
+     * created by the first connect and kept across a rename, so this is wider than the profiles
+     * Hermes answers to right now — which is what a mirror of our own folders should be.
+     */
+    agents(): Array<{ sessionProfileId: string; agentName: string }> {
+        return this._host.store.all()
+            .map(row => ({ sessionProfileId: row.sessionProfileId, agentName: row.agentName }));
+    }
+
     labelFor(cliProfile: string): string {
         return normalizeHermesCliProfile(cliProfile) === 'default'
             ? t('defaultAgent')
@@ -309,10 +366,6 @@ export class Profiles {
     }
 
     async ensureDiscovered(): Promise<void> {
-        if (this.readAgentConfigs().length > 0) {
-            this.discovered = null;
-            return;
-        }
         if (this.discovered) {
             return;
         }
@@ -338,10 +391,8 @@ export class Profiles {
     }
 
     entries(): ProfileListEntry[] {
-        const agents = this.readAgentConfigs();
-        const list: ProfileListEntry[] = agents.length > 0
-            ? agents.map(a => ({ id: a.name, label: a.name }))
-            : (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
+        const list: ProfileListEntry[] =
+            (this.discovered ?? ['default']).map(p => ({ id: p, label: this.labelFor(p) }));
 
         // The rule the extensions live by: two panes may not run on one profile, in this window or
         // in any other. Compare what the agent will run on (`cliProfile`), not the id or label an
@@ -353,24 +404,6 @@ export class Profiles {
             return list;
         }
         return list.filter(entry => !excluded.includes(this.resolveTarget(entry.id).cliProfile));
-    }
-
-    readAgentConfigs(): HermesAgentConfig[] {
-        const raw = this._host.settings.get<unknown>('agents');
-        if (!Array.isArray(raw)) {
-            return [];
-        }
-        return raw.flatMap(entry => {
-            if (!entry || typeof entry !== 'object') {
-                return [];
-            }
-            const name = (entry as { name?: unknown }).name;
-            if (typeof name !== 'string' || !name.trim()) {
-                return [];
-            }
-            const agent = entry as HermesAgentConfig;
-            return [{ ...agent, name: name.trim() }];
-        });
     }
 
     postList(): void {

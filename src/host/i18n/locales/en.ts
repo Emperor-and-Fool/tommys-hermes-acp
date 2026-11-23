@@ -264,7 +264,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. What changes when I switch Profile?</h3>
             <p>Switching Profile <strong>reconnects the Hermes subprocess</strong> (like restarting <code>hermes --profile &lt;name&gt; acp</code>).</p>
             <ul>
-                <li><strong>Different session list</strong> — each Profile / named agent in <code>tommys.agents</code> has separate local storage; tab history, active tab, and model preferences do not carry over</li>
+                <li><strong>Different session list</strong> — each Profile has separate local storage; tab history, active tab, and model preferences do not carry over</li>
                 <li><strong>Model list refreshes</strong> — from models exposed by Hermes under the new Profile; may differ completely</li>
                 <li><strong>Chat content</strong> — reloads the active session under the new Profile</li>
                 <li><strong>Settings changes</strong> — editing <code>tommys.profile</code>, <code>tommys.path</code>, etc. also reconnects, similar to switching Profile</li>
@@ -323,7 +323,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '(empty file)',
     noMatchingFiles: 'No matching files',
     searchingFiles: 'Searching files…',
-    configureAgents: 'Configure tommys.agents in Settings',
+    noHermesProfiles: 'No Hermes profiles found — check tommys.path',
     noModels: 'No models — check Hermes profile or tommys.models',
     modelFromAgent: 'Model from Hermes profile',
     modelLocalPreference: 'Local model preference (Settings fallback)',
@@ -423,4 +423,44 @@ hermes --profile &lt;name&gt; acp</code></pre>
     steer: 'Steer',
     steerHint: 'Send this as guidance into the running turn',
     approvalNoteLabel: 'Approval',
+
+    notesMirrorTitle: 'Where should the folder \'PAs - AgentsProfileInfo\' be created?',
+    notesMirrorConfirm: 'Create {0}?',
+    notesMirrorCreateHere: 'Create here',
+    notesMirrorBack: 'Back',
+    notesMirrorOpenFolder: 'Open folder',
+    notesMirrorOldKept: 'The folder we left was not touched: it holds something that is not our link ({0}).',
+    notesMirrorOldFailed: 'The folder we left could not be removed ({0}).',
+    notesMirrorDocuments: 'Documents in your home folder',
+    notesMirrorChoose: 'Choose a folder…',
+    notesMirrorDone: 'Notes mirror: {0} created, {1} renamed, {2} findings.',
+    notesMirrorCaseClash: '"{0}": two agents differ only in case — the second is not linked.',
+    notesMirrorRealEntry: '"{0}" in the mirror is a real file or folder, not our link: left alone.',
+    notesMirrorNotOurs: '"{0}" is a link this extension did not make: left alone.',
+    notesMirrorNameTaken: '"{0}" is already taken: the old link was left as it was.',
+    notesMirrorTargetRestored: '"{0}" pointed at a folder that was gone; the folder was made again.',
+    notesMirrorLinkFailed: 'Could not create "{0}" ({1}).',
+    notesMirrorFolderFailed: 'Could not create the mirror folder {0} ({1}).',
+    notesOpenFailed: 'Could not open the notes folder ({0}).',
+    notesAskMirror: 'Your agents have their own notes. Mirror them where you can read along? '
+        + 'Obsidian is recommended.',
+    notesAskDoIt: "Let's do it",
+    notesAskLater: 'Remind me in 2 weeks',
+    notesAskNever: "Don't ask again",
+    memorySizeTitle: '{0} — memory {1} / {2} ({3}%)',
+    memorySizeRecommended: 'Recommended: {0}',
+    memorySizeKeep: 'Keep {0}',
+    memorySizeOther: 'Other…',
+    memorySizeInput: 'Memory limit, in characters (at least {0})',
+    memorySizeInvalid: 'A whole number, {0} or more.',
+    memorySizeConfirmAdd: 'About +{0} tokens in every session of {1}. Applies from its next session.',
+    memorySizeConfirmFewer: 'About {0} fewer tokens in every session of {1}. Applies from its next session.',
+    memorySizeLower: 'Lower the limit from {0} to {1}?',
+    memorySizeLowerConfirm: 'Lower it',
+    memorySizeApply: 'Set it',
+    memorySizeCancel: 'Cancel',
+    memorySizeDone: 'Memory limit set to {0} for {1}. {2}',
+    memorySizeFailed: 'Hermes could not set the limit: {0}',
+    memorySizeUnchanged: '{0} is already the limit for {1}.',
+    memorySizeNoAgent: 'No agent is connected yet.',
 };

@@ -17,6 +17,27 @@ export function profileDir(historyDir: string, sessionProfileId: string): string
     return dir;
 }
 
+/**
+ * An agent's own notes: `profiles/<id>/notes/`, beside its tabs and tree files.
+ *
+ * One level down from the profile folder on purpose — that folder also holds our machine files,
+ * and a folder handed to an agent (or to a vault) is the notes, not `sessions.json`. Nothing here
+ * creates it: the notes feature's store does, when an agent connects.
+ */
+export function notesDirFor(historyDir: string, sessionProfileId: string): string {
+    return path.join(profileDir(historyDir, sessionProfileId), 'notes');
+}
+
+/**
+ * The notes mirror's record: where the user put it, and which link belongs to which agent.
+ *
+ * At the data home's root, not inside a profile: the mirror is one thing for the whole home, and
+ * both the primary and the secondant (each in its own data home) name their own.
+ */
+export function notesMirrorPathFor(historyDir: string): string {
+    return path.join(historyDir, 'notes-mirror.json');
+}
+
 /** The tabs of one profile. */
 export function sessionsPathFor(historyDir: string, sessionProfileId: string): string {
     return path.join(profileDir(historyDir, sessionProfileId), 'sessions.json');

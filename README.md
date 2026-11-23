@@ -262,18 +262,8 @@ and copies everything into the installed extension directory, verifying each fil
 <td>Default model id (fallback list only)</td>
 <td><code>""</code></td>
 </tr>
-<tr>
-<td><code>tommys.agents</code></td>
-<td>Named agent configurations</td>
-<td><code>[]</code></td>
-</tr>
 </tbody></table>
 <p>The secondant exposes the same keys under <code>tommys2.*</code>.</p>
-<pre><code class="language-json">"tommys.agents": [
-  { "name": "Default", "profile": "" },
-  { "name": "Fast", "path": "/path/to/hermes", "profile": "fast" }
-]
-</code></pre>
 <p>The composer's <code>Aa</code> pill sets the transcript font size (10–28 px) and remembers it.</p>
 
 </details>

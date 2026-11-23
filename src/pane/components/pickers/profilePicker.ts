@@ -40,7 +40,7 @@ export function renderProfileList(profiles: Array<{ label?: string; name?: strin
         return { id: name, label: name };
     });
     if (!entries.length) {
-        list.innerHTML = '<div class="dropdown-item disabled">' + escapeHtml(locale.configureAgents) + '</div>';
+        list.innerHTML = '<div class="dropdown-item disabled">' + escapeHtml(locale.noHermesProfiles) + '</div>';
         return;
     }
     list.innerHTML = entries.map(function(entry) {

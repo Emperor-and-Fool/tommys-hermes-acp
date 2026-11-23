@@ -59,6 +59,13 @@ export interface EditorCommands {
     checkForUpdate(extensionId: string): Promise<void>;
     /** Open this extension's settings, in whichever editor the user has chosen for them. */
     openSettings(extensionId: string): Promise<void>;
+    /**
+     * A context key our `package.json` reads in a `when` clause: which menu item a pane offers.
+     *
+     * Set, not read: the value decides whether the ⋯ menu shows "Set up notes mirror…" or
+     * "Repair notes mirror", and the caller names the key by the feature it describes.
+     */
+    setContext(key: string, value: unknown): void;
 }
 
 /**
@@ -127,4 +134,36 @@ export interface EditorFiles {
     display(filePath: string): string;
     /** Say something to the user in the editor's own voice, as these actions always did. */
     notify(message: string, level: 'warn' | 'info'): void;
+}
+
+/**
+ * The questions a feature asks the user, and the folder it shows them.
+ *
+ * The feature names the question — a title and its own rows — and this is the only file that knows
+ * a QuickPick exists. The OS's folder dialog and the OS's file manager are here for the same
+ * reason: a feature that chose its notes mirror must not know which shell it runs under (F6, §12).
+ */
+export interface EditorChoices {
+    /** One row of a list the feature supplies: its id, or undefined when the user dismisses. */
+    pick(title: string, items: EditorChoiceItem[]): Promise<string | undefined>;
+    /** A typed answer with a starting value: what the user entered, or undefined when dismissed. */
+    prompt(title: string, value: string): Promise<string | undefined>;
+    /** The OS folder dialog: the chosen folder, or undefined. */
+    pickFolder(title: string, startAt: string): Promise<string | undefined>;
+    /** Show a folder in the OS file manager — the user's own browser, not the editor's explorer. */
+    showInFileManager(folderPath: string): Promise<void>;
+    /** A notice with buttons: the action the user took, or undefined when it was closed. */
+    ask(message: string, actions: string[]): Promise<string | undefined>;
+    /** The user's home folder: where Documents is, and where a folder dialog starts. */
+    home(): string;
+}
+
+/** One row of a picker: what it says, and the id the caller gets back. */
+export interface EditorChoiceItem {
+    id: string;
+    label: string;
+    /** The second column: a path, a count. */
+    detail?: string;
+    /** The row this extension suggests, drawn as the preselected one. */
+    suggested?: boolean;
 }

@@ -24,6 +24,10 @@ export function createEditorCommands(): EditorCommands {
             await vscode.commands.executeCommand('workbench.action.reloadWindow');
         },
 
+        setContext: (key, value) => {
+            void vscode.commands.executeCommand('setContext', key, value);
+        },
+
         checkForUpdate: async (extensionId) => {
             await vscode.commands.executeCommand('workbench.extensions.action.checkForUpdates');
             await vscode.commands.executeCommand(

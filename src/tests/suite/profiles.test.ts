@@ -77,18 +77,6 @@ describe('the profile target', () => {
             fs.rmSync(home, { recursive: true, force: true });
         }
     });
-
-    it('keeps a configured agent on its display-name key, with the profile it runs on', () => {
-        const { home, profiles } = setup({ agents: [{ name: 'My Agent', profile: 'kitt' }] });
-        try {
-            const target = profiles.resolveTarget();
-            assert.strictEqual(target.sessionProfileId, 'My Agent');
-            assert.strictEqual(target.agentName, 'My Agent');
-            assert.strictEqual(target.cliProfile, 'kitt');
-        } finally {
-            fs.rmSync(home, { recursive: true, force: true });
-        }
-    });
 });
 
 describe('connecting by the name Hermes has', () => {
@@ -163,6 +151,16 @@ describe('connecting by the name Hermes has', () => {
     });
 });
 
+/**
+ * What the picker is offered comes from Hermes (`hermes profile list`; `ensureDiscovered` spawns
+ * it). A test about what the picker does with that list hands it the answer instead of running the
+ * CLI — the parsing of the table has its own test. Names only: the id a picker row carries is the
+ * Hermes name today.
+ */
+const discover = (profiles: Profiles, names: string[]): void => {
+    (profiles as unknown as { discovered: string[] | null }).discovered = names;
+};
+
 describe('the exclusion list', () => {
     it("is this window's sibling plus what the other windows announced", () => {
         const list = excludedProfiles({
@@ -192,12 +190,13 @@ describe('the exclusion list', () => {
 
     it('offers none of the excluded profiles in the picker', () => {
         const { home, profiles } = setup(
-            { agents: [{ name: 'A', profile: 'dev' }, { name: 'B', profile: 'kitt' }] },
+            {},
             undefined,
-            [{ cliProfile: 'dev' }, { cliProfile: 'kitt' }]
+            [{ cliProfile: 'default' }, { cliProfile: 'dev' }, { cliProfile: 'kitt' }]
         );
         try {
-            assert.deepStrictEqual(profiles.entries(), [], 'both are held elsewhere');
+            discover(profiles, ['default', 'dev', 'kitt']);
+            assert.deepStrictEqual(profiles.entries(), [], 'every profile Hermes has is held elsewhere');
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }
@@ -205,12 +204,17 @@ describe('the exclusion list', () => {
 
     it('offers the ones nothing excludes', () => {
         const { home, profiles } = setup(
-            { agents: [{ name: 'A', profile: 'dev' }, { name: 'B', profile: 'kitt' }] },
+            {},
             undefined,
-            [{ cliProfile: 'dev' }]
+            [{ cliProfile: 'default' }, { cliProfile: 'dev' }]
         );
         try {
-            assert.deepStrictEqual(profiles.entries().map(entry => entry.id), ['B']);
+            discover(profiles, ['default', 'dev', 'kitt']);
+            assert.deepStrictEqual(
+                profiles.entries().map(entry => entry.id),
+                ['kitt'],
+                'the only profile no window is running'
+            );
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }

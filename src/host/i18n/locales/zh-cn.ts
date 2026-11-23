@@ -263,7 +263,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
             <h3>3. 切换 Profile 会引起什么变化？</h3>
             <p>Profile 切换等于<strong>重连 Hermes 子进程</strong>（类似 <code>hermes --profile &lt;name&gt; acp</code> 重新启动）。</p>
             <ul>
-                <li><strong>会话列表换一套</strong> — 每个 Profile / <code>tommys.agents</code> 命名 Agent 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
+                <li><strong>会话列表换一套</strong> — 每个 Profile 有独立本地存储，Tab 历史、活跃 Tab、模型偏好互不共享</li>
                 <li><strong>模型列表刷新</strong> — 来自新 Profile 下 Hermes 暴露的可用模型，可能与旧 Profile 完全不同</li>
                 <li><strong>聊天内容</strong> — 按新 Profile 下的活跃会话重新加载</li>
                 <li><strong>Settings 变更</strong> — 修改 <code>tommys.profile</code>、<code>tommys.path</code> 等连接项也会自动重连，效果类似切换 Profile</li>
@@ -322,7 +322,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     emptyFile: '（空文件）',
     noMatchingFiles: '没有匹配的文件',
     searchingFiles: '搜索文件中…',
-    configureAgents: '请在 Settings 中配置 tommys.agents',
+    noHermesProfiles: '未找到 Hermes 配置 —— 请检查 tommys.path',
     noModels: '无可用模型 — 请检查 Hermes profile 或 tommys.models',
     modelFromAgent: '来自 Hermes profile 的模型',
     modelLocalPreference: '本地模型偏好（Settings 回退）',
@@ -419,4 +419,43 @@ hermes --profile &lt;name&gt; acp</code></pre>
     steer: '引导',
     steerHint: '作为引导发送到正在运行的一轮中',
     approvalNoteLabel: '审批',
+
+    notesMirrorTitle: '文件夹“PAs - AgentsProfileInfo”要创建在哪里？',
+    notesMirrorConfirm: '要创建 {0} 吗？',
+    notesMirrorCreateHere: '在这里创建',
+    notesMirrorBack: '返回',
+    notesMirrorOpenFolder: '打开文件夹',
+    notesMirrorOldKept: '原来的文件夹未改动：里面有不属于我们的链接内容（{0}）。',
+    notesMirrorOldFailed: '原来的文件夹无法删除（{0}）。',
+    notesMirrorDocuments: '主目录中的「文档」',
+    notesMirrorChoose: '选择文件夹…',
+    notesMirrorDone: '笔记镜像：新建 {0}，重命名 {1}，提示 {2}。',
+    notesMirrorCaseClash: '"{0}"：两个代理仅大小写不同 — 第二个未建立链接。',
+    notesMirrorRealEntry: '镜像中的 "{0}" 是真实文件或文件夹，不是我们的链接：未改动。',
+    notesMirrorNotOurs: '"{0}" 不是本扩展建立的链接：未改动。',
+    notesMirrorNameTaken: '"{0}" 已被占用：旧链接保持原样。',
+    notesMirrorTargetRestored: '"{0}" 指向的文件夹已不存在，已重新创建该文件夹。',
+    notesMirrorLinkFailed: '无法创建 "{0}"（{1}）。',
+    notesMirrorFolderFailed: '无法创建镜像文件夹 {0}（{1}）。',
+    notesOpenFailed: '无法打开笔记文件夹（{0}）。',
+    notesAskMirror: '你的代理各有自己的笔记。要在你能随手查看的地方镜像一份吗？推荐使用 Obsidian。',
+    notesAskDoIt: '开始设置',
+    notesAskLater: '两周后再提醒',
+    notesAskNever: '不再询问',
+    memorySizeTitle: '{0} — 记忆 {1} / {2}（{3}%）',
+    memorySizeRecommended: '推荐：{0}',
+    memorySizeKeep: '保持 {0}',
+    memorySizeOther: '其他…',
+    memorySizeInput: '记忆上限（字符数，至少 {0}）',
+    memorySizeInvalid: '请输入整数，且不小于 {0}。',
+    memorySizeConfirmAdd: '{1} 的每次会话约增加 {0} tokens。从其下一次会话起生效。',
+    memorySizeConfirmFewer: '{1} 的每次会话约减少 {0} tokens。从其下一次会话起生效。',
+    memorySizeLower: '将上限从 {0} 降低到 {1}？',
+    memorySizeLowerConfirm: '降低',
+    memorySizeApply: '设置',
+    memorySizeCancel: '取消',
+    memorySizeDone: '已将 {1} 的记忆上限设为 {0}。{2}',
+    memorySizeFailed: 'Hermes 无法设置该上限：{0}',
+    memorySizeUnchanged: '{1} 的上限已经是 {0}。',
+    memorySizeNoAgent: '还没有连接任何代理。',
 };

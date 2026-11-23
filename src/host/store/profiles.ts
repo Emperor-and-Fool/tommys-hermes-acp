@@ -105,6 +105,27 @@ export class ProfilesStore {
         return row.sessionProfileId;
     }
 
+    /**
+     * Does this agent's MEMORY.md carry the protected section naming its notes folder?
+     *
+     * Recorded on the row (the file keeps unknown fields), so the notice can be composed without
+     * opening Hermes' home again. Read there, on connect, and written here.
+     */
+    psSet(sessionProfileId: string): boolean {
+        return this._read().find(row => row.sessionProfileId === sessionProfileId)?.ps_set === true;
+    }
+
+    /** Record that answer. Nothing is written when the row already says it. */
+    setPsSet(sessionProfileId: string, value: boolean): void {
+        const rows = this._read();
+        const row = rows.find(entry => entry.sessionProfileId === sessionProfileId);
+        if (!row || row.ps_set === value) {
+            return;
+        }
+        row.ps_set = value;
+        this._write(rows);
+    }
+
     /** What Hermes calls the profile with this id now. Nothing when the id is unknown. */
     nameFor(sessionProfileId: string): string | undefined {
         return this._read().find(row => row.sessionProfileId === sessionProfileId)?.agentName;

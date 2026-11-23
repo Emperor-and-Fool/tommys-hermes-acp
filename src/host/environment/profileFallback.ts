@@ -79,6 +79,42 @@ export function parsePreviousNames(profileYaml: string): string[] {
     return names;
 }
 
+/**
+ * The one-line `description:` in a profile.yaml, or '' when there is none.
+ *
+ * Single-line scalars only: Hermes writes the description as one plain line, and a block scalar
+ * (`description: |`) is left unanswered rather than half-read — an empty description is honest,
+ * a guessed one would end up in another agent's index.
+ */
+export function parseDescription(profileYaml: string): string {
+    for (const rawLine of profileYaml.split(/\r?\n/)) {
+        const match = rawLine.match(/^description:\s*(.*)$/);
+        if (!match) {
+            continue;
+        }
+        const value = match[1].replace(/\s+#.*$/, '').trim();
+        if (!value || value.startsWith('|') || value.startsWith('>')) {
+            return '';
+        }
+        return value.replace(/^['"]|['"]$/g, '').trim();
+    }
+    return '';
+}
+
+/**
+ * The description Hermes holds for a profile, read from Hermes' own folder (H1, H2: read, never
+ * written). The default profile keeps its state at the root of the home and has no folder of its
+ * own, so its `profile.yaml` is read from the home itself. A missing file or key is ''.
+ */
+export function profileDescription(profileName: string, hermesHome = resolveHermesRoot()): string {
+    const name = (profileName || '').trim();
+    if (!name) {
+        return '';
+    }
+    const dir = name === HERMES_DEFAULT_PROFILE ? hermesHome : path.join(hermesHome, 'profiles', name);
+    return parseDescription(readText(path.join(dir, 'profile.yaml')));
+}
+
 function pushName(names: string[], raw: string): void {
     const name = raw.replace(/\s+#.*$/, '').trim().replace(/^['"]|['"]$/g, '').trim();
     if (name && !names.includes(name)) {

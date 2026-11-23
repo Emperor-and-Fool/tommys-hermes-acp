@@ -142,6 +142,41 @@ export function buildTreeSnapshot(input: TreeInput): TreeSnapshot {
     };
 }
 
+/**
+ * The tree as this window sees it, read at the moment of the write.
+ *
+ * The id and the tabs are read from the same owner, together. A refresh is fired by a
+ * `sessionList` post as often as by a `projectList` one, and on a profile change the two features
+ * re-bind their stores one after the other — an id read from the other holder names the wrong
+ * folder for the length of one write, which is how one agent's tabs came to sit under another
+ * agent's id (found 2026-11-22).
+ */
+export function treeInputOf(owners: {
+    /** The tabs, and the agent whose tabs they are — one owner, so the two cannot disagree. */
+    tabs: { sessionProfileId: string; activeId: string; tabsInWindow(): SessionInfo[] };
+    /** This window's folders: where it is and what it has open there. */
+    projects: { current(): string; currentId(): string; projectsInWindow(): Project[] };
+    /**
+     * Hermes' name for a profile id, for the readers of the file.
+     *
+     * Asked with the id the file is written under, not with this window's selection: the selection
+     * is moved after the two rebinds, so it still names the previous agent while the first write
+     * goes out (2026-11-22, the same moment that put the tabs in the wrong folder).
+     */
+    agentName(sessionProfileId: string): string;
+}): TreeInput {
+    const sessionProfileId = owners.tabs.sessionProfileId;
+    return {
+        sessionProfileId,
+        profile: owners.agentName(sessionProfileId),
+        workspacePath: owners.projects.current(),
+        workspaceId: owners.projects.currentId(),
+        activeSessionId: owners.tabs.activeId,
+        projects: owners.projects.projectsInWindow(),
+        tabs: owners.tabs.tabsInWindow(),
+    };
+}
+
 /** The two files: `current` is where the window is, `passive` where it was. */
 export interface TreePaths {
     current: string;
@@ -158,15 +193,24 @@ export interface TreePaths {
  * and this block describes the editor window — its projects and tabs — which is a different thing
  * and one the agent must not mistake for its cwd.
  */
-export function treeNoticeBlock(paths: TreePaths): string {
-    return [
+export function treeNoticeBlock(paths: TreePaths, notes = ''): string {
+    const lines = [
         '<clientworkspace-tree>',
         'The editor extension keeps this window\'s session tree on disk. Read it before asking which',
         'session lives where, and to see the projects, their tabs and the active session:',
         `current (this clientworkspace: projects and tabs, not your working folder): ${paths.current}`,
         `previous clientworkspace: ${paths.passive}`,
         '</clientworkspace-tree>',
-    ].join('\n');
+    ];
+    // Where this agent's own notes are comes from the notes feature; this function only places it.
+    // One notice, one "once per session and workspace": two blocks would say the same thing twice,
+    // at two different moments.
+    if (notes) {
+        // The last line closes the whole notice — the tree and the notes — outside both tags: it is
+        // about the notice itself, which the agent is told to read and not to remember.
+        lines.push('', notes, '', "Repeats each session; don't save to memory.");
+    }
+    return lines.join('\n');
 }
 
 /** All the feature needs from a subscription the editor hands it: drop it again. */
