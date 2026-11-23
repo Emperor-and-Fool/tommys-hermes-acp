@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.6.1] - 2026-11-23
+
+The Windows round. A Hermes 0.23 install now shows its sessions again — the patch that answers the
+catalog ships with the extension — and a catalog Hermes does not answer says so instead of looking
+empty. Hermes' Desktop is built where it belongs, and can start in the tray.
+
+### New
+
+- **A status-bar item for the agent and its budget.** Bottom right: the agent of the pane you are
+  talking to, whether it is connected, and what the DeepSeek balance is — *$(dashboard) dev-vsc ·
+  $58.93* — with a $(flame)/$(moon) badge for DeepSeek's peak hours in the tooltip. It refreshes on
+  a click, on an agent switch, and once a minute. The secondant has no item of its own; it reports
+  through the primary's.
+- **The item turns red when the provider cannot be reached**, whichever call found out — a failed
+  turn or a failed balance read — with Hermes' own message in the tooltip.
+- **Start Hermes Desktop in the tray at login (Windows).** A first-run question with three answers
+  (Yes / Remind me in 2 weeks / Don't ask again), one Startup shortcut, and the ⋯ menu entries that
+  put it in place or take it away again. Only our shortcut is ever touched.
+- **Hermes Desktop is built once, unattended, where there is none (Windows).** One progress
+  notification while Hermes' own build runs; a failure is remembered with its time and offered again
+  on a click or after 24 hours.
+
+### Fixed
+
+- **A send whose session Hermes would not resume is no longer swallowed.** The typed text goes back
+  into the composer, and the notice names Hermes' own reason.
+- **A session catalog Hermes does not answer is said out loud**, once per connect, naming the patch
+  the installed version needs and where the patches are, instead of leaving the window with no
+  sessions and no explanation. While it is unanswered, no tab loses its link.
+- **A pane rebuilt mid-turn shows its open permission card again**, instead of an empty space where
+  the question was.
+- **The test suite is green again**: seven failures that predated 2.6.0 (locale leakage between
+  tests, three stale inputs and assertions) are fixed at their causes.
+
+### Windows
+
+- **Hermes 0.23 needs its own patch, and it ships in the VSIX.** `0003` answers
+  `_session/catalog`, `_session/setHidden` and `_session/setTitle` from Hermes 0.23's own store; the
+  README's table says which set each Hermes version needs (0.22.2–0.22.4: `0001`; 0.22.5–0.22.x:
+  `0001` + `0002`; 0.23.x: `0003`). The patches are inside both VSIXes under
+  `packaging/hermes-patches/`, so an installed extension always carries its own copy.
+- **The Desktop build no longer exits at once.** The editor sets `ELECTRON_RUN_AS_NODE` for its
+  children; Electron with that variable runs as plain Node, so `Hermes.exe` quit silently. Every
+  child that can start Electron now gets an environment without it.
+- **Hermes' Electron Desktop is built on Windows only.** On Linux the window to want is our own
+  systray app; the step logs one line and does nothing.
+
+### Repository
+
+- New: `host/desktop/` (the build step, its store, the tray), `host/environment/desktopBuild.ts`,
+  `environment/desktopTray.ts`, `environment/childEnv.ts`, `environment/hermesPatches.ts`,
+  `editor/progress.ts`, and `packaging/windows/`.
+- The catalog read answers `{ answered: true, sessions }` or `{ answered: false, reason }`, so an
+  unanswered catalog cannot be mistaken for an empty one by a `?? []`.
+- Tests: 653 → 706 passing; `app.ts` 1470 → 1470.
+
 ## [2.6.0] - 2026-11-23
 
 Every agent now has a home for what it needs to keep: a notes folder of its own, beside its session
