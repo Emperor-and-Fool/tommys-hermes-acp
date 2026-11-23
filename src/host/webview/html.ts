@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
 import type { LocaleStrings } from '../../shared/i18n';
+import type { EditorEnv, EditorSettings } from '../../shared/editor';
+import type { HostToPane } from '../../shared/webview';
 import { identity } from '../../shared/extensionId';
 
 /**
@@ -74,6 +76,49 @@ export function highlightSheetFor(themeKind: number): string {
  */
 export function identityArtwork(role: 'primary' | 'secondant'): string {
     return role === 'secondant' ? 'icon_orange.svg' : 'icon_fullcolor.png';
+}
+
+/**
+ * The two settings the pane draws with, as one message.
+ *
+ * They are a pair — "show what the agent thought" and "show what it ran" — and the pane asks for
+ * both at once, on start and whenever either changes, so they travel together.
+ */
+export function configMessage(settings: EditorSettings): HostToPane {
+    return {
+        type: 'config',
+        showThoughts: settings.get<boolean>('showThoughts', true),
+        showToolCalls: settings.get<boolean>('showToolCalls', true),
+    };
+}
+
+/**
+ * The About panel's facts, as the pane is sent them.
+ *
+ * Two sources and no state: the manifest is the editor's own answer (`env.extensionInfo`), and the
+ * mark is the identity's — the secondant is orange by definition, so a fixed file name would be
+ * wrong on one of the two panes.
+ */
+export function pluginInfoMessage(input: {
+    env: EditorEnv;
+    extensionId: string;
+    role: 'primary' | 'secondant';
+    extensionUri: vscode.Uri;
+    iconWebview: vscode.Webview | undefined;
+}): HostToPane {
+    const info = input.env.extensionInfo(input.extensionId);
+    const iconUri = input.iconWebview
+        ? mediaUri(input.extensionUri, input.iconWebview, identityArtwork(input.role))
+        : '';
+    return {
+        type: 'pluginInfo',
+        displayName: info.displayName || 'Tommys Hermes ACP',
+        version: info.version,
+        publisher: info.publisher,
+        description: info.description,
+        repository: info.repository,
+        iconUri,
+    };
 }
 
 /**

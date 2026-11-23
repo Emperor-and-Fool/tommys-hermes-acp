@@ -18,6 +18,14 @@ export interface PresenceRow {
     cliProfile: string;
     /** When it last said so. A row older than `PRESENCE_STALE_MS` is a window that went away. */
     liveAt: number;
+    /**
+     * When that pane was last *used* — a message, a tab, a switch — rather than when it last spoke.
+     *
+     * The window's two panes share one status bar item, and this is how the item knows which of them
+     * the user was reading. 0 for a row written before the field existed: an unknown moment never
+     * outranks a known one.
+     */
+    activeAt: number;
 }
 
 /**
@@ -79,9 +87,38 @@ export class PresenceStore {
     }
 
     /** Announce this instance. It touches no other instance's file. */
-    write(row: { role: 'primary' | 'secondant'; cliProfile: string; liveAt: number }): void {
+    write(row: { role: 'primary' | 'secondant'; cliProfile: string; liveAt: number; activeAt?: number }): void {
         fs.mkdirSync(this.dir, { recursive: true });
-        writeAtomic(this.fileFor(this.instanceId), { instanceId: this.instanceId, ...row });
+        writeAtomic(this.fileFor(this.instanceId), {
+            instanceId: this.instanceId,
+            ...row,
+            // A caller that says nothing about use is announcing a connection, which is use enough.
+            activeAt: typeof row.activeAt === 'number' ? row.activeAt : row.liveAt,
+        });
+    }
+
+    /**
+     * Told when a row in this table changes.
+     *
+     * The table is files, so a reader learns of another pane's move by watching the folder: the
+     * same `fs.watch` the pane mail already relies on. A missing folder, or a platform that will not
+     * watch it, is not an error — the caller still re-reads on its own beat.
+     */
+    watch(handler: () => void): () => void {
+        let watcher: fs.FSWatcher;
+        try {
+            fs.mkdirSync(this.dir, { recursive: true });
+            watcher = fs.watch(this.dir, () => handler());
+        } catch {
+            return () => undefined;
+        }
+        return () => {
+            try {
+                watcher.close();
+            } catch {
+                /* already closed */
+            }
+        };
     }
 
     /**
@@ -182,6 +219,8 @@ export class PresenceStore {
                 role: raw.role === 'secondant' ? 'secondant' : 'primary',
                 cliProfile: typeof raw.cliProfile === 'string' ? raw.cliProfile : '',
                 liveAt: typeof raw.liveAt === 'number' ? raw.liveAt : 0,
+                // A row from a build that did not record use says nothing, rather than "always now".
+                activeAt: typeof raw.activeAt === 'number' ? raw.activeAt : 0,
             };
         } catch {
             return undefined;

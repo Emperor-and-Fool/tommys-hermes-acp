@@ -10,7 +10,10 @@ import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
+import { Budget } from './budget/budget';
+import { fetchDeepSeekBalance } from './budget/providers/deepseek';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
+import { credentialFor } from './environment/providerKey';
 import { EnvironmentDetection } from './environment/detection';
 import { ensureDataHome, onStoreWriteError } from './store/connection';
 import { runMigrations } from './store/migrations';
@@ -26,7 +29,7 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml, identityArtwork, mediaUri, webviewResources } from './webview/html';
+import { buildWebviewHtml, configMessage, pluginInfoMessage, webviewResources } from './webview/html';
 import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -38,6 +41,7 @@ import { createEditorFolders } from './editor/folders';
 import { createEditorNotices } from './editor/notices';
 import { createEditorChoices } from './editor/choices';
 import { createEditorSettings } from './editor/settings';
+import { createEditorStatusBar } from './editor/statusBar';
 import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
@@ -64,10 +68,6 @@ const PEER_CARD_TIMEOUT_MS = 120_000;
 
 export class App implements vscode.WebviewViewProvider {
 
-    /**
-     * The profile this instance is talking to. The secondant reads it through `activate()`'s
-     * return value; nothing else is exported from the extension on purpose.
-     */
     /**
      * The profile the *other* extension is on, when it has told us. Withheld from this pane's
      * picker for the same reason it withholds ours: the two may not share one profile, and the
@@ -145,8 +145,6 @@ export class App implements vscode.WebviewViewProvider {
     private _session!: Sessions;
 
     // ---- Lifecycle ----
-    /** Every live renderer: the sidebar view and/or the single chat panel. */
-    /** Where the conversation is rendered: the side bar or an editor tab. */
     /**
      * Turn-scoped state and session acquisition. The host literals are the whole coupling
      * between a turn and the provider: every member here stays private, and this is the one
@@ -190,14 +188,23 @@ export class App implements vscode.WebviewViewProvider {
     /** Hermes: process, link, events, teardown. */
     private readonly _connection: Connection;
 
-
     /** Which profile/agent we connect to, and which the picker offers. */
     private readonly _profiles: Profiles;
 
     /** This window's row in the cross-window presence table: who runs what, for every picker. */
     private readonly _presence: ProfilePresence;
 
-    /** This tab's own messages offered to the picker; not an earlier session. */
+    /** The window's one status bar item: the shown agent's link, and its budget (host/budget). */
+    private readonly _budget = new Budget({
+        item: createEditorStatusBar(),
+        own: () => ({ profile: this._profiles.resolveTarget().cliProfile, label: this._profiles.displayName, connected: !!this._connection.acp }),
+        other: () => this._presence.live().find(row => row.cliProfile === this._siblingProfile && row.role !== this._id.role),
+        watch: (handler) => this._presence.watch(handler),
+        credentials: (profile) => credentialFor(profile),
+        balance: fetchDeepSeekBalance,
+        log: (line) => this._log(line),
+    });
+
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
     private readonly _detection = new EnvironmentDetection({
         post: (msg) => this._postMessage(msg),
@@ -277,8 +284,6 @@ export class App implements vscode.WebviewViewProvider {
      * tab must never ride along with another tab's send.
      */
     private readonly _historyStages: HistoryStages = new HistoryStages();
-
-    /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
 
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
@@ -399,6 +404,8 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
         });
         this._presence.start();
+        // The budget item reads that table, so it starts after the first beat has swept it.
+        this._budget.start();
         this._attachments = new AttachmentStore(this._historyDir);
         runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
@@ -947,7 +954,13 @@ export class App implements vscode.WebviewViewProvider {
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
         const host = this._routerHost(surface);
-        webview.onDidReceiveMessage((message) => handleWebviewMessage(message as PaneToHost, host));
+        webview.onDidReceiveMessage((message) => {
+            // A word from a pane is that pane being used: the item follows the last one active, and
+            // the presence row is what tells the window's other pane about it.
+            this._budget.touch();
+            this._presence.touch();
+            handleWebviewMessage(message as PaneToHost, host);
+        });
     }
 
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
@@ -1065,34 +1078,19 @@ export class App implements vscode.WebviewViewProvider {
             // The card is about to ask for a decision; its switch needs the current mode now.
             this._approvals.post();
         }
+        // The item says whether this pane is connected, and every status is that answer moving.
+        if (msg.type === 'status') {
+            this._budget.noteStatus(msg.status);
+        }
     }
 
-    private _postConfig(): void {
-        this._postMessage({
-            type: 'config',
-            showThoughts: this._settings.get<boolean>('showThoughts', true),
-            showToolCalls: this._settings.get<boolean>('showToolCalls', true),
-        });
-    }
+    private _postConfig(): void { this._postMessage(configMessage(this._settings)); }
 
     private _postPluginInfo(): void {
-        const info = this._env.extensionInfo(this._extensionId);
-        let iconUri = '';
-        const iconWebview = this._surfaces.iconWebview;
-        if (iconWebview) {
-            // The identity's own mark: the secondant is orange by definition, so this must not be
-            // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
-            iconUri = mediaUri(this._extensionUri, iconWebview, identityArtwork(this._id.role));
-        }
-        this._postMessage({
-            type: 'pluginInfo',
-            displayName: info.displayName || 'Tommys Hermes ACP',
-            version: info.version,
-            publisher: info.publisher,
-            description: info.description,
-            repository: info.repository,
-            iconUri,
-        });
+        this._postMessage(pluginInfoMessage({
+            env: this._env, extensionId: this._extensionId, role: this._id.role,
+            extensionUri: this._extensionUri, iconWebview: this._surfaces.iconWebview,
+        }));
     }
 
     private _getHtml(target?: vscode.Webview): string {
@@ -1465,6 +1463,7 @@ export class App implements vscode.WebviewViewProvider {
         this._output.dispose();
         this._profileListeners.clear();
         this._presence.dispose();
+        this._budget.dispose();
     }
 
 }

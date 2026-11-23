@@ -410,6 +410,20 @@ export interface LocaleStrings {
     memorySizeFailed: string;
     memorySizeUnchanged: string;
     memorySizeNoAgent: string;
+    budgetPrimary: string;
+    budgetSecondant: string;
+    budgetConnected: string;
+    budgetConnecting: string;
+    budgetNotConnected: string;
+    budgetUnavailable: string;
+    budgetNothingToShow: string;
+    budgetNoApi: string;
+    budgetNoProvider: string;
+    budgetNoKey: string;
+    budgetPeak: string;
+    budgetOffPeak: string;
+    budgetPeakHours: string;
+    budgetClickRefresh: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;
