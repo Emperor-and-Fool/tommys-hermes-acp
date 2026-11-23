@@ -311,9 +311,11 @@ describe('the first-run question', () => {
         const w = await due(undefined);
         try {
             w.store.writeAnswer('later', Date.now() - 1000);
-            const before = w.asks.length;
-            await w.mirror.askIfDue();
-            assert.strictEqual(w.asks.length, before + 1, 'due again');
+            // A start, not a second question in one: the notice asks once per run of the extension
+            // (`_asked`), so "asked again" is a new window over the same data home.
+            const again = windowOn([{ sessionProfileId: 'id-a', agentName: 'kitt' }], w.location, undefined, false, w.home);
+            await again.mirror.askIfDue();
+            assert.strictEqual(again.asks.length, 1, 'due again');
         } finally {
             fs.rmSync(w.home, { recursive: true, force: true });
             fs.rmSync(w.location, { recursive: true, force: true });
