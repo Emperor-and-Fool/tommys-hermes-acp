@@ -76,6 +76,8 @@ interface PendingPermission {
     resolve: (optionId: string | null) => void;
     /** Cleared on every exit — a timer that fires after an answer would post a second, wrong one. */
     timer: ReturnType<typeof setTimeout>;
+    /** Kept so a reloaded pane can be shown the card again instead of waiting out the timeout. */
+    request: PermissionRequest;
 }
 
 /** Whether a send may proceed, and whether the reader has already been told why not. */
@@ -242,7 +244,7 @@ export class PromptRunner {
             // An unanswered card used to wait for the rest of the turn: the ACP request stayed
             // open, the agent waited, and nothing ever said which side had given up.
             const timer = setTimeout(() => this._expirePermission(id), this.permissionTimeoutMs);
-            this.pendingPermissions.set(id, { resolve, timer });
+            this.pendingPermissions.set(id, { resolve, timer, request });
             this.host.savePermissionRequest(id, request);
             this.host.post({
                 type: 'permissionRequest',
@@ -252,6 +254,25 @@ export class PromptRunner {
                 options: request.options,
             });
         });
+    }
+
+    /**
+     * Show the cards again after the pane was rebuilt.
+     *
+     * A pending card lives here, not in the webview: a reload (container move, view re-show) left
+     * the promise open with nothing on screen to answer, and the turn sat in `prompting` until the
+     * 24.8-day timeout — the pane reporting that as "still initializing".
+     */
+    replayPendingPermissions(): void {
+        for (const [id, pending] of this.pendingPermissions) {
+            this.host.post({
+                type: 'permissionRequest',
+                id,
+                title: pending.request.title,
+                detail: pending.request.detail,
+                options: pending.request.options,
+            });
+        }
     }
 
     /** The pane answered a card. Unknown ids are ignored — a stale click after a detach. */
