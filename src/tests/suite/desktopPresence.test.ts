@@ -1,0 +1,146 @@
+/**
+ * What Hermes Desktop looks like on disk, and what the build command is spelled.
+ *
+ * Both halves face the outside world: the paths are Hermes' own layout (a checkout with `.git`,
+ * an unpacked app under `apps/desktop/release`), and the argv is the contract with the CLI. Temp
+ * folders stand in for the checkout, so nothing here reads the machine's real Hermes.
+ */
+import { describe, it } from 'mocha';
+import assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import {
+    desktopBuildArgs,
+    desktopBuildOptions,
+    desktopExecutableCandidates,
+    desktopPresence,
+    findDesktopBuild,
+    findHermesSourceCheckout,
+} from '../../host/environment/desktopBuild';
+import { electronCapableEnv } from '../../host/environment/childEnv';
+
+const dir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-presence-'));
+
+/** A Hermes home whose `hermes-agent` is a source checkout, with or without a build. */
+const home = (build?: { platform: 'linux' | 'win32'; name: string; dir: string }): string => {
+    const root = dir();
+    const checkout = path.join(root, 'hermes-agent');
+    fs.mkdirSync(path.join(checkout, 'apps', 'desktop'), { recursive: true });
+    fs.writeFileSync(path.join(checkout, 'apps', 'desktop', 'package.json'), '{}');
+    fs.mkdirSync(path.join(checkout, '.git'), { recursive: true });
+    if (build) {
+        const app = path.join(checkout, 'apps', 'desktop', 'release', build.dir, build.name);
+        fs.mkdirSync(path.dirname(app), { recursive: true });
+        fs.writeFileSync(app, '');
+    }
+    return root;
+};
+
+describe('the Desktop build command', () => {
+    it('is Hermes\' own --build-only, which builds and does not launch', () => {
+        assert.deepStrictEqual(desktopBuildArgs(), ['desktop', '--build-only']);
+    });
+});
+
+/**
+ * The editor's own environment says "Electron, run as Node". A build that packs Electron, and the
+ * launcher that starts it, must not pass that on: the app exits 0 at once, silently.
+ */
+describe('the environment a child that starts Electron gets', () => {
+    it('drops the editor\'s run-as-node variable and keeps the rest', () => {
+        const env = electronCapableEnv({ ELECTRON_RUN_AS_NODE: '1', PATH: '/usr/bin', HOME: '/h' });
+        assert.strictEqual(env.ELECTRON_RUN_AS_NODE, undefined);
+        assert.strictEqual(env.PATH, '/usr/bin');
+        assert.strictEqual(env.HOME, '/h');
+    });
+
+    it('is what the build spawns with, even when this process has the variable set', () => {
+        const before = process.env.ELECTRON_RUN_AS_NODE;
+        process.env.ELECTRON_RUN_AS_NODE = '1';
+        try {
+            const options = desktopBuildOptions('/checkout', 'linux');
+            assert.strictEqual(options.env.ELECTRON_RUN_AS_NODE, undefined, 'the build never sees it');
+            assert.strictEqual(options.cwd, '/checkout');
+            assert.deepStrictEqual(options.stdio, ['ignore', 'pipe', 'pipe'], 'stdin closed, output read');
+            assert.strictEqual(options.windowsHide, true);
+            assert.strictEqual(options.shell, false, 'linux needs no shell');
+            assert.strictEqual(desktopBuildOptions('/checkout', 'win32').shell, true, 'windows does');
+        } finally {
+            if (before === undefined) {
+                delete process.env.ELECTRON_RUN_AS_NODE;
+            } else {
+                process.env.ELECTRON_RUN_AS_NODE = before;
+            }
+        }
+    });
+});
+
+describe('finding the Desktop on a machine', () => {
+    it('reads the Linux checkout: linux-unpacked/hermes', () => {
+        const root = home({ platform: 'linux', name: 'hermes', dir: 'linux-unpacked' });
+        const presence = desktopPresence('linux', root);
+        assert.strictEqual(presence.source, true, 'a checkout with .git is a source install');
+        assert.strictEqual(presence.checkout, path.join(root, 'hermes-agent'));
+        assert.strictEqual(presence.build, path.join(root, 'hermes-agent', 'apps', 'desktop', 'release', 'linux-unpacked', 'hermes'));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('reads the Windows checkout: win-unpacked\\Hermes.exe', () => {
+        const root = home({ platform: 'win32', name: 'Hermes.exe', dir: 'win-unpacked' });
+        const presence = desktopPresence('win32', root);
+        assert.strictEqual(presence.source, true);
+        assert.strictEqual(
+            presence.build,
+            path.join(root, 'hermes-agent', 'apps', 'desktop', 'release', 'win-unpacked', 'Hermes.exe'),
+        );
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('answers no build for a checkout that has none, and remembers it is a source install', () => {
+        const root = home();
+        const presence = desktopPresence('linux', root);
+        assert.strictEqual(presence.source, true);
+        assert.strictEqual(presence.build, null);
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('answers not-a-source-install for a packaged Hermes, so nothing is ever built there', () => {
+        const root = dir();
+        // A packaged install: no hermes-agent checkout, no .git, nothing to build in.
+        fs.mkdirSync(path.join(root, 'hermes-agent', 'apps', 'desktop'), { recursive: true });
+        const presence = desktopPresence('linux', root);
+        assert.strictEqual(presence.source, false);
+        assert.strictEqual(presence.checkout, null);
+        assert.strictEqual(presence.build, null);
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('takes the newest of several unpacked trees, as Hermes does', async () => {
+        const root = home({ platform: 'linux', name: 'hermes', dir: 'linux-unpacked' });
+        const older = path.join(root, 'hermes-agent', 'apps', 'desktop', 'release', 'linux-arm64-unpacked', 'hermes');
+        fs.mkdirSync(path.dirname(older), { recursive: true });
+        fs.writeFileSync(older, '');
+        const past = new Date(Date.now() - 60_000);
+        fs.utimesSync(older, past, past);
+        const found = findDesktopBuild(path.join(root, 'hermes-agent'), 'linux');
+        assert.strictEqual(found, path.join(root, 'hermes-agent', 'apps', 'desktop', 'release', 'linux-unpacked', 'hermes'));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('names the platform dirs Hermes names', () => {
+        const win = desktopExecutableCandidates('/r', 'win32');
+        assert.deepStrictEqual(win.map(p => path.basename(p)), ['Hermes.exe', 'Hermes.exe', 'Hermes.exe']);
+        assert.deepStrictEqual(win.map(p => path.basename(path.dirname(p))),
+            ['win-unpacked', 'win-ia32-unpacked', 'win-arm64-unpacked']);
+        const linux = desktopExecutableCandidates('/r', 'linux');
+        assert.deepStrictEqual(linux.map(p => path.basename(p)), ['hermes', 'Hermes', 'hermes', 'Hermes']);
+        assert.ok(linux.every(p => p.startsWith('/r/linux')));
+    });
+
+    it('finds no checkout when the home holds none', () => {
+        const root = dir();
+        assert.strictEqual(findHermesSourceCheckout(root), null);
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+});

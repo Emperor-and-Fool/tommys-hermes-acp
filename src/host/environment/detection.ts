@@ -20,7 +20,10 @@ import {
     formatDetectProgressPercent,
     formatDetectSummaryForReport,
 } from './detectFormat';
-import { detectHermesEnvironment } from './hermesEnvironmentDetect';
+import { detectHermesEnvironment, tryResolveHermesQuick } from './hermesEnvironmentDetect';
+import { buildDesktop as buildDesktopCli } from './desktopBuild';
+import type { DesktopBuildResult } from './desktopBuild';
+import { findHermesExecutable } from './profileDiscovery';
 import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from './hermesPathSetup';
 import { accessExecutable, agentVenv, venvHermesCandidates } from './hermesPaths';
 import type {
@@ -168,6 +171,28 @@ export class EnvironmentDetection {
         }
         this._setDetectContext(false, true);
         return report;
+    }
+
+    /**
+     * The Hermes executable to run: the configured path, resolved in the cheap pass first.
+     *
+     * Moved here from the composition root (M1): finding Hermes is this feature's subject, and its
+     * four callers — the memory limit, approvals, history and the notes mirror — want one answer.
+     */
+    public async resolveExecutable(): Promise<string | undefined> {
+        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
+        const quick = await tryResolveHermesQuick(configured);
+        if (quick) {
+            return quick;
+        }
+        return (await findHermesExecutable(configured)) || undefined;
+    }
+
+    /** Run Hermes' own Desktop build, unattended: the executable, the checkout, and its lines. */
+    public async buildDesktop(report: (line: string) => void): Promise<DesktopBuildResult> {
+        const executable = await this.resolveExecutable();
+        this._host.log(`Desktop build: ${executable ?? 'no Hermes executable was found'}`);
+        return buildDesktopCli(executable, report);
     }
 
     public async detectEnvironment(): Promise<void> {

@@ -44,6 +44,21 @@ export interface EditorLog {
 }
 
 /**
+ * A job that takes minutes and must not stop the user working.
+ *
+ * One notification shows the phase while it runs and removes itself when it ends; the pane is never
+ * blocked, so a chat can be used meanwhile. The feature owns the title and the phases (it knows what
+ * it is doing), this port only decides how the editor draws that.
+ */
+export interface EditorProgress {
+    /**
+     * Run `job` under `title`. `report` replaces the phase line under it; the job's own promise
+     * decides when the notification goes away, whether it succeeded or threw.
+     */
+    run(title: string, job: (report: (phase: string) => void) => Promise<void>): Promise<void>;
+}
+
+/**
  * The editor commands this extension runs by id.
  *
  * Each one is a named thing the user asked for, not a command string: callers say

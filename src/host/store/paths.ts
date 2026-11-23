@@ -59,6 +59,16 @@ export function profileStatePathFor(historyDir: string, sessionProfileId: string
 }
 
 /**
+ * The Desktop step's machine-wide facts: the last build attempt, and the lock one window holds.
+ *
+ * Above the profiles, like the workspace registry, and for the same reason: there is one Hermes
+ * Desktop per machine, not one per agent, and both windows of this data home see the same answer.
+ */
+export function desktopDirFor(historyDir: string): string {
+    return path.join(historyDir, 'desktop');
+}
+
+/**
  * The identity of a folder path: what makes two reports name the same folder.
  *
  * Windows has many spellings for one folder — the drive letter arrives as `C:` or `c:`, and the same

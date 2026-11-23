@@ -28,6 +28,11 @@ media/icon.svg
 scripts/**
 .github/**
 packaging/**
+# …except the Hermes patches: a user has to apply one of them to their own Hermes install, and a
+# Windows install can reach no other copy. They land at <extension>/packaging/hermes-patches/.
+!packaging/hermes-patches/**
+# …and the Windows launcher the tray step copies into our data home.
+!packaging/windows/**
 .mocharc.yml
 .vscode-test/**
 package-lock.json

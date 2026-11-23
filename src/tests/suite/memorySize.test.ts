@@ -180,10 +180,15 @@ describe('the dialog: a fixed recommendation, a look-only "Keep", and Hermes\' v
         // A lowering: limit 4,350 → 3,000, with the fill already under it. Two answers, in order.
         const lowered = dialog({ name: 'dev-vsc', fill: 2175, limit: 4350 }, 'other', '3000');
         lowered.asked.length = 0;
-        (lowered.size as unknown as { _host: { choices: { ask: unknown } } })._host.choices.ask =
-            async (message: string) => message.startsWith('Lower the limit')
+        const recordAndAnswer = async (message: string) => {
+            // The harness's own `ask` is replaced here, so it must keep recording as well as
+            // answering: `asked` is what the rest of this test reads.
+            lowered.asked.push(message);
+            return message === t('memorySizeLower', '4,350', '3,000')
                 ? t('memorySizeLowerConfirm')
                 : t('memorySizeApply');
+        };
+        (lowered.size as unknown as { _host: { choices: { ask: unknown } } })._host.choices.ask = recordAndAnswer;
         await lowered.size.run('id-dev');
         assert.deepStrictEqual(lowered.set, [{ id: 'id-dev', limit: 3000 }], 'lowering applied after both answers');
         assert.ok(lowered.asked.some(entry => entry.includes('fewer tokens')), 'and the cost is said as fewer');
@@ -197,7 +202,9 @@ describe('the dialog: a fixed recommendation, a look-only "Keep", and Hermes\' v
     });
 
     it('shows the same number, twice, as nothing to do', async () => {
-        const d = dialog(usage, 'other', '2200', t('memorySizeApply'));
+        // The typed number is the limit already in force, and it is not below the file: the file
+        // sits exactly at it, which is the case the dialog can answer with "nothing to do".
+        const d = dialog({ name: 'kitt', fill: 2200, limit: 2200 }, 'other', '2200', t('memorySizeApply'));
         await d.size.run('id-kitt');
         assert.deepStrictEqual(d.set, []);
         assert.deepStrictEqual(d.infos, [t('memorySizeUnchanged', '2,200', 'kitt')]);

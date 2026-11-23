@@ -31,6 +31,11 @@ media/icon.svg
 scripts/**
 .github/**
 packaging/**
+# …except the Hermes patches, which the secondant ships too: a user applies one of them to their own
+# Hermes install. They land at <extension>/packaging/hermes-patches/.
+!packaging/hermes-patches/**
+# …and the Windows launcher the tray step copies into our data home.
+!packaging/windows/**
 .mocharc.yml
 .vscode-test/**
 package-lock.json

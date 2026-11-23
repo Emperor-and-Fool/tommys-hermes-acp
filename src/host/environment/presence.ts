@@ -41,6 +41,8 @@ export class ProfilePresence {
     private _connected = false;
     /** The profile that connect landed on. Beats write this, never the current selection. */
     private _liveProfile = '';
+    /** When this pane was last used: the row's `activeAt`, which the other pane's item reads. */
+    private _activeAt = 0;
 
     constructor(private readonly _host: ProfilePresenceHost) {}
 
@@ -68,7 +70,32 @@ export class ProfilePresence {
     connected(): void {
         this._liveProfile = this._host.profile();
         this._connected = true;
+        // A connect is a switch, and a switch is the user being in this pane.
+        this._activeAt = Date.now();
         this.beat();
+    }
+
+    /**
+     * This pane was used: stamp the row, so the window's other pane knows which agent is being read.
+     *
+     * Nothing new is announced — the profile is still the one the connect landed on — and a pane
+     * that has not connected has no row to stamp, which is what an absent row already means.
+     */
+    touch(): void {
+        if (!this._connected || !this._host.live()) {
+            return;
+        }
+        this._activeAt = Date.now();
+        this.beat();
+    }
+
+    /** Told when the table changes: the window's other pane moved, and the item must follow it. */
+    watch(handler: () => void): () => void {
+        try {
+            return this._host.store.watch(handler);
+        } catch {
+            return () => undefined;
+        }
     }
 
     /** Say where this instance stands, from the recorded profile and the live connection. */
@@ -91,7 +118,12 @@ export class ProfilePresence {
             this._host.log(`Presence: this instance runs "${cliProfile}"`);
         }
         try {
-            this._host.store.write({ role: this._host.role, cliProfile, liveAt: Date.now() });
+            this._host.store.write({
+                role: this._host.role,
+                cliProfile,
+                liveAt: Date.now(),
+                activeAt: this._activeAt,
+            });
             this._announcing = true;
             this._announcedProfile = cliProfile;
         } catch (err) {

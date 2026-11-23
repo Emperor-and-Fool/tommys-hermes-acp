@@ -20,3 +20,15 @@ export interface CatalogSession {
     messageCount: number;
     updatedAt: number;
 }
+
+/**
+ * What a catalog read answered.
+ *
+ * The two halves are not interchangeable: `answered: false` is a Hermes without the method, or a
+ * read that failed — a catalog nobody has seen, which may not be read as "this profile has no
+ * sessions". An empty `sessions` is only ever an answered catalog. The reason is what the user is
+ * shown, so it is part of the answer rather than a log line beside it.
+ */
+export type CatalogAnswer =
+    | { answered: true; sessions: CatalogSession[] }
+    | { answered: false; reason: string };

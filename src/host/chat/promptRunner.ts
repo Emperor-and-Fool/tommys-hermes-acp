@@ -76,6 +76,8 @@ interface PendingPermission {
     resolve: (optionId: string | null) => void;
     /** Cleared on every exit — a timer that fires after an answer would post a second, wrong one. */
     timer: ReturnType<typeof setTimeout>;
+    /** Kept so a reloaded pane can be shown the card again instead of waiting out the timeout. */
+    request: PermissionRequest;
 }
 
 /** Whether a send may proceed, and whether the reader has already been told why not. */
@@ -87,8 +89,8 @@ export type SessionReadiness = { ok: true } | { ok: false; notified: boolean };
  * Holds the streaming state for the current prompt, the pending permission cards, the steer
  * counter and the send epoch (a switch or a detach bumps it, so a late chunk is dropped rather
  * than painted into the next tab), and `ensureSessionReady` — the single `session/new` site: a tab
- * that never had a Hermes session gets one on its first message; a tab that has history but lost
- * its session is refused rather than silently re-sessioned.
+ * that never had a Hermes session gets one on its first message, and so does a blank tab whose
+ * session Hermes refuses to resume; a tab that shows a conversation keeps it, and is told why.
  */
 export class PromptRunner {
     promptSessionId: string | undefined;
@@ -109,14 +111,6 @@ export class PromptRunner {
         private readonly permissionTimeoutMs: number = PERMISSION_TIMEOUT_MS,
     ) {}
 
-    /**
-     * Make sure the active tab has a live ACP session and that the client is bound to it.
-     *
-     * One session per tab. A tab with a bound session resumes it; a tab with history but no
-     * session is refused; only a blank tab creates one. A turn still running for a *different*
-     * tab is detached first — under one-session-per-tab that can only mean the active tab was
-     * replaced underneath it.
-     */
     /**
      * Hermes sends one whole message per chunk, not deltas, so these replace rather than
      * append. Kept here so the turn's text has exactly one owner.
@@ -197,6 +191,26 @@ export class PromptRunner {
     }
 
     /**
+     * Back on the tab whose turn is running: draw the prompt state it left behind.
+     *
+     * A tab switch repaints the pane from the tab's own transcript, which has no prompt in it, so
+     * the status and the two buffers have to be posted again — for that tab only, which `postScoped`
+     * enforces. A return to any other tab has nothing to restore.
+     */
+    restoreOwnerPromptUi(): void {
+        if (!this.promptSessionId || this.host.acpStatus() !== 'prompting') {
+            return;
+        }
+        this.postScoped({ type: 'status', status: 'prompting' });
+        if (this.lastThoughtText) {
+            this.postScoped({ type: 'addMessage', role: 'thought', text: this.lastThoughtText });
+        }
+        if (this.lastAssistantText) {
+            this.postScoped({ type: 'addMessage', role: 'assistant', text: this.lastAssistantText });
+        }
+    }
+
+    /**
      * End the turn that belongs to `fromSessionId`, keeping whatever had streamed.
      * A no-op when no turn is running or when the turn belongs to another tab.
      */
@@ -250,7 +264,7 @@ export class PromptRunner {
             // An unanswered card used to wait for the rest of the turn: the ACP request stayed
             // open, the agent waited, and nothing ever said which side had given up.
             const timer = setTimeout(() => this._expirePermission(id), this.permissionTimeoutMs);
-            this.pendingPermissions.set(id, { resolve, timer });
+            this.pendingPermissions.set(id, { resolve, timer, request });
             this.host.savePermissionRequest(id, request);
             this.host.post({
                 type: 'permissionRequest',
@@ -260,6 +274,25 @@ export class PromptRunner {
                 options: request.options,
             });
         });
+    }
+
+    /**
+     * Show the cards again after the pane was rebuilt.
+     *
+     * A pending card lives here, not in the webview: a reload (container move, view re-show) left
+     * the promise open with nothing on screen to answer, and the turn sat in `prompting` until the
+     * 24.8-day timeout — the pane reporting that as "still initializing".
+     */
+    replayPendingPermissions(): void {
+        for (const [id, pending] of this.pendingPermissions) {
+            this.host.post({
+                type: 'permissionRequest',
+                id,
+                title: pending.request.title,
+                detail: pending.request.detail,
+                options: pending.request.options,
+            });
+        }
     }
 
     /** The pane answered a card. Unknown ids are ignored — a stale click after a detach. */
@@ -362,7 +395,14 @@ export class PromptRunner {
     }
 
     /**
-     * Bind (or create) this tab's Hermes session.
+     * Make sure the active tab has a live ACP session and that the client is bound to it.
+     *
+     * One session per tab. A tab with a bound session resumes it; a refusal leaves the tab as it
+     * was, and a blank tab whose session was refused gets a session of its own — the state a synced
+     * session leaves on another machine, where every later message used to vanish. A tab that shows
+     * a conversation is never re-sessioned: it is told why, and keeps what it shows. A turn still
+     * running for a *different* tab is detached first — under one-session-per-tab that can only
+     * mean the active tab was replaced underneath it.
      *
      * The answer carries who said what: `notified` means this function already told the reader the
      * specific reason, so the caller must not add a second, vaguer line on top of it. Two messages
@@ -379,17 +419,20 @@ export class PromptRunner {
         }
         const sessionId = this.host.sessionId();
         const bound = this.host.tabs().find((rec) => rec.id === sessionId)?.hermesSessionId;
+        // Hermes may refuse a bound session — one synced from another machine keeps a cwd this one
+        // never had. The refusal is kept, not dropped: an empty tab can still be given a session of
+        // its own, and a tab that shows a conversation must hear why it cannot go on.
+        let refused: string | undefined;
         if (bound && acp.activeSessionId !== bound) {
             try {
                 await acp.loadSession(this.host.resolveCwdFor(sessionId), bound);
                 this.host.log(`Switched Hermes session to ${bound}`);
             } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.host.log(`Resume failed for ${bound}: ${msg}`);
-                this.host.post({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', bound) });
-                return { ok: false, notified: true };
+                refused = err instanceof Error ? err.message : String(err);
+                this.host.log(`Resume failed for ${bound}: ${refused}`);
             }
-        } else if (!bound) {
+        }
+        if (!bound || refused !== undefined) {
             // A conversation Hermes knows about has user or assistant turns. A peer card waiting
             // for a decision is not one: it is a draft, and refusing here left a fresh tab with a
             // received forward unable to start its session at all.
@@ -400,10 +443,15 @@ export class PromptRunner {
                 // This tab shows a conversation whose Hermes session is gone; creating a new
                 // one here would silently replace it, so say so and leave the pane alone.
                 this.host.log(`No Hermes session bound to tab ${sessionId}`);
-                this.host.post({ type: 'addMessage', role: 'assistant', text: t('sessionNotFound', sessionId) });
+                const text = refused !== undefined && bound
+                    ? t('sessionResumeFailed', bound, refused)
+                    : t('sessionNotFound', sessionId);
+                this.host.post({ type: 'addMessage', role: 'assistant', text });
                 return { ok: false, notified: true };
             }
-            // Blank tab: the first message is what creates its session.
+            // Blank tab: the first message is what creates its session. A tab whose session Hermes
+            // refused is a blank tab holding a stale id, not a conversation to protect — that is the
+            // state a failed resume leaves, and it used to swallow every later message.
             await acp.newSession(this.host.resolveCwdFor(sessionId));
             if (this.host.acpStatus() !== 'ready') {
                 // `newSession` keeps the connection when the agent refuses and reports through

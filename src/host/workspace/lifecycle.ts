@@ -14,6 +14,7 @@ import type { AcpClient, CatalogSession, ReplayMessage } from '../acp/AcpClient'
 import type { AttachmentStore } from '../cache/attachments';
 import { renameSession } from '../cache/catalog';
 import { buildReplayMessages } from '../cache/replay';
+import type { CatalogVoice } from './catalogNotice';
 import type { Sessions } from './sessions';
 
 import { t } from '../i18n';
@@ -91,6 +92,11 @@ export interface TabLifecycleHost {
     workspaceState: KeyValueState;
     /** `tommys.debugTabSwitch`: four lines per switch, nothing else, off by default. */
     debugTabSwitch(): boolean;
+    /**
+     * The window's one notice for a catalog Hermes does not answer. Told once per connect, and it
+     * names the patch the installed Hermes needs — the failure is that patch's absence.
+     */
+    catalog: CatalogVoice;
 }
 
 export class TabLifecycle {
@@ -101,6 +107,12 @@ export class TabLifecycle {
     private _renderReplayOnLoad = false;
     /** Hermes session id this workspace last had open (workspaceState-backed). */
     private _persistedHermesSessionId = '';
+    /**
+     * Whether the last catalog read answered. An unknown catalog is not an empty one: while this
+     * is false, no tab loses its link and none is adopted, because nothing is known about which
+     * ids exist.
+     */
+    private _catalogKnown = true;
 
     constructor(private readonly _host: TabLifecycleHost) {
         this._persistedHermesSessionId = this._host.workspaceState.get<string>('hermesSessionId') || '';
@@ -134,10 +146,20 @@ export class TabLifecycle {
             return null;
         }
         try {
-            return await acp.listSessionCatalog();
+            const answer = await acp.listSessionCatalog();
+            // `answered: false` is "Hermes did not answer a catalog", not "the profile has none":
+            // the difference is what keeps the strip and its links, and it is the notice's cue.
+            this._catalogKnown = answer.answered;
+            if (!answer.answered) {
+                void this._host.catalog.failed(answer.reason);
+                return null;
+            }
+            return answer.sessions;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            this._host.log(`session/catalog failed: ${msg}`);
+            this._catalogKnown = false;
+            // Not awaited: the notice waits for a button, and a connect must not wait for the user.
+            void this._host.catalog.failed(msg);
             return null;
         }
     }
@@ -160,7 +182,15 @@ export class TabLifecycle {
         if (!acp) {
             return;
         }
+        this._host.catalog.beginConnect();
         await this.syncFromHermes(cwd);
+        if (!this._catalogKnown) {
+            // An unknown catalog is not an empty one. Nothing here may conclude that a session is
+            // gone — that is what unbound the tabs and emptied the strip on a Hermes without the
+            // patch — so every tab keeps its link until a read answers.
+            this._host.log('Session catalog unanswered: leaving the tabs and their links as they are');
+            return;
+        }
         const session = this._host.session;
         const tabBound = session.tabs.find(rec => rec.id === session.activeId)?.hermesSessionId;
         const remembered = tabBound || this._persistedHermesSessionId;

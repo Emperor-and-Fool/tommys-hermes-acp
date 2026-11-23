@@ -17,6 +17,7 @@ export interface LocaleStrings {
     newChat: string;
     noActiveTabHint: string;
     sessionNotFound: string;
+    sessionResumeFailed: string;
     searchOpen: string;
     searchClose: string;
     jumpToTop: string;
@@ -409,6 +410,45 @@ export interface LocaleStrings {
     memorySizeFailed: string;
     memorySizeUnchanged: string;
     memorySizeNoAgent: string;
+    budgetPrimary: string;
+    budgetSecondant: string;
+    budgetConnected: string;
+    budgetConnecting: string;
+    budgetNotConnected: string;
+    budgetUnavailable: string;
+    budgetNothingToShow: string;
+    budgetNoApi: string;
+    budgetNoProvider: string;
+    budgetNoKey: string;
+    budgetUnknownError: string;
+    budgetPeak: string;
+    budgetOffPeak: string;
+    budgetPeakHours: string;
+    budgetClickRefresh: string;
+    /** The session catalog went unanswered: the patch this Hermes needs, and what it answered. */
+    catalogNeedsPatch: string;
+    catalogNoPatchKnown: string;
+    catalogOpenPatchFolder: string;
+    catalogDetails: string;
+    catalogDetailsBody: string;
+    catalogNoFiles: string;
+    /** Hermes Desktop prepared once, when the machine has none (setup step, H2a). */
+    desktopPreparing: string;
+    desktopReady: string;
+    desktopFailed: string;
+    desktopFailedBody: string;
+    desktopTryAgain: string;
+    desktopDetails: string;
+    /** Windows' start-in-tray: the first-run question, and what came of the answer. */
+    trayAsk: string;
+    trayAskYes: string;
+    trayAskLater: string;
+    trayAskNever: string;
+    traySettingOff: string;
+    trayInstalled: string;
+    trayRemoved: string;
+    trayFailed: string;
+    trayWindowsOnly: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

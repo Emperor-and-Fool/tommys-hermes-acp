@@ -10,7 +10,10 @@ import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
 import { ModelState } from './models/modelState';
+import { Budget } from './budget/budget';
+import { fetchDeepSeekBalance } from './budget/providers/deepseek';
 import { normalizeHermesCliProfile } from './environment/hermesProfile';
+import { credentialFor } from './environment/providerKey';
 import { EnvironmentDetection } from './environment/detection';
 import { ensureDataHome, onStoreWriteError } from './store/connection';
 import { runMigrations } from './store/migrations';
@@ -26,7 +29,7 @@ import type { PaneMailEnvelope } from '../shared/paneMail';
 import { peerStateAfter } from '../shared/chat';
 import type { ChatMessage, HistoryRef } from '../shared/chat';
 import { peerTurnBlock, peerTurnText } from './chat/peerTurn';
-import { buildWebviewHtml, identityArtwork, mediaUri, webviewResources } from './webview/html';
+import { buildWebviewHtml, configMessage, pluginInfoMessage, webviewResources } from './webview/html';
 import { isExternalLinkAllowed } from './webview/externalLinks';
 import { Surfaces } from './webview/surfaces';
 import { HistoryViewer } from './webview/historyViewer';
@@ -38,6 +41,7 @@ import { createEditorFolders } from './editor/folders';
 import { createEditorNotices } from './editor/notices';
 import { createEditorChoices } from './editor/choices';
 import { createEditorSettings } from './editor/settings';
+import { createEditorStatusBar } from './editor/statusBar';
 import type { EditorLog } from '../shared/editor';
 import { WorkspaceCwd } from './workspace/cwd';
 import { RootPicker } from './workspace/rootPicker';
@@ -49,11 +53,15 @@ import { Sessions } from './workspace/sessions';
 import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
+import { CatalogNotice } from './workspace/catalogNotice';
+import { DesktopSetup } from './desktop/desktop';
+import { DesktopStore } from './desktop/store';
+import { createEditorProgress } from './editor/progress';
+import { desktopPresence } from './environment/desktopBuild';
+import { startupFolder } from './environment/desktopTray';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
-import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
-import { findHermesExecutable } from './environment/profileDiscovery';
 import { Approvals } from './permissions/approvals';
 import { PermissionsStore } from './permissions/store';
 import type { HistoryPick } from './webview/historyViewer';
@@ -64,10 +72,6 @@ const PEER_CARD_TIMEOUT_MS = 120_000;
 
 export class App implements vscode.WebviewViewProvider {
 
-    /**
-     * The profile this instance is talking to. The secondant reads it through `activate()`'s
-     * return value; nothing else is exported from the extension on purpose.
-     */
     /**
      * The profile the *other* extension is on, when it has told us. Withheld from this pane's
      * picker for the same reason it withholds ours: the two may not share one profile, and the
@@ -95,6 +99,8 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The ⋯ menu's agent group: the notes folder, the mirror, the memory limit. */
     get notes() { return { ...this._mirror.commands, memorySize: () => this._size.run(this._session.sessionProfileId) }; }
+
+    get desktop() { return { setUpTray: () => this._desktop.setUpTray(), removeTray: () => this._desktop.removeTray() }; }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
@@ -145,8 +151,6 @@ export class App implements vscode.WebviewViewProvider {
     private _session!: Sessions;
 
     // ---- Lifecycle ----
-    /** Every live renderer: the sidebar view and/or the single chat panel. */
-    /** Where the conversation is rendered: the side bar or an editor tab. */
     /**
      * Turn-scoped state and session acquisition. The host literals are the whole coupling
      * between a turn and the provider: every member here stays private, and this is the one
@@ -190,14 +194,23 @@ export class App implements vscode.WebviewViewProvider {
     /** Hermes: process, link, events, teardown. */
     private readonly _connection: Connection;
 
-
     /** Which profile/agent we connect to, and which the picker offers. */
     private readonly _profiles: Profiles;
 
     /** This window's row in the cross-window presence table: who runs what, for every picker. */
     private readonly _presence: ProfilePresence;
 
-    /** This tab's own messages offered to the picker; not an earlier session. */
+    /** The window's one status bar item: the shown agent's link, and its budget (host/budget). */
+    private readonly _budget = new Budget({
+        item: createEditorStatusBar(),
+        own: () => ({ profile: this._profiles.resolveTarget().cliProfile, label: this._profiles.displayName, connected: !!this._connection.acp }),
+        other: () => this._presence.live().find(row => row.cliProfile === this._siblingProfile && row.role !== this._id.role),
+        watch: (handler) => this._presence.watch(handler),
+        credentials: (profile) => credentialFor(profile),
+        balance: fetchDeepSeekBalance,
+        log: (line) => this._log(line),
+    });
+
     /** Finding and starting Hermes on this machine, plus the configure panel around it. */
     private readonly _detection = new EnvironmentDetection({
         post: (msg) => this._postMessage(msg),
@@ -278,10 +291,20 @@ export class App implements vscode.WebviewViewProvider {
      */
     private readonly _historyStages: HistoryStages = new HistoryStages();
 
-    /** The approval mode last read or written, per Hermes CLI profile: the card's switch shows it. */
-
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
+
+    /** Hermes Desktop, prepared once per machine when it is missing (H2a's named step). */
+    private readonly _desktop: DesktopSetup;
+
+    /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
+    private readonly _catalogNotice = new CatalogNotice({
+        hermesVersion: () => this._connection.acp?.agentVersion || '',
+        patchFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'hermes-patches'),
+        info: (message) => this._notices.info(message),
+        choices: createEditorChoices(),
+        log: (line) => this._log(line),
+    });
 
     private readonly _extensionId: string;
 
@@ -338,6 +361,20 @@ export class App implements vscode.WebviewViewProvider {
         onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
+        this._desktop = new DesktopSetup(new DesktopStore(this._historyDir), {
+            platform: () => process.platform,
+            isPrimary: () => this._id.role === 'primary',
+            presence: async () => desktopPresence(),
+            build: (report) => this._detection.buildDesktop(report),
+            progress: createEditorProgress(),
+            notices: this._notices,
+            choices: createEditorChoices(),
+            log: (line) => this._log(line),
+            now: () => Date.now(),
+            scriptFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'windows'),
+            startupFolder: () => startupFolder(),
+            setContext: (key, value) => this._commands.setContext(key, value),
+        });
         // The workspace registry and its per-workspace rows are built first: a pane's profile
         // pick is saved per workspace, and the start reads it before anything connects. The roots
         // live with the workspace record, so the locator reads and writes them there; the store
@@ -381,7 +418,7 @@ export class App implements vscode.WebviewViewProvider {
             currentAgentId: () => this._session.sessionProfileId,
             usage: (id: string) => this._profiles.memoryUsage(id),
             setLimit: async (id: string, limit: number) =>
-                this._profiles.setMemoryLimit(id, await this._resolveHermesExecutable(), limit),
+                this._profiles.setMemoryLimit(id, await this._detection.resolveExecutable(), limit),
         };
         this._notes = new AgentNotes(notesStore, notesHost);
         this._mirror = new NotesMirror(notesStore, this._notes, notesHost);
@@ -409,7 +446,7 @@ export class App implements vscode.WebviewViewProvider {
                 post: (msg) => this._postMessage(msg),
                 log: (line) => this._log(line),
                 profile: () => this._profiles.resolveTarget().cliProfile,
-                executable: () => this._resolveHermesExecutable(),
+                executable: () => this._detection.resolveExecutable(),
                 acp: () => this._connection.acp,
                 activeSessionBusy: () => this._connection.acp?.status === 'prompting',
                 onRunEnded: (handler) => this._connection.runEnded.on(handler),
@@ -481,6 +518,7 @@ export class App implements vscode.WebviewViewProvider {
             post: (msg) => this._postMessage(msg),
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
+            catalog: this._catalogNotice,
             resolveCwd: () => this._cwd.defaultFolderPath(),
             activeProject: () => this._projects.activeProject,
             resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
@@ -490,7 +528,7 @@ export class App implements vscode.WebviewViewProvider {
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
-            syncPromptUiIfReturningToOwner: () => this._syncPromptUiIfReturningToOwner(),
+            syncPromptUiIfReturningToOwner: () => this._turn.restoreOwnerPromptUi(),
             snapshotModelFromProfile: () => this._models.snapshotFromProfile(),
             saveCatalog: () => this._session.saveCatalog(),
             saveCurrent: () => this._session.saveCurrent(),
@@ -563,38 +601,17 @@ export class App implements vscode.WebviewViewProvider {
                 void this._onConfigurationChanged(affects);
             })
         );
+        // Last, and only here: the item draws once as it starts, and its first draw asks this
+        // window for the connection, the profile and the presence table — all three exist now.
+        this._budget.start();
+        // Last: it is per machine, so it starts once the window it reports into is whole.
+        void this._desktop.start();
     }
 
     private _otherSessionIsPrompting(): boolean {
         return this._connection.acp?.status === 'prompting'
             && !!this._turn.promptSessionId
             && this._turn.promptSessionId !== this._session.activeId;
-    }
-
-    private _syncPromptUiIfReturningToOwner(): void {
-        if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._session.activeId) {
-            return;
-        }
-        if (this._connection.acp?.status !== 'prompting') {
-            return;
-        }
-        this._postMessage({ type: 'status', status: 'prompting', sessionId: this._session.activeId });
-        if (this._turn.lastThoughtText) {
-            this._postMessage({
-                type: 'addMessage',
-                role: 'thought',
-                text: this._turn.lastThoughtText,
-                sessionId: this._session.activeId,
-            });
-        }
-        if (this._turn.lastAssistantText) {
-            this._postMessage({
-                type: 'addMessage',
-                role: 'assistant',
-                text: this._turn.lastAssistantText,
-                sessionId: this._session.activeId,
-            });
-        }
     }
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
@@ -624,10 +641,12 @@ export class App implements vscode.WebviewViewProvider {
         }
         if (!readiness.ok) {
             // The pane keeps its history, and the reader gets one reason: the specific one when
-            // ensureSessionReady could name it, the generic one only when it could not.
+            // ensureSessionReady could name it, the generic one only when it could not. Either way
+            // the text goes back into the composer: the pane emptied it before the agent answered.
             if (!readiness.notified) {
                 this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
             }
+            this._postMessage({ type: 'insertInput', text });
             return;
         }
         const imageCount = images?.length ?? 0;
@@ -817,7 +836,7 @@ export class App implements vscode.WebviewViewProvider {
      * really can return a session with nothing in it.
      */
     private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
-        const executable = await this._resolveHermesExecutable();
+        const executable = await this._detection.resolveExecutable();
         if (!executable) {
             this._log('History viewer: no Hermes executable found; cannot fetch the transcript');
             throw new Error('no Hermes executable found');
@@ -857,7 +876,7 @@ export class App implements vscode.WebviewViewProvider {
     private async _lookupHistoryIds(tabId: string, pick: HistoryPick): Promise<void> {
         let match: { ids: Array<number | null>; from?: number; to?: number } | null = null;
         try {
-            const executable = await this._resolveHermesExecutable();
+            const executable = await this._detection.resolveExecutable();
             if (executable) {
                 const exported = await exportSessionMessages(executable, pick.ref.profile, pick.ref.sessionId);
                 if (exported.length) {
@@ -897,15 +916,6 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** The executable the connection would start: the configured path first, then the search. */
-    private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = this._settings.get<string>('path');
-        const quick = await tryResolveHermesQuick(configured);
-        if (quick) {
-            return quick;
-        }
-        return (await findHermesExecutable(configured)) || undefined;
-    }
-
     /** The chip's X: drop the active tab's pick and say so. */
     public clearHistoryStaged(): void {
         this._historyStages.clear(this._session.activeId);
@@ -945,7 +955,13 @@ export class App implements vscode.WebviewViewProvider {
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
         const host = this._routerHost(surface);
-        webview.onDidReceiveMessage((message) => handleWebviewMessage(message as PaneToHost, host));
+        webview.onDidReceiveMessage((message) => {
+            // A word from a pane is that pane being used: the item follows the last one active, and
+            // the presence row is what tells the window's other pane about it.
+            this._budget.touch();
+            this._presence.touch();
+            handleWebviewMessage(message as PaneToHost, host);
+        });
     }
 
     /** A new pane knows nothing: replay the live state instead of leaving placeholders. */
@@ -958,11 +974,11 @@ export class App implements vscode.WebviewViewProvider {
         this._syncWebviewLocale();
         this._postPluginInfo();
         this._session.postList();
-        // The tree is its own message and nothing else re-sends it: a fresh pane that never
-        // hears it draws every tab on the plane.
+        // The tree is its own message: a fresh pane that never hears it draws every tab on the plane.
         this._projects.postList();
         // A dialog that came due while this pane was hidden is said again now.
         this._rootPicker.republish();
+        this._turn.replayPendingPermissions(); // why: promptRunner.ts, replayPendingPermissions
         this._profiles.postList();
         this._session.postHidden();
         this._postConfig();
@@ -1063,34 +1079,19 @@ export class App implements vscode.WebviewViewProvider {
             // The card is about to ask for a decision; its switch needs the current mode now.
             this._approvals.post();
         }
+        // The item says whether this pane is connected; a status that carries a reason is why not.
+        if (msg.type === 'status') {
+            this._budget.noteStatus(msg.status, msg.message);
+        }
     }
 
-    private _postConfig(): void {
-        this._postMessage({
-            type: 'config',
-            showThoughts: this._settings.get<boolean>('showThoughts', true),
-            showToolCalls: this._settings.get<boolean>('showToolCalls', true),
-        });
-    }
+    private _postConfig(): void { this._postMessage(configMessage(this._settings)); }
 
     private _postPluginInfo(): void {
-        const info = this._env.extensionInfo(this._extensionId);
-        let iconUri = '';
-        const iconWebview = this._surfaces.iconWebview;
-        if (iconWebview) {
-            // The identity's own mark: the secondant is orange by definition, so this must not be
-            // a fixed `icon.png` — see `identityArtwork` in webview/html.ts.
-            iconUri = mediaUri(this._extensionUri, iconWebview, identityArtwork(this._id.role));
-        }
-        this._postMessage({
-            type: 'pluginInfo',
-            displayName: info.displayName || 'Tommys Hermes ACP',
-            version: info.version,
-            publisher: info.publisher,
-            description: info.description,
-            repository: info.repository,
-            iconUri,
-        });
+        this._postMessage(pluginInfoMessage({
+            env: this._env, extensionId: this._extensionId, role: this._id.role,
+            extensionUri: this._extensionUri, iconWebview: this._surfaces.iconWebview,
+        }));
     }
 
     private _getHtml(target?: vscode.Webview): string {
@@ -1375,9 +1376,7 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    private _ownProfile(): string {
-        return this._profiles.displayName || this._profiles.selectionId || '';
-    }
+    private _ownProfile(): string { return this._profiles.displayName || this._profiles.selectionId || ''; }
 
     private _startPaneMail(): void {
         const host = {
@@ -1465,6 +1464,7 @@ export class App implements vscode.WebviewViewProvider {
         this._output.dispose();
         this._profileListeners.clear();
         this._presence.dispose();
+        this._budget.dispose();
     }
 
 }
