@@ -128,7 +128,7 @@ describe('connect: the catalog does not answer', () => {
                 activeSessionId: 'hermes-throwaway',
                 status: 'ready',
                 // A Hermes without the method: the request answers nothing, no error.
-                listSessionCatalog: async () => null,
+                listSessionCatalog: async () => ({ answered: false, reason: 'the agent answered no session catalog' }),
                 loadSession: async () => {
                     throw new Error('must not be called');
                 },
@@ -168,8 +168,90 @@ describe('connect: the catalog does not answer', () => {
         await new TabLifecycle(host).resumeOrAdopt('/work');
 
         assert.strictEqual(told.length, 1, 'the notice is told about the missing answer too');
-        assert.ok(/no session catalog/i.test(told[0]), `and that it was an answer, not an error: ${told[0]}`);
+        assert.ok(/no session catalog/i.test(told[0]), `the reason is the agent's own: ${told[0]}`);
         assert.deepStrictEqual(session.tabs.map(rec => rec.hermesSessionId), ['hermes-a'], 'the link survives');
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+});
+
+/**
+ * The other side of the same edge: an answered catalog that is empty *is* empty.
+ *
+ * This is what `?? []` would destroy. If an unanswered read collapsed into `[]`, this case and the
+ * two above would behave the same — and the dead bindings would come back silently.
+ */
+describe('connect: the catalog answers, and it is empty', () => {
+    it('concludes that the remembered session is gone, because Hermes said so', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-catalog-empty-'));
+        const session = new Sessions(dir, 'scope', {
+            post: () => {},
+            log: () => {},
+            updatePanelTitle: () => {},
+            modelLabel: () => undefined,
+            currentWorkspaceId: () => '',
+            knownWorkspaceIds: () => [],
+            activeChanged: () => {},
+        }, new TabStore(dir, 'scope'));
+        session.activeId = 'tab-a';
+        session.tabs = [{ id: 'tab-a', title: 'A', createdAt: 0, updatedAt: 0, hermesSessionId: 'hermes-a' }];
+
+        const told: string[] = [];
+        const logged: string[] = [];
+        const host = {
+            acp: () => ({
+                activeSessionId: 'hermes-throwaway',
+                status: 'ready',
+                listSessionCatalog: async () => ({ answered: true, sessions: [] }),
+                loadSession: async () => {
+                    throw new Error('nothing to load: the catalog is empty');
+                },
+            }),
+            session,
+            post: () => {},
+            postTo: () => {},
+            log: (line: string) => {
+                logged.push(line);
+            },
+            resolveCwd: () => '/work',
+            resolveCwdFor: () => '/work',
+            attachments: { hydrateImages: () => [] },
+            promptSessionId: () => undefined,
+            detachActivePrompt: async () => {},
+            otherSessionIsPrompting: () => false,
+            syncModelStateForCurrentSession: async () => {},
+            syncPromptUiIfReturningToOwner: () => {},
+            snapshotModelFromProfile: () => {},
+            saveCatalog: () => true,
+            saveCurrent: () => {},
+            ensureRegistered: () => {},
+            postSessionList: () => {},
+            postHistoryState: () => {},
+            dropHistoryStage: () => {},
+            activate: () => {},
+            enqueueChatOp: () => {},
+            openSessionSurface: () => {},
+            workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+            debugTabSwitch: () => false,
+            catalog: {
+                beginConnect: () => {},
+                failed: async (reason: string) => {
+                    told.push(reason);
+                },
+            },
+        } as unknown as TabLifecycleHost;
+
+        await new TabLifecycle(host).resumeOrAdopt('/work');
+
+        assert.deepStrictEqual(told, [], 'an answered catalog is not a failure');
+        assert.ok(
+            logged.some(line => line.includes('no longer lists')),
+            `the answered-empty catalog is acted on: ${logged.join(' | ')}`,
+        );
+        assert.ok(
+            !logged.some(line => line.includes('leaving the tabs and their links')),
+            'the unknown-catalog path is not taken',
+        );
 
         fs.rmSync(dir, { recursive: true, force: true });
     });

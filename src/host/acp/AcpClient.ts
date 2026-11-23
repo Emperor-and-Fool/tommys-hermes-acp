@@ -31,9 +31,9 @@ import {
     formatToolCallDisplay,
     parseToolCallSessionUpdate,
 } from './toolCallUpdate';
-import type { CatalogSession, PermissionOption } from '../../shared/acp';
+import type { CatalogAnswer, CatalogSession, PermissionOption } from '../../shared/acp';
 import { isSteerNotice } from './steerNotice';
-export type { CatalogSession, PermissionOption } from '../../shared/acp';
+export type { CatalogAnswer, CatalogSession, PermissionOption } from '../../shared/acp';
 
 /**
  * The sentence a failed turn shows: the error's message, and Hermes' own reason when it sent one.
@@ -819,26 +819,26 @@ export class AcpClient {
     }
 
     /**
-     * Every session Hermes has for this profile, hidden ones included; null when it did not answer
-     * a catalog at all.
+     * Every session Hermes has for this profile, hidden ones included.
      *
      * Extension methods are ``_``-prefixed ACP requests; the agent answers from its own
      * session store, so the flag and the tabs can never disagree with Hermes.
      *
-     * null and ``[]`` are different answers. A Hermes without the patch either fails the request or
-     * answers nothing, and reading that as "this profile has no sessions" empties the tab strip —
-     * so the missing answer is null, and the caller says why instead of acting on it.
+     * The answer says whether there was one. A Hermes without the patch either fails the request or
+     * answers nothing, and that is not "this profile has no sessions" — reading it as one empties
+     * the tab strip. An empty list is only ever an answered catalog; a `never` carries the reason,
+     * which is what the caller shows.
      */
-    async listSessionCatalog(cwd?: string): Promise<CatalogSession[] | null> {
+    async listSessionCatalog(cwd?: string): Promise<CatalogAnswer> {
         if (!this._conn) {
-            return null;
+            return { answered: false, reason: 'not connected' };
         }
         const response = await this._conn.agent.request(
             '_session/catalog' as any,
             (cwd ? { cwd } : {}) as any,
         ) as any;
         if (!response || !Array.isArray(response.sessions)) {
-            return null;
+            return { answered: false, reason: 'the agent answered no session catalog' };
         }
         const rows = response.sessions;
         return rows
@@ -852,6 +852,7 @@ export class AcpClient {
                 updatedAt: Number(row?.updated_at ?? row?.updatedAt ?? 0) * 1000 || 0,
             }))
             .filter((row: CatalogSession) => row.sessionId.length > 0);
+        return { answered: true, sessions: rows };
     }
 
     /** Hide/unhide one Hermes session. The tab list is exactly this flag. */

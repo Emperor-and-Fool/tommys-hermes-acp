@@ -174,9 +174,12 @@ describe('resumeOrAdopt: the load goes to the tab\'s own folder', () => {
             acp: () => ({
                 activeSessionId: 'hermes-throwaway',
                 status: 'ready',
-                listSessionCatalog: async () => ([
-                    { sessionId: 'hermes-rooted', title: 'Rooted', hidden: false, messageCount: 2, updatedAt: 1 },
-                ]),
+                listSessionCatalog: async () => ({
+                    answered: true,
+                    sessions: [
+                        { sessionId: 'hermes-rooted', title: 'Rooted', hidden: false, messageCount: 2, updatedAt: 1 },
+                    ],
+                }),
                 loadSession: async (cwd: string, sessionId: string) => {
                     loaded.push({ cwd, sessionId });
                 },

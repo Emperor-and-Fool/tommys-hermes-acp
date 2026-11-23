@@ -146,14 +146,15 @@ export class TabLifecycle {
             return null;
         }
         try {
-            const rows = await acp.listSessionCatalog();
-            // null is "Hermes did not answer a catalog", not "the profile has none": the difference
-            // is what keeps the strip and its links, and it is the notice's cue.
-            this._catalogKnown = rows !== null;
-            if (rows === null) {
-                void this._host.catalog.failed('the agent answered no session catalog (is the patch applied?)');
+            const answer = await acp.listSessionCatalog();
+            // `answered: false` is "Hermes did not answer a catalog", not "the profile has none":
+            // the difference is what keeps the strip and its links, and it is the notice's cue.
+            this._catalogKnown = answer.answered;
+            if (!answer.answered) {
+                void this._host.catalog.failed(answer.reason);
+                return null;
             }
-            return rows;
+            return answer.sessions;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             this._catalogKnown = false;
