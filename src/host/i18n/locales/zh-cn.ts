@@ -469,6 +469,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     budgetNoApi: '“{0}”提供商没有余额接口',
     budgetNoProvider: '配置档中没有指定提供商',
     budgetNoKey: '配置档中没有 {0}',
+    budgetUnknownError: '没有给出原因',
     budgetPeak: '高峰计价',
     budgetOffPeak: '非高峰计价（半价）',
     budgetPeakHours: '高峰时段：09:00-12:00 和 14:00-18:00（UTC+8）；周末全天按非高峰计价。',

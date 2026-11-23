@@ -57,7 +57,7 @@ export interface BudgetItem {
     dispose(): void;
 }
 
-/** A balance, or the words for why there is none to show. */
+/** A balance, or the words for why there is no amount to show. */
 export interface BudgetLine {
     /** `12.34`, and the currency it is in: empty when there is no amount to show. */
     amount: string;
@@ -65,6 +65,11 @@ export interface BudgetLine {
     low: boolean;
     /** The billing period now, for a provider whose clock this build knows. */
     period?: PricingPeriod;
+    /**
+     * The reading could not be made — the endpoint refused, timed out or answered nonsense. A missing
+     * provider or key is not this: nothing is unreachable when there is nothing to reach.
+     */
+    failed: boolean;
     /** Why no amount is shown. Empty when one is. */
     reason: string;
 }
@@ -90,6 +95,8 @@ export class Budget {
     private _unwatch?: () => void;
     /** A connect in flight: a status, not a client — the pane is between the two. */
     private _connecting = false;
+    /** The last error the pane reported, in Hermes' own words, until a status clears it. */
+    private _linkError = '';
     /** When this pane was last used. The other pane's row carries its own moment. */
     private _activeAt = 0;
     /** One reading per key, and the key is the map's name and is kept nowhere else. */
@@ -124,9 +131,18 @@ export class Budget {
         void this.tick();
     }
 
-    /** The pane's link moved. `connecting` is a status; every other one settles the item. */
-    noteStatus(status: string): void {
+    /**
+     * The pane's link moved. `connecting` is a status; `error` carries the reason, and the item says
+     * it in red — an endpoint that cannot be reached arrives here whether a turn or a session found
+     * it, and it stays until a status says the pane is up again.
+     */
+    noteStatus(status: string, message?: string): void {
         this._connecting = status === 'connecting';
+        if (status === 'error') {
+            this._linkError = (message || '').trim() || t('budgetUnknownError');
+        } else if (status === 'ready' || status === 'connecting') {
+            this._linkError = '';
+        }
         void this.tick();
     }
 
@@ -169,7 +185,9 @@ export class Budget {
     /** Read every profile that has no fresh reading. One read at a time; a second call joins it. */
     private _read(force: boolean): Promise<void> {
         if (this._reading) {
-            return this._reading;
+            // A click must not be swallowed by a beat that is already running: wait for it, then
+            // read for real. (Joining it would answer with the cache the click wanted to bypass.)
+            return force ? this._reading.then(() => this._read(true)) : this._reading;
         }
         const profiles = this._profiles();
         if (!profiles.length) {
@@ -197,13 +215,14 @@ export class Budget {
                 amount: '',
                 currency: '',
                 low: false,
+                failed: false,
                 reason: provider ? t('budgetNoApi', provider) : t('budgetNoProvider'),
             });
             return;
         }
         if (!key) {
             // The variable is named, never the value: there is none to name.
-            this._lines.set(profile, { amount: '', currency: '', low: false, reason: t('budgetNoKey', keyName) });
+            this._lines.set(profile, { amount: '', currency: '', low: false, failed: false, reason: t('budgetNoKey', keyName) });
             return;
         }
         const cached = this._cache.get(key);
@@ -243,6 +262,8 @@ export class Budget {
     private _render(): void {
         const shown = this._shown();
         const line = this._lines.get(shown.profile);
+        const failure = shown.link === 'on' ? this._failure(shown.profile, line) : '';
+        const low = shown.link === 'on' && !!line && line.low && !failure;
         const amount = shown.link === 'on' && line && line.amount
             ? ` · ${line.amount} ${line.currency}${line.period ? ` ${pricingBadge(line.period)}` : ''}`
             : '';
@@ -250,22 +271,38 @@ export class Budget {
             ? '$(sync~spin)'
             : shown.link === 'off'
                 ? '$(circle-slash)'
-                : line && line.low
-                    ? '$(warning)'
-                    : '$(dashboard)';
-        const low = shown.link === 'on' && !!line && line.low;
+                : failure
+                    ? '$(error)'
+                    : low
+                        ? '$(warning)'
+                        : '$(dashboard)';
         this._host.item.set({
             text: `${icon} ${shown.label}${amount}`,
             tooltip: this._tooltip(shown),
-            background: shown.link === 'off' ? 'error' : low ? 'warning' : undefined,
+            background: shown.link === 'off' || failure ? 'error' : low ? 'warning' : undefined,
         });
+    }
+
+    /**
+     * The reason the item should be red, or `''`.
+     *
+     * Two ways to learn that the provider cannot be reached: the pane's link reported it (a turn, a
+     * session, a process that died), or the balance call came back with nothing. Both are one answer
+     * to the reader, so both turn the item red. A profile with no provider or no key is not one of
+     * them: nothing is unreachable when there is nothing to reach.
+     */
+    private _failure(profile: string, line?: BudgetLine): string {
+        if (this._linkError && profile === this._host.own().profile) {
+            return this._linkError;
+        }
+        return line && line.failed ? line.reason : '';
     }
 
     /** Both panes of the window, what is known of each, and what a click does. */
     private _tooltip(shown: { profile: string; label: string; link: LinkState }): string {
         const own = this._host.own();
         const other = this._host.other();
-        const rows = [this._paneLine(identity().role, own.label, this._ownLink(), this._lines.get(own.profile))];
+        const rows = [this._paneLine(identity().role, own.label, this._ownLink(), this._lines.get(own.profile), this._linkError)];
         if (other) {
             rows.push(this._paneLine(other.role, labelFor(other.cliProfile), 'on', this._lines.get(other.cliProfile)));
         }
@@ -278,14 +315,16 @@ export class Budget {
     }
 
     /** One pane, as the tooltip reads it: whose it is, how its link stands, and its money. */
-    private _paneLine(role: 'primary' | 'secondant', label: string, link: LinkState, line?: BudgetLine): string {
+    private _paneLine(role: 'primary' | 'secondant', label: string, link: LinkState, line?: BudgetLine, linkError = ''): string {
         const state = link === 'on' ? t('budgetConnected') : link === 'connecting' ? t('budgetConnecting') : t('budgetNotConnected');
         const parts = [`${t(ROLE_KEYS[role])} · ${label}`, state];
         if (link !== 'on') {
             // Nothing is spent on a pane that is not connected, so nothing is claimed about it.
             return parts.join(' · ');
         }
-        if (line && line.amount) {
+        if (linkError) {
+            parts.push(linkError);
+        } else if (line && line.amount) {
             parts.push(`${line.amount} ${line.currency}${line.period ? ` ${pricingBadge(line.period)}` : ''}`);
         } else if (line && line.reason) {
             parts.push(line.reason);
@@ -315,17 +354,18 @@ function preferred(infos: DeepSeekBalanceInfo[]): DeepSeekBalanceInfo | undefine
 /** What the item says about a profile, from one reading of its account. */
 function lineOf(result: DeepSeekResult, at: Date): BudgetLine {
     if (!result.ok) {
-        return { amount: '', currency: '', low: false, reason: t('budgetUnavailable', result.reason) };
+        return { amount: '', currency: '', low: false, failed: true, reason: t('budgetUnavailable', result.reason) };
     }
     const info = preferred(result.reading.infos);
     if (!result.reading.available || !info) {
-        return { amount: '', currency: '', low: false, reason: t('budgetUnavailable', t('budgetNothingToShow')) };
+        return { amount: '', currency: '', low: false, failed: true, reason: t('budgetUnavailable', t('budgetNothingToShow')) };
     }
     return {
         amount: info.total.toFixed(2),
         currency: info.currency,
         low: info.total < LOW_BALANCE,
         period: pricingPeriod(at),
+        failed: false,
         reason: '',
     };
 }

@@ -420,6 +420,7 @@ export interface LocaleStrings {
     budgetNoApi: string;
     budgetNoProvider: string;
     budgetNoKey: string;
+    budgetUnknownError: string;
     budgetPeak: string;
     budgetOffPeak: string;
     budgetPeakHours: string;

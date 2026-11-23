@@ -128,11 +128,31 @@ describe('the budget item’s states', () => {
         }
     });
 
-    it('shows the agent alone when the provider has no balance API', async () => {
+    it('turns red when the link reports an error, and clears when the pane is up again', async () => {
+        const h = harness();
+        try {
+            await h.budget.refresh();
+            assert.match(textOf(h.item), /^\$\(dashboard\) dev-vsc · 42\.50 USD \$\((flame|moon)\)$/, 'healthy to begin with');
+
+            h.budget.noteStatus('error', 'Connection failed: dial tcp 192.168.3.107:11434: connect: no route to host');
+            assert.match(textOf(h.item), /^\$\(error\) dev-vsc · 42\.50 USD \$\((flame|moon)\)$/);
+            assert.strictEqual(h.item.view?.background, 'error');
+            assert.ok(tooltipOf(h.item).includes('no route to host'), tooltipOf(h.item));
+
+            h.budget.noteStatus('ready');
+            assert.strictEqual(h.item.view?.background, undefined, 'the next ready clears it');
+            assert.ok(!tooltipOf(h.item).includes('no route to host'));
+        } finally {
+            h.budget.dispose();
+        }
+    });
+
+    it('stays calm when there is simply nothing to read', async () => {
         const h = harness({ credentials: { provider: 'custom:hgsene', key: '', keyName: 'DEEPSEEK_API_KEY' } });
         try {
             await h.budget.refresh();
             assert.strictEqual(textOf(h.item), '$(dashboard) dev-vsc');
+            assert.strictEqual(h.item.view?.background, undefined, 'no provider is not an outage');
             assert.ok(tooltipOf(h.item).includes('no balance API for the "custom:hgsene" provider'));
             assert.deepStrictEqual(h.calls, [], 'nothing is asked of an endpoint that does not exist');
         } finally {
@@ -140,11 +160,12 @@ describe('the budget item’s states', () => {
         }
     });
 
-    it('keeps the connection when the balance call fails, and says why in the tooltip', async () => {
+    it('turns red when the balance call fails, and says why in the tooltip', async () => {
         const h = harness({ balance: async () => ({ ok: false, reason: 'HTTP 401' }) });
         try {
             await h.budget.refresh();
-            assert.strictEqual(textOf(h.item), '$(dashboard) dev-vsc');
+            assert.strictEqual(textOf(h.item), '$(error) dev-vsc');
+            assert.strictEqual(h.item.view?.background, 'error', 'what could not be reached is shown');
             assert.ok(tooltipOf(h.item).includes('balance unavailable: HTTP 401'));
         } finally {
             h.budget.dispose();
@@ -207,6 +228,18 @@ describe('the budget item’s states', () => {
             h.state.credentials = { provider: 'deepseek', key: 'sk-other', keyName: 'DEEPSEEK_API_KEY' };
             await h.budget.tick();
             assert.deepStrictEqual(h.calls, ['sk-test', 'sk-test', 'sk-other']);
+        } finally {
+            h.budget.dispose();
+        }
+    });
+
+    it('does not let a beat swallow a click', async () => {
+        const h = harness();
+        try {
+            const beat = h.budget.tick();
+            const click = h.budget.refresh();
+            await Promise.all([beat, click]);
+            assert.strictEqual(h.calls.length, 2, 'the beat read once, and the click read again');
         } finally {
             h.budget.dispose();
         }

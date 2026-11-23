@@ -474,6 +474,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     budgetNoApi: 'no balance API for the "{0}" provider',
     budgetNoProvider: 'the profile names no provider',
     budgetNoKey: 'no {0} in the profile',
+    budgetUnknownError: 'no reason given',
     budgetPeak: 'Peak pricing',
     budgetOffPeak: 'Off-peak pricing (half rate)',
     budgetPeakHours: 'Peak hours: 09:00-12:00 and 14:00-18:00 (UTC+8); weekends bill at off-peak rates all day.',

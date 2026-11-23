@@ -1079,9 +1079,9 @@ export class App implements vscode.WebviewViewProvider {
             // The card is about to ask for a decision; its switch needs the current mode now.
             this._approvals.post();
         }
-        // The item says whether this pane is connected, and every status is that answer moving.
+        // The item says whether this pane is connected; a status that carries a reason is why not.
         if (msg.type === 'status') {
-            this._budget.noteStatus(msg.status);
+            this._budget.noteStatus(msg.status, msg.message);
         }
     }
 
