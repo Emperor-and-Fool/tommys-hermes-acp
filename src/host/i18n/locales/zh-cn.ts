@@ -474,4 +474,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     budgetOffPeak: '非高峰计价（半价）',
     budgetPeakHours: '高峰时段：09:00-12:00 和 14:00-18:00（UTC+8）；周末全天按非高峰计价。',
     budgetClickRefresh: '点击刷新',
+    catalogNeedsPatch: 'Hermes 没有回应会话目录，因此本窗口看不到它的对话。当前 Hermes（{0}）需要 {1} 补丁：请打开下面的文件夹，或查看详情。',
+    catalogNoPatchKnown: 'Hermes 没有回应会话目录，因此本窗口看不到它的对话。没有适用于 Hermes {0} 的补丁集。',
+    catalogOpenPatchFolder: '打开补丁文件夹',
+    catalogDetails: '详情',
+    catalogDetailsBody: 'Hermes 的回答：{0}\n\n{1}\n\n补丁文件：{2}',
+    catalogNoFiles: '此版本没有',
 };

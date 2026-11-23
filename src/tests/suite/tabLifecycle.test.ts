@@ -67,6 +67,7 @@ describe('tab switch: a session that will not replay', () => {
             dropHistoryStage: () => {},
             activate: () => {},
             workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+    catalog: { beginConnect: () => {}, failed: async () => {} },
         } as unknown as TabLifecycleHost;
 
         await new TabLifecycle(host).switchTo('tab-b');
@@ -138,6 +139,7 @@ describe('tab move: the workspace cwd decides, not the tab record', () => {
             dropHistoryStage: () => {},
             activate: () => {},
             workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+    catalog: { beginConnect: () => {}, failed: async () => {} },
         } as unknown as TabLifecycleHost;
 
         await new TabLifecycle(host).resumeTabHermesSession('tab-moved');
@@ -203,6 +205,7 @@ describe('resumeOrAdopt: the load goes to the tab\'s own folder', () => {
             dropHistoryStage: () => {},
             activate: () => {},
             workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+    catalog: { beginConnect: () => {}, failed: async () => {} },
         } as unknown as TabLifecycleHost;
 
         await new TabLifecycle(host).resumeOrAdopt(path.join(dir, 'window'));

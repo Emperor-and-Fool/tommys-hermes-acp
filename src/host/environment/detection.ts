@@ -20,7 +20,8 @@ import {
     formatDetectProgressPercent,
     formatDetectSummaryForReport,
 } from './detectFormat';
-import { detectHermesEnvironment } from './hermesEnvironmentDetect';
+import { detectHermesEnvironment, tryResolveHermesQuick } from './hermesEnvironmentDetect';
+import { findHermesExecutable } from './profileDiscovery';
 import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from './hermesPathSetup';
 import { accessExecutable, agentVenv, venvHermesCandidates } from './hermesPaths';
 import type {
@@ -168,6 +169,21 @@ export class EnvironmentDetection {
         }
         this._setDetectContext(false, true);
         return report;
+    }
+
+    /**
+     * The Hermes executable to run: the configured path, resolved in the cheap pass first.
+     *
+     * Moved here from the composition root (M1): finding Hermes is this feature's subject, and its
+     * four callers — the memory limit, approvals, history and the notes mirror — want one answer.
+     */
+    public async resolveExecutable(): Promise<string | undefined> {
+        const configured = vscode.workspace.getConfiguration(settingsSection()).get<string>('path');
+        const quick = await tryResolveHermesQuick(configured);
+        if (quick) {
+            return quick;
+        }
+        return (await findHermesExecutable(configured)) || undefined;
     }
 
     public async detectEnvironment(): Promise<void> {

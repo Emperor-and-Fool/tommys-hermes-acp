@@ -71,6 +71,13 @@ function errorReason(err: unknown): string {
 /** Dev-only: HERMES_ACP_TRACE=1 in the shell that launched the editor. */
 const ACP_TRACE = acpTraceEnabled();
 
+/**
+ * Whether the one line about a Hermes without `model.options` has been written yet. Per process,
+ * not per client: the method is missing from the installed Hermes, and every reconnect would say
+ * the same thing again.
+ */
+let modelOptionsUnsupportedLogged = false;
+
 export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
 export type { ModelListState } from '../models/modelConfig';
 export type ModelsChangedHandler = (models: ModelListState | null) => void;
@@ -235,6 +242,8 @@ export class AcpClient {
     private _approvalNoteSent = new Map<string, string>();
     /** Cached after first ``method not found`` — avoids repeated Hermes log noise. */
     private _modelOptionsKnownUnsupported = false;
+    /** The agent's own version, from its initialize answer: '' until it has said. */
+    private _agentVersion = '';
     private _hermesSetModelKnownUnsupported = false;
     private _setConfigOptionKnownUnsupported = false;
     private _modelOptionsFetchPromise: Promise<AcpModelOptionsResponse | null> | null = null;
@@ -341,13 +350,24 @@ export class AcpClient {
             if (this._isMethodNotFoundError(err)) {
                 this._modelOptionsKnownUnsupported = true;
             }
-            this._onLog(`model.options unavailable: ${msg}`);
+            // Not an error, and not once per connect: 0.22.6 and 0.23.3 have no `model.options`,
+            // the session's model list is what Hermes does answer, and a line per connect would
+            // read as a fault. One line per process, and it says what the fallback is.
+            if (!modelOptionsUnsupportedLogged) {
+                modelOptionsUnsupportedLogged = true;
+                this._onLog(`model.options is not implemented by this Hermes (${msg}); using the session model list`);
+            }
             return null;
         }
     }
 
     get status(): AcpStatus {
         return this._status;
+    }
+
+    /** The agent's own version, from its initialize answer: '' before it has said. */
+    get agentVersion(): string {
+        return this._agentVersion;
     }
 
     /**
@@ -468,12 +488,16 @@ export class AcpClient {
             this._conn = this._app.connect(stream);
             const ctx = this._conn.agent;
 
-            await ctx.request(methods.agent.initialize, {
+            const init = await ctx.request(methods.agent.initialize, {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {}
-            } as any);
+            } as any) as any;
             // `as any` because ClientContext.request()'s schema type carries no
             // clientCapabilities field at all; the cast goes when the SDK types it.
+            // The agent names itself in that answer (agentInfo, not agent_info — the schema is
+            // camelCase). It is the only version Hermes tells us, and the catalog notice needs it.
+            const info = init?.agentInfo ?? init?.agent_info;
+            this._agentVersion = typeof info?.version === 'string' ? info.version : '';
 
             // No session/new here. Connecting used to create one immediately and then
             // `_resumeOrAdoptSession` loaded the tab's real session on top of it, leaving an
@@ -795,20 +819,28 @@ export class AcpClient {
     }
 
     /**
-     * Every session Hermes has for this profile, hidden ones included.
+     * Every session Hermes has for this profile, hidden ones included; null when it did not answer
+     * a catalog at all.
      *
      * Extension methods are ``_``-prefixed ACP requests; the agent answers from its own
      * session store, so the flag and the tabs can never disagree with Hermes.
+     *
+     * null and ``[]`` are different answers. A Hermes without the patch either fails the request or
+     * answers nothing, and reading that as "this profile has no sessions" empties the tab strip —
+     * so the missing answer is null, and the caller says why instead of acting on it.
      */
-    async listSessionCatalog(cwd?: string): Promise<CatalogSession[]> {
+    async listSessionCatalog(cwd?: string): Promise<CatalogSession[] | null> {
         if (!this._conn) {
-            return [];
+            return null;
         }
         const response = await this._conn.agent.request(
             '_session/catalog' as any,
             (cwd ? { cwd } : {}) as any,
         ) as any;
-        const rows = Array.isArray(response?.sessions) ? response.sessions : [];
+        if (!response || !Array.isArray(response.sessions)) {
+            return null;
+        }
+        const rows = response.sessions;
         return rows
             .map((row: any) => ({
                 sessionId: String(row?.session_id ?? row?.sessionId ?? ''),

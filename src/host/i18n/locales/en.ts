@@ -479,4 +479,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     budgetOffPeak: 'Off-peak pricing (half rate)',
     budgetPeakHours: 'Peak hours: 09:00-12:00 and 14:00-18:00 (UTC+8); weekends bill at off-peak rates all day.',
     budgetClickRefresh: 'Click to refresh',
+    catalogNeedsPatch: 'Hermes does not answer the session catalog, so this window cannot see its chats. This Hermes ({0}) needs the patch for {1}: open the folder below, or see Details.',
+    catalogNoPatchKnown: 'Hermes does not answer the session catalog, so this window cannot see its chats. No patch set is known for Hermes {0}.',
+    catalogOpenPatchFolder: 'Open patch folder',
+    catalogDetails: 'Details',
+    catalogDetailsBody: 'What Hermes answered: {0}\n\n{1}\n\nPatch files: {2}',
+    catalogNoFiles: 'none for this version',
 };

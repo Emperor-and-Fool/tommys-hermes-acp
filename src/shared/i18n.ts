@@ -425,6 +425,13 @@ export interface LocaleStrings {
     budgetOffPeak: string;
     budgetPeakHours: string;
     budgetClickRefresh: string;
+    /** The session catalog went unanswered: the patch this Hermes needs, and what it answered. */
+    catalogNeedsPatch: string;
+    catalogNoPatchKnown: string;
+    catalogOpenPatchFolder: string;
+    catalogDetails: string;
+    catalogDetailsBody: string;
+    catalogNoFiles: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

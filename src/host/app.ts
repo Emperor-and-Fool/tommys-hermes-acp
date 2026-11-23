@@ -53,11 +53,10 @@ import { Sessions } from './workspace/sessions';
 import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
+import { CatalogNotice } from './workspace/catalogNotice';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
-import { tryResolveHermesQuick } from './environment/hermesEnvironmentDetect';
-import { findHermesExecutable } from './environment/profileDiscovery';
 import { Approvals } from './permissions/approvals';
 import { PermissionsStore } from './permissions/store';
 import type { HistoryPick } from './webview/historyViewer';
@@ -288,6 +287,15 @@ export class App implements vscode.WebviewViewProvider {
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
 
+    /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
+    private readonly _catalogNotice = new CatalogNotice({
+        hermesVersion: () => this._connection.acp?.agentVersion || '',
+        patchFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'hermes-patches'),
+        info: (message) => this._notices.info(message),
+        choices: createEditorChoices(),
+        log: (line) => this._log(line),
+    });
+
     private readonly _extensionId: string;
 
     /** The pane's file actions: the '@' picker, previews, opening a file, inserting text. */
@@ -386,7 +394,7 @@ export class App implements vscode.WebviewViewProvider {
             currentAgentId: () => this._session.sessionProfileId,
             usage: (id: string) => this._profiles.memoryUsage(id),
             setLimit: async (id: string, limit: number) =>
-                this._profiles.setMemoryLimit(id, await this._resolveHermesExecutable(), limit),
+                this._profiles.setMemoryLimit(id, await this._detection.resolveExecutable(), limit),
         };
         this._notes = new AgentNotes(notesStore, notesHost);
         this._mirror = new NotesMirror(notesStore, this._notes, notesHost);
@@ -414,7 +422,7 @@ export class App implements vscode.WebviewViewProvider {
                 post: (msg) => this._postMessage(msg),
                 log: (line) => this._log(line),
                 profile: () => this._profiles.resolveTarget().cliProfile,
-                executable: () => this._resolveHermesExecutable(),
+                executable: () => this._detection.resolveExecutable(),
                 acp: () => this._connection.acp,
                 activeSessionBusy: () => this._connection.acp?.status === 'prompting',
                 onRunEnded: (handler) => this._connection.runEnded.on(handler),
@@ -486,6 +494,7 @@ export class App implements vscode.WebviewViewProvider {
             post: (msg) => this._postMessage(msg),
             postTo: (surface, msg) => this._surfaces.postTo(surface, msg),
             log: (line) => this._log(line),
+            catalog: this._catalogNotice,
             resolveCwd: () => this._cwd.defaultFolderPath(),
             activeProject: () => this._projects.activeProject,
             resolveCwdFor: (sessionId) => this._cwd.forSession(this._session.rootFolderIdOf(sessionId)),
@@ -827,7 +836,7 @@ export class App implements vscode.WebviewViewProvider {
      * really can return a session with nothing in it.
      */
     private async _loadHistoryRemote(hermesSessionId: string, profile: string): Promise<ChatMessage[]> {
-        const executable = await this._resolveHermesExecutable();
+        const executable = await this._detection.resolveExecutable();
         if (!executable) {
             this._log('History viewer: no Hermes executable found; cannot fetch the transcript');
             throw new Error('no Hermes executable found');
@@ -867,7 +876,7 @@ export class App implements vscode.WebviewViewProvider {
     private async _lookupHistoryIds(tabId: string, pick: HistoryPick): Promise<void> {
         let match: { ids: Array<number | null>; from?: number; to?: number } | null = null;
         try {
-            const executable = await this._resolveHermesExecutable();
+            const executable = await this._detection.resolveExecutable();
             if (executable) {
                 const exported = await exportSessionMessages(executable, pick.ref.profile, pick.ref.sessionId);
                 if (exported.length) {
@@ -907,15 +916,6 @@ export class App implements vscode.WebviewViewProvider {
     }
 
     /** The executable the connection would start: the configured path first, then the search. */
-    private async _resolveHermesExecutable(): Promise<string | undefined> {
-        const configured = this._settings.get<string>('path');
-        const quick = await tryResolveHermesQuick(configured);
-        if (quick) {
-            return quick;
-        }
-        return (await findHermesExecutable(configured)) || undefined;
-    }
-
     /** The chip's X: drop the active tab's pick and say so. */
     public clearHistoryStaged(): void {
         this._historyStages.clear(this._session.activeId);

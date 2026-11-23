@@ -102,6 +102,7 @@ const lifecycleHost = (
     enqueueChatOp: () => {},
     openSessionSurface: () => {},
     workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+    catalog: { beginConnect: () => {}, failed: async () => {} },
     debugTabSwitch: () => false,
 } as unknown as TabLifecycleHost);
 
