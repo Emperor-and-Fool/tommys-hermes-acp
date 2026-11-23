@@ -149,6 +149,10 @@ describe('the Desktop setup: build once, and only when there is nothing to keep'
         assert.deepStrictEqual(step.runs, [t('desktopPreparing')], 'one notification, titled');
         assert.strictEqual(step.infos.length, 1, 'one success notice');
         assert.ok(step.infos[0].includes(ok.build!), step.infos[0]);
+        assert.ok(
+            step.logs.includes('Preparing Node dependencies'),
+            `the build's own lines reach the log: ${step.logs.join(' | ')}`,
+        );
         const record = store.read();
         assert.ok(record?.ok, 'a success is recorded');
         assert.strictEqual(record?.build, ok.build);

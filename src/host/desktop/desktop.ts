@@ -95,7 +95,12 @@ export class DesktopSetup {
         let failure: string | null = null;
         try {
             await this._host.progress.run(t('desktopPreparing'), async report => {
-                const result = await this._host.build(report);
+                const result = await this._host.build(line => {
+                    // Every line as it arrives: the notification shows the phase, the log keeps them
+                    // all, so a build that takes minutes leaves a trace even while it is running.
+                    this._host.log(line);
+                    report(line);
+                });
                 const attempt: DesktopAttempt = {
                     at: this._host.now(),
                     ok: result.ok,
