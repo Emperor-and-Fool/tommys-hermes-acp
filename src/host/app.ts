@@ -624,10 +624,12 @@ export class App implements vscode.WebviewViewProvider {
         }
         if (!readiness.ok) {
             // The pane keeps its history, and the reader gets one reason: the specific one when
-            // ensureSessionReady could name it, the generic one only when it could not.
+            // ensureSessionReady could name it, the generic one only when it could not. Either way
+            // the text goes back into the composer: the pane emptied it before the agent answered.
             if (!readiness.notified) {
                 this._postMessage({ type: 'addMessage', role: 'assistant', text: t('sessionNotWritable') });
             }
+            this._postMessage({ type: 'insertInput', text });
             return;
         }
         const imageCount = images?.length ?? 0;
@@ -1375,9 +1377,7 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    private _ownProfile(): string {
-        return this._profiles.displayName || this._profiles.selectionId || '';
-    }
+    private _ownProfile(): string { return this._profiles.displayName || this._profiles.selectionId || ''; }
 
     private _startPaneMail(): void {
         const host = {
