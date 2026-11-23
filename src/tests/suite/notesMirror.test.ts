@@ -32,6 +32,7 @@ const windowOn = (
     answer?: string,
     otherWindow = false,
     home = dir(),
+    protectedSection = false,
 ) => {
     const logs: string[] = [];
     const infos: string[] = [];
@@ -70,6 +71,7 @@ const windowOn = (
             name: agents.find(agent => agent.sessionProfileId === sessionProfileId)?.agentName || 'unknown',
             description: '',
         }),
+        protectedSection: () => protectedSection,
     });
     const mirror = new NotesMirror(store, notes, {
         log: line => logs.push(line),

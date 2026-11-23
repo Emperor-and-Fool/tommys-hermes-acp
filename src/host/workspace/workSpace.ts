@@ -206,7 +206,9 @@ export function treeNoticeBlock(paths: TreePaths, notes = ''): string {
     // One notice, one "once per session and workspace": two blocks would say the same thing twice,
     // at two different moments.
     if (notes) {
-        lines.push('', notes);
+        // The last line closes the whole notice — the tree and the notes — outside both tags: it is
+        // about the notice itself, which the agent is told to read and not to remember.
+        lines.push('', notes, '', "Repeats each session; don't save to memory.");
     }
     return lines.join('\n');
 }

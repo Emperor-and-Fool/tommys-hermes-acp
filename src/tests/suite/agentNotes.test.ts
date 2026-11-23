@@ -24,6 +24,7 @@ const notesOn = (historyDir: string, info: { name: string; description: string }
     const notes = new AgentNotes(new NotesStore(historyDir), {
         log: (line: string) => logs.push(line),
         profileInfo: () => info,
+        protectedSection: () => false,
     });
     return { notes, logs, store: new NotesStore(historyDir), dir: historyDir };
 };
@@ -138,18 +139,60 @@ describe('the index: who the agent is, and which notes exist', () => {
 });
 
 describe('the notice: where the notes are, and the one rule about using them', () => {
-    it('names the folder and its index as absolute paths, and the memory rule', () => {
+    const withNotes = (historyDir: string, protectedSection: boolean) =>
+        new AgentNotes(new NotesStore(historyDir), {
+            log: () => undefined,
+            profileInfo: () => ({ name: 'dev-vsc', description: '' }),
+            protectedSection: () => protectedSection,
+        });
+
+    it('is exactly these words, while the protected section is not there yet', () => {
         const home = dir();
         try {
-            const { notes } = notesOn(home);
-            const block = notes.notice('id-dev');
+            const notes = withNotes(home, false);
+            notes.ensure('id-dev');
             const folder = path.join(home, 'profiles', 'id-dev', 'notes');
-            assert.ok(block.includes(folder), 'the folder');
-            assert.ok(block.includes(path.join(folder, INDEX_FILE)), 'and its index');
-            assert.ok(path.isAbsolute(folder));
-            assert.ok(block.includes('When your memory is full, move what only you need to your notes.'));
-            assert.ok(block.includes('Keep one memory entry'), 'the entry is the agent\'s to write');
-            assert.ok(block.startsWith('<agent-notes>') && block.endsWith('</agent-notes>'));
+            assert.strictEqual(notes.notice('id-dev'), [
+                '<agent-notes>',
+                `Your notes folder: ${folder} (index: 00 Index.md)`,
+                'Keep notes per project here, so your memory stays small.',
+                '</agent-notes>',
+                '',
+                '<agent-notes-setup>',
+                'One-time setup. At the very start of your MEMORY.md, keep a protected section:',
+                "== Protected section — change only on the user's explicit instruction ==",
+                `Notes: ${folder} (index: 00 Index.md)`,
+                '== End of protected section ==',
+                'The Notes line comes first in it. Create the section if missing; if one exists, rename its markers',
+                'to these and add the Notes line. Replace entries that point to older note locations.',
+                'Write memory and notes in English, whatever language the user speaks.',
+                '</agent-notes-setup>',
+            ].join('\n'));
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('drops the one-time block once the protected section names this folder', () => {
+        const home = dir();
+        try {
+            const notes = withNotes(home, true);
+            notes.ensure('id-dev');
+            const block = notes.notice('id-dev');
+            assert.ok(!block.includes('<agent-notes-setup>'), 'no second ask');
+            assert.ok(block.endsWith('</agent-notes>'));
+            assert.ok(block.includes(`Your notes folder: ${path.join(home, 'profiles', 'id-dev', 'notes')} (index: 00 Index.md)`));
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('answers "not yet" for an agent that has not been read in this window', () => {
+        const home = dir();
+        try {
+            const notes = withNotes(home, true);
+            // No ensure(): nothing was read, so the block is asked for.
+            assert.ok(notes.notice('id-dev').includes('<agent-notes-setup>'));
         } finally {
             fs.rmSync(home, { recursive: true, force: true });
         }

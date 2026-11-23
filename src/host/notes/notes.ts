@@ -1,3 +1,4 @@
+import { INDEX_FILE } from './store';
 import type { NoteFile, NotesStore } from './store';
 
 /**
@@ -22,6 +23,13 @@ export interface AgentNotesHost {
      * description still gets its folder and its index.
      */
     profileInfo(sessionProfileId: string): { name: string; description: string };
+    /**
+     * Does this agent's MEMORY.md carry the protected section naming that notes folder?
+     *
+     * Hermes' file, read only (H1, H2), and answered once per connect: true means the one-time
+     * setup block in the notice has been done and is never sent again.
+     */
+    protectedSection(sessionProfileId: string, notesDir: string): boolean;
 }
 
 /** Where the notice points: the folder the agent writes in, and the index that describes it. */
@@ -31,6 +39,9 @@ export interface NotesPaths {
 }
 
 export class AgentNotes {
+    /** Per agent: the answer `protectedSection` gave on this connect. Absent means "not yet". */
+    private readonly _protected = new Map<string, boolean>();
+
     constructor(
         private readonly _store: NotesStore,
         private readonly _host: AgentNotesHost,
@@ -56,6 +67,11 @@ export class AgentNotes {
         if (this._store.readIndex(sessionProfileId) !== text) {
             this._store.writeIndex(sessionProfileId, text);
         }
+        // Read once per connect: the notice asks this, and the answer is Hermes' own file.
+        this._protected.set(
+            sessionProfileId,
+            this._host.protectedSection(sessionProfileId, this.paths(sessionProfileId).dir),
+        );
         if (created) {
             this._host.log(`Notes: created the folder for ${info.name || sessionProfileId}`);
         }
@@ -76,22 +92,45 @@ export class AgentNotes {
     }
 
     /**
-     * The notice's notes section: where the folder is, and the one rule about using it.
+     * The notice's notes section: where the folder is, the rule about using it, and — while the
+     * agent has not yet kept its protected section — the one-time block that asks for it.
      *
-     * The rule is a rule for the agent, not something we do: its memory entry is Hermes' file, and
-     * we never write it (H2). Ours is to say where the room is.
+     * The texts are the contract and are not translated: every word here is read in every session
+     * by every agent, and a translation is a second version of the same instruction.
      */
     notice(sessionProfileId: string): string {
-        const paths = this.paths(sessionProfileId);
-        return [
+        const dir = this.paths(sessionProfileId).dir;
+        const lines = [
             '<agent-notes>',
-            `Your own notes folder — this agent's, never shared: ${paths.dir}`,
-            `Its index names you and lists what is there: ${paths.index}`,
-            'When your memory is full, move what only you need to your notes. Keep one memory entry',
-            'that points to this folder.',
+            `Your notes folder: ${dir} (index: ${INDEX_FILE})`,
+            'Keep notes per project here, so your memory stays small.',
             '</agent-notes>',
-        ].join('\n');
+        ];
+        if (this._protected.get(sessionProfileId) !== true) {
+            lines.push('', notesSetupBlock(dir));
+        }
+        return lines.join('\n');
     }
+}
+
+/**
+ * The one-time block: the protected section the agent keeps at the start of its own MEMORY.md.
+ *
+ * Ours is to ask, never to do it: MEMORY.md is Hermes' file (H2), so the agent writes the section
+ * itself, and the notice stops carrying this block once the file shows it (see `ps_set`).
+ */
+export function notesSetupBlock(notesDir: string): string {
+    return [
+        '<agent-notes-setup>',
+        'One-time setup. At the very start of your MEMORY.md, keep a protected section:',
+        "== Protected section — change only on the user's explicit instruction ==",
+        `Notes: ${notesDir} (index: ${INDEX_FILE})`,
+        '== End of protected section ==',
+        'The Notes line comes first in it. Create the section if missing; if one exists, rename its markers',
+        'to these and add the Notes line. Replace entries that point to older note locations.',
+        'Write memory and notes in English, whatever language the user speaks.',
+        '</agent-notes-setup>',
+    ].join('\n');
 }
 
 /**

@@ -368,6 +368,7 @@ export class App implements vscode.WebviewViewProvider {
         this._notes = new AgentNotes(notesStore, {
             log: line => this._log(line),
             profileInfo: id => this._profiles.describeAgent(id),
+            protectedSection: (id, notesDir) => this._profiles.notesProtection(id, notesDir),
         });
         this._mirror = new NotesMirror(notesStore, this._notes, {
             log: line => this._log(line),
@@ -1397,37 +1398,21 @@ export class App implements vscode.WebviewViewProvider {
         this._mail.presence.start();
     }
 
-    public openSettings(): void {
-        void this._commands.openSettings(this._extensionId);
-    }
+    public openSettings(): void { void this._commands.openSettings(this._extensionId); }
 
-    public openLogs(): void {
-        this._postMessage({ type: 'openLogs' });
-    }
+    public openLogs(): void { this._postMessage({ type: 'openLogs' }); }
 
-    public openAbout(): void {
-        this._postMessage({ type: 'openAbout' });
-    }
+    public openAbout(): void { this._postMessage({ type: 'openAbout' }); }
 
-    public openHelp(): void {
-        this._postMessage({ type: 'openHelp' });
-    }
+    public openHelp(): void { this._postMessage({ type: 'openHelp' }); }
 
-    public openFaq(): void {
-        this._postMessage({ type: 'openFaq' });
-    }
+    public openFaq(): void { this._postMessage({ type: 'openFaq' }); }
 
-    public reloadSession(): void {
-        void this._handleReloadSession();
-    }
+    public reloadSession(): void { void this._handleReloadSession(); }
 
-    public reloadExtension(): void {
-        void this._handleReloadExtension();
-    }
+    public reloadExtension(): void { void this._handleReloadExtension(); }
 
-    public checkForUpdate(): void {
-        void this._checkForUpdate();
-    }
+    public checkForUpdate(): void { void this._checkForUpdate(); }
 
     private async _handleReloadSession(): Promise<void> {
         this._log('Reload session requested');

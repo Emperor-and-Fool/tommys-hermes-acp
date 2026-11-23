@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
 import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
+import { hasNotesProtectedSection } from './profileMemory';
 import {
     hasProfilesRoot,
     isCurrentProfile,
@@ -302,6 +303,20 @@ export class Profiles {
         const name = this.agentNameFor(sessionProfileId);
         const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
         return { name, description: profileDescription(name, hermesHome) };
+    }
+
+    /**
+     * Read this agent's MEMORY.md for the protected section, and record the answer on its row.
+     *
+     * Hermes' file, read only (H1, H2): nothing here writes it. The answer is kept on the row so the
+     * notice can name the setup block without opening Hermes' home again on every turn.
+     */
+    notesProtection(sessionProfileId: string, notesDir: string): boolean {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        const present = name ? hasNotesProtectedSection(name, notesDir, hermesHome) : false;
+        this._host.store.setPsSet(sessionProfileId, present);
+        return present;
     }
 
     /**

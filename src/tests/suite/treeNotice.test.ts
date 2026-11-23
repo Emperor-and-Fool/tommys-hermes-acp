@@ -31,7 +31,8 @@ describe('the tree notice block: its words', () => {
  * session and workspace, and gets both the window's files and its own folder.
  */
 describe('the tree notice block: the notes section', () => {
-    const notes = '<agent-notes>\nYour own notes folder — this agent\'s, never shared: /n\n</agent-notes>';
+    const notes = '<agent-notes>\nYour notes folder: /n (index: 00 Index.md)\n'
+        + 'Keep notes per project here, so your memory stays small.\n</agent-notes>';
 
     it('comes after the tree, and leaves the block alone when there is none', () => {
         const paths = { current: '/p/tree-current.json', passive: '/p/tree-passive.json' };
@@ -39,6 +40,8 @@ describe('the tree notice block: the notes section', () => {
         assert.ok(withNotes.startsWith('<clientworkspace-tree>'));
         assert.ok(withNotes.indexOf('/p/tree-passive.json') < withNotes.indexOf('<agent-notes>'), 'the notes come second');
         assert.ok(withNotes.endsWith('</agent-notes>'));
+
+        assert.ok(withNotes.endsWith("Repeats each session; don't save to memory."), 'the closing line comes last');
 
         const alone = treeNoticeBlock(paths);
         assert.ok(alone.endsWith('</clientworkspace-tree>'), 'no notes, no second section');
