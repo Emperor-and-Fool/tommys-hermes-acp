@@ -394,12 +394,15 @@ export interface LocaleStrings {
     notesAskLater: string;
     notesAskNever: string;
     memorySizeTitle: string;
-    memorySizeDouble: string;
+    memorySizeRecommended: string;
     memorySizeKeep: string;
     memorySizeOther: string;
     memorySizeInput: string;
     memorySizeInvalid: string;
-    memorySizeConfirm: string;
+    memorySizeConfirmAdd: string;
+    memorySizeConfirmFewer: string;
+    memorySizeLower: string;
+    memorySizeLowerConfirm: string;
     memorySizeApply: string;
     memorySizeCancel: string;
     memorySizeDone: string;

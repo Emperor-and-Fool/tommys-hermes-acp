@@ -114,48 +114,59 @@ describe('the numbers the dialog shows', () => {
     });
 });
 
-describe('the dialog: three answers, one confirmation, Hermes\' verdict', () => {
+describe('the dialog: a fixed recommendation, a look-only "Keep", and Hermes\' verdict', () => {
     const usage = { name: 'kitt', fill: 2210, limit: 2200 };
 
-    it('offers double first, then the file as it is, then a number of its own', async () => {
-        const d = dialog(usage);
-        await d.size.run('id-kitt');
-        assert.strictEqual(
-            d.picks[0].title,
-            t('memorySizeTitle', 'kitt', '2,210', '2,200', 100),
-            'the title is the agent, the fill, the limit and the percentage',
-        );
-        assert.deepStrictEqual(d.picks[0].items.map(item => item.label), [
-            t('memorySizeDouble', '4,420'),
-            t('memorySizeKeep', '2,210'),
+    it('recommends twice Hermes\' default, and only while the agent is under it', async () => {
+        const under = dialog(usage);
+        await under.size.run('id-kitt');
+        assert.strictEqual(under.picks[0].title, t('memorySizeTitle', 'kitt', '2,210', '2,200', 100));
+        assert.deepStrictEqual(under.picks[0].items.map(item => item.label), [
+            t('memorySizeRecommended', '4,400'),
+            t('memorySizeKeep', '2,200'),
             t('memorySizeOther'),
         ]);
-        assert.strictEqual(d.picks[0].items[0].suggested, true, 'the double is the suggested row');
+        assert.strictEqual(under.picks[0].items[0].suggested, true);
+
+        // dev-vsc after cc73048: 4,350 is under 4,400, so the row is still offered — with the
+        // limit it would set, not with a doubling of the file.
+        const raised = dialog({ name: 'dev-vsc', fill: 2175, limit: 4350 });
+        await raised.size.run('id-dev');
+        assert.deepStrictEqual(raised.picks[0].items.map(item => item.label), [
+            t('memorySizeRecommended', '4,400'),
+            t('memorySizeKeep', '4,350'),
+            t('memorySizeOther'),
+        ]);
+
+        const above = dialog({ name: 'kitt', fill: 2210, limit: 4400 });
+        await above.size.run('id-kitt');
+        assert.deepStrictEqual(above.picks[0].items.map(item => item.label), [
+            t('memorySizeKeep', '4,400'),
+            t('memorySizeOther'),
+        ], 'at or above the recommendation there is no recommended row');
+        assert.strictEqual(above.picks[0].items[0].suggested, undefined);
     });
 
-    it('says the cost in tokens before applying, and sets the doubled limit', async () => {
-        const d = dialog(usage, 'double', undefined, t('memorySizeApply'));
+    it('says the cost in tokens before applying, and sets the recommendation', async () => {
+        const d = dialog(usage, 'recommended', undefined, t('memorySizeApply'));
         await d.size.run('id-kitt');
 
         const confirm = d.asked.find(entry => entry.startsWith('About +')) || '';
-        assert.ok(confirm.includes('+807'), `+2220 characters / 2.75 is 807 tokens, got "${confirm}"`);
+        assert.ok(confirm.includes('+800'), `+2200 characters / 2.75 is 800 tokens, got "${confirm}"`);
         assert.ok(confirm.includes('every session of kitt'));
-        assert.deepStrictEqual(d.set, [{ id: 'id-kitt', limit: 4420 }]);
-        assert.ok(d.infos[d.infos.length - 1].startsWith('Memory limit set to 4,420 for kitt'));
+        assert.deepStrictEqual(d.set, [{ id: 'id-kitt', limit: 4400 }]);
+        assert.ok(d.infos[d.infos.length - 1].startsWith('Memory limit set to 4,400 for kitt'));
     });
 
-    it('"Keep" writes the file\'s own size, and nothing when that is the limit already', async () => {
-        const d = dialog(usage, 'keep', undefined, t('memorySizeApply'));
-        await d.size.run('id-kitt');
-        assert.deepStrictEqual(d.set, [{ id: 'id-kitt', limit: 2210 }]);
-
-        const same = dialog({ name: 'kitt', fill: 2210, limit: 2210 }, 'keep');
-        await same.size.run('id-kitt');
-        assert.deepStrictEqual(same.set, [], 'nothing to write');
-        assert.deepStrictEqual(same.infos, [t('memorySizeUnchanged', '2,210', 'kitt')]);
+    it('"Keep" is the limit in force: no write, no CLI call, no notice', async () => {
+        const d = dialog({ name: 'dev-vsc', fill: 2175, limit: 4350 }, 'keep');
+        await d.size.run('id-dev');
+        assert.deepStrictEqual(d.set, []);
+        assert.deepStrictEqual(d.infos, []);
+        assert.deepStrictEqual(d.asked, [], 'nothing is confirmed either');
     });
 
-    it('"Other…" takes a number, and refuses one below the file', async () => {
+    it('"Other…" takes a number, refuses one below the file, and confirms a lowering once more', async () => {
         const ok = dialog(usage, 'other', '3,000', t('memorySizeApply'));
         await ok.size.run('id-kitt');
         assert.ok(ok.asked[0].includes('at least 2,210'));
@@ -165,17 +176,35 @@ describe('the dialog: three answers, one confirmation, Hermes\' verdict', () => 
         await low.size.run('id-kitt');
         assert.deepStrictEqual(low.set, [], 'below the fill is refused');
         assert.deepStrictEqual(low.infos, [t('memorySizeInvalid', '2,210')]);
+
+        // A lowering: limit 4,350 → 3,000, with the fill already under it. Two answers, in order.
+        const lowered = dialog({ name: 'dev-vsc', fill: 2175, limit: 4350 }, 'other', '3000');
+        lowered.asked.length = 0;
+        (lowered.size as unknown as { _host: { choices: { ask: unknown } } })._host.choices.ask =
+            async (message: string) => message.startsWith('Lower the limit')
+                ? t('memorySizeLowerConfirm')
+                : t('memorySizeApply');
+        await lowered.size.run('id-dev');
+        assert.deepStrictEqual(lowered.set, [{ id: 'id-dev', limit: 3000 }], 'lowering applied after both answers');
+        assert.ok(lowered.asked.some(entry => entry.includes('fewer tokens')), 'and the cost is said as fewer');
     });
 
     it('a dismissed confirm applies nothing', async () => {
-        const d = dialog(usage, 'double', undefined, t('memorySizeCancel'));
+        const d = dialog(usage, 'recommended', undefined, t('memorySizeCancel'));
         await d.size.run('id-kitt');
         assert.deepStrictEqual(d.set, []);
         assert.deepStrictEqual(d.infos, []);
     });
 
+    it('shows the same number, twice, as nothing to do', async () => {
+        const d = dialog(usage, 'other', '2200', t('memorySizeApply'));
+        await d.size.run('id-kitt');
+        assert.deepStrictEqual(d.set, []);
+        assert.deepStrictEqual(d.infos, [t('memorySizeUnchanged', '2,200', 'kitt')]);
+    });
+
     it('shows Hermes\' own error when the CLI refuses', async () => {
-        const d = dialog(usage, 'double', undefined, t('memorySizeApply'));
+        const d = dialog(usage, 'recommended', undefined, t('memorySizeApply'));
         (d.size as unknown as { _host: MemorySizeHost })._host.setLimit = async () => ({
             ok: false,
             message: 'unknown config key "memory.memory_char_limit"',
