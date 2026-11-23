@@ -199,12 +199,17 @@ editing-while-it-runs rhythm that most clients make you fight for.
 <li><code>_session/setHidden</code> — hide or unhide a session, which is what closing a tab does</li>
 <li><code>_session/setTitle</code> — rename a session as a user title</li>
 </ul>
-<p>Without them the sidebar cannot see sessions you have closed, a closed tab stays listed, and renaming a conversation does not survive. They are added by two patches, kept in this repository until they land upstream:</p>
+<p>Without them the sidebar cannot see sessions you have closed, a closed tab stays listed, and renaming a conversation does not survive. They are added by one of three patches, and which one you need is decided by the Hermes version you run. All three ship inside this extension, in its installed folder under <code>packaging/hermes-patches/</code>:</p>
+<ul>
+<li><code>0.23.x</code> &mdash; <code>0003-acp-023x-session-catalog-hidden-title.patch</code> only. It is <strong>not</strong> applied on top of the 0.22 patches, and they are not applied on top of it: 0.23 changed the storage handle the adapter holds, so the 0.22 set stops working there &mdash; it still applies cleanly, which is what makes the failure quiet</li>
+<li><code>0.22.5</code> &ndash; <code>0.22.x</code> &mdash; <code>0001-acp-session-catalog-hidden-title.patch</code> and <code>0002-acp-gateway-ext-methods.patch</code>, in that order</li>
+<li><code>0.22.2</code> &ndash; <code>0.22.4</code> &mdash; <code>0001-acp-session-catalog-hidden-title.patch</code></li>
+</ul>
+<p>The Hermes checkout is <code>~/.hermes/hermes-agent</code> on Linux and <code>%LOCALAPPDATA%\hermes\hermes-agent</code> on Windows. Apply inside it, from the copy this extension shipped:</p>
 <pre><code class="language-bash">cd ~/.hermes/hermes-agent
-git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0001-acp-session-catalog-hidden-title.patch
-git apply --3way /path/to/tommys-hermes-acp/packaging/hermes-patches/0002-acp-gateway-ext-methods.patch
+git apply --3way ~/.vscode-oss/extensions/emperorandfool.tommys-hermes-acp-2.6.*/packaging/hermes-patches/0003-acp-023x-session-catalog-hidden-title.patch
 </code></pre>
-<p><code>0001</code> adds the three methods (base <code>0.22.2</code>, and it reads the session table in either layout — <code>source</code> on 0.22.2, <code>created_source</code> on 0.22.5, where <code>source</code> is rewritten to <code>local</code>); <code>0002</code> carries them onto <code>GatewayACPAgent</code>, the class <code>0.22.5</code> actually answers from, because <code>HermesACPAgent</code>&rsquo;s <code>__new__</code> returns one. On <code>0.22.5</code> and later both are required &mdash; <code>0001</code> alone still applies cleanly and changes nothing, which is what makes the failure quiet. They touch only <code>acp_adapter/server.py</code>, <code>acp_adapter/session.py</code> and <code>acp_adapter/gateway_server.py</code>, and only call Hermes&rsquo; own database methods. Re-apply both after any <code>hermes update</code> that drops them; <code>packaging/hermes-patches/CHANGELOG.md</code> records the bases and the symptom when one is missing.</p>
+<p><code>hermes update</code> stashes local changes before its <code>git pull</code> and afterwards asks <em>&ldquo;Restore local changes now?&rdquo;</em> &mdash; answer yes, or re-apply the patch by hand. Every patch touches only <code>acp_adapter/</code> and only calls Hermes&rsquo; own store methods; <code>packaging/hermes-patches/CHANGELOG.md</code> records each base, the symptom when its patch is missing, and why 0.23 needs a set of its own.</p>
 <p><em>Tested on Ubuntu 24.04. Windows is untested &mdash; both the Hermes install location and <code>git apply</code> behave differently there. If you try it, please open an issue and say what happened; this section will then state it honestly rather than guess.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install

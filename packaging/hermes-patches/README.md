@@ -1,31 +1,54 @@
-# Hermes ACP patch (temporary home)
+# Hermes ACP patches (temporary home)
 
-`0001-acp-session-catalog-hidden-title.patch` adds three `_`-prefixed ACP extension methods to
-Hermes's ACP adapter, which this extension uses:
+Three `_`-prefixed ACP extension methods this extension calls, which upstream Hermes does not ship:
 
 - `_session/catalog`: every ACP session, hidden ones included, with its `hidden` flag
-- `_session/setHidden`: hide or unhide a session
+- `_session/setHidden`: hide or unhide a session (what closing a tab does)
 - `_session/setTitle`: rename a session as a user title
 
-It only touches `acp_adapter/server.py` and `acp_adapter/session.py`, and only calls Hermes's own
-db methods.
+Kept here until they live on a hermes-agent fork branch with an upstream PR. They ship inside both
+VSIXes, so an installed extension always carries its own copy:
 
-Bases: `d923a5eb487` (Release 0.22.2) for `0001`, `bf0203a794a` (0.22.5) for `0002`. `0001` applies
-cleanly to both and reads the session table in whichever layout the build uses — `source` on 0.22.2,
-`created_source` alongside it on 0.22.5, where `source` is rewritten to `local`.
+    <installed extension>/packaging/hermes-patches/
+    # Linux:   ~/.vscode-oss/extensions/emperorandfool.tommys-hermes-acp-<version>/packaging/hermes-patches/
+    # Windows: %USERPROFILE%\.vscode\extensions\emperorandfool.tommys-hermes-acp-<version>\packaging\hermes-patches\
 
-Kept here until they live on a hermes-agent fork branch with an upstream PR.
+## Which set the installed Hermes needs
 
-`0002-acp-gateway-ext-methods.patch` carries the same three methods onto `GatewayACPAgent`, which
-is the class 0.22.5 actually answers from: `HermesACPAgent.__new__` returns a `GatewayACPAgent`, so
-`0001`'s handlers stop being reachable while the patch itself still applies cleanly. On 0.22.5 and
-later both are needed; `0001` alone fails silently.
+| Hermes | patches | base each was cut against |
+|---|---|---|
+| 0.22.2 – 0.22.4 | `0001` | `d923a5eb487` (0.22.2) |
+| 0.22.5 – 0.22.x | `0001` + `0002` | `0002`: `bf0203a794a` (0.22.5); `0001` also verified there |
+| 0.23.x | `0003` only | `caafe5389a` (tag `v0.23.3`) |
 
-Which one an install needs, the symptom when it is missing, and the release each was cut against are
-in [`CHANGELOG.md`](CHANGELOG.md).
+The Hermes checkout is `~/.hermes/hermes-agent` on Linux and `%LOCALAPPDATA%\hermes\hermes-agent`
+on Windows; `install-stamp.json` beside it names the commit and the version.
 
-Apply after a `hermes update` that dropped them:
+**A clean `git apply --check` is not the test.** `0001` and `0002` both apply cleanly to 0.23.3 and
+change nothing reachable there — 0.23.3 answers the wire from `GatewayACPAgent`, whose storage handle
+(`Persistence`) no longer carries the methods `0001` calls. Apply the set the *version* needs.
 
-    cd ~/.hermes/hermes-agent
-    git apply --3way /path/to/0001-acp-session-catalog-hidden-title.patch
-    git apply --3way /path/to/0002-acp-gateway-ext-methods.patch
+## What each patch adds
+
+- `0001-acp-session-catalog-hidden-title.patch`: the three methods on `HermesACPAgent`, and the
+  `SessionManager` calls behind them, reading the session table in whichever layout the build uses —
+  `source` on 0.22.2, `created_source` alongside it on 0.22.5, where `source` is rewritten to
+  `local` (`acp_adapter/server.py`, `acp_adapter/session.py`).
+- `0002-acp-gateway-ext-methods.patch`: the same three on `GatewayACPAgent`, the class 0.22.5
+  actually answers from, because `HermesACPAgent.__new__` returns one (`acp_adapter/gateway_server.py`).
+- `0003-acp-023x-session-catalog-hidden-title.patch`: the same three for 0.23.x — `ext_method` on
+  `GatewayACPAgent` writing through `persistence.sessions.*`, and `catalog_with_hidden` beside
+  Hermes' own `catalog_sessions` (`acp_adapter/catalog.py`, `acp_adapter/gateway_server.py`).
+
+The symptom when the right set is missing, and the cause on 0.23.x, are in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Applying them
+
+    cd ~/.hermes/hermes-agent                                                     # Windows: %LOCALAPPDATA%\hermes\hermes-agent
+    git apply --3way <this folder>/0003-acp-023x-session-catalog-hidden-title.patch   # 0.23.x
+    git apply --3way <this folder>/0001-acp-session-catalog-hidden-title.patch        # 0.22.x …
+    git apply --3way <this folder>/0002-acp-gateway-ext-methods.patch                 # … 0.22.5 and later
+
+`hermes update` stashes local changes before its `git pull` and afterwards asks *"Restore local
+changes now?"* — answer yes, or re-apply the patch by hand. Check before opening a pane:
+`_session/catalog` answering `null` or an error is the patch's absence.
