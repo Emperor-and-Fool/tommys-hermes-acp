@@ -146,6 +146,8 @@ export interface EditorFiles {
 export interface EditorChoices {
     /** One row of a list the feature supplies: its id, or undefined when the user dismisses. */
     pick(title: string, items: EditorChoiceItem[]): Promise<string | undefined>;
+    /** A typed answer with a starting value: what the user entered, or undefined when dismissed. */
+    prompt(title: string, value: string): Promise<string | undefined>;
     /** The OS folder dialog: the chosen folder, or undefined. */
     pickFolder(title: string, startAt: string): Promise<string | undefined>;
     /** Show a folder in the OS file manager — the user's own browser, not the editor's explorer. */

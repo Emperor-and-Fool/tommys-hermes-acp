@@ -5,6 +5,7 @@ import { ProfileWorkspaceStore, ProjectStore, TabStore, WorkspaceStore } from '.
 import { treeInputOf } from './workspace/workSpace';
 import { AgentNotes } from './notes/notes';
 import { NotesMirror } from './notes/mirror';
+import { MemorySize } from './notes/memory';
 import { NotesStore } from './notes/store';
 import { TreeStore } from './workspace/store';
 import * as path from 'path';
@@ -92,8 +93,8 @@ export class App implements vscode.WebviewViewProvider {
         return this._profiles.resolveTarget().cliProfile;
     }
 
-    /** The ⋯ menu's agent group: the folder this agent writes in, and the mirror of all of them. */
-    get notes() { return this._mirror.commands; }
+    /** The ⋯ menu's agent group: the notes folder, the mirror, the memory limit. */
+    get notes() { return { ...this._mirror.commands, memorySize: () => this._size.run(this._session.sessionProfileId) }; }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
@@ -137,6 +138,8 @@ export class App implements vscode.WebviewViewProvider {
     private _notes: AgentNotes;
     /** The user's mirror of them: one link per agent, in a folder they chose. */
     private _mirror: NotesMirror;
+    /** How much memory the current agent may keep: shown, chosen, and set through Hermes' CLI. */
+    private _size: MemorySize;
 
     /** The tab list, the active id, the transcript, the hidden rows, the scope and the store. */
     private _session!: Sessions;
@@ -362,23 +365,27 @@ export class App implements vscode.WebviewViewProvider {
             }),
         });
         this._profiles.seedStore();
-        // Each agent's own notes: a folder beside its tabs, and the index that names it; and the
-        // mirror the user reads them through. One store for both (ST1).
+        // The agent notes feature: the folder beside an agent's tabs, the index that names it, the
+        // mirror the user reads them through, and the memory limit only Hermes may raise. One port
+        // for the three, one store under it (ST1).
         const notesStore = new NotesStore(this._historyDir);
-        this._notes = new AgentNotes(notesStore, {
-            log: line => this._log(line),
-            profileInfo: id => this._profiles.describeAgent(id),
-            protectedSection: (id, notesDir) => this._profiles.notesProtection(id, notesDir),
-        });
-        this._mirror = new NotesMirror(notesStore, this._notes, {
-            log: line => this._log(line),
-            info: message => this._notices.info(message),
+        const notesHost = {
+            log: (line: string) => this._log(line),
+            info: (message: string) => this._notices.info(message),
             choices: createEditorChoices(),
+            profileInfo: (id: string) => this._profiles.describeAgent(id),
+            protectedSection: (id: string, notesDir: string) => this._profiles.notesProtection(id, notesDir),
             agents: () => this._profiles.agents(),
-            mirrorSet: value => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
+            mirrorSet: (value: boolean) => this._commands.setContext(`${this._id.prefix}NotesMirrorSet`, value),
             otherWindowLive: () => this._presence.live().length > 0,
             currentAgentId: () => this._session.sessionProfileId,
-        });
+            usage: (id: string) => this._profiles.memoryUsage(id),
+            setLimit: async (id: string, limit: number) =>
+                this._profiles.setMemoryLimit(id, await this._resolveHermesExecutable(), limit),
+        };
+        this._notes = new AgentNotes(notesStore, notesHost);
+        this._mirror = new NotesMirror(notesStore, this._notes, notesHost);
+        this._size = new MemorySize(notesHost);
         this._mirror.repairOnStart();
         // Announced before anything asks who may run what: the pickers read the other windows'
         // rows through `_presence.live()`, and this instance's own row is what they see there.
@@ -927,17 +934,13 @@ export class App implements vscode.WebviewViewProvider {
         this._surfaces.resolveView(webviewView);
     }
 
-    public toggleChatSurface(): void {
-        this._surfaces.toggle();
-    }
+    public toggleChatSurface(): void { this._surfaces.toggle(); }
 
     /** Show our side panel, unless it is already on screen: the rail lists the chats. */
     public revealRail(trigger: RevealTrigger): void { this._surfaces.revealRail(trigger); }
 
     /** Called by the panel serializer so the tab comes back after a reload. */
-    public restoreChatPanel(panel: vscode.WebviewPanel): void {
-        this._surfaces.restorePanel(panel);
-    }
+    public restoreChatPanel(panel: vscode.WebviewPanel): void { this._surfaces.restorePanel(panel); }
 
     /** Same message contract for the side bar view and the editor panel. */
     private _wireMessages(webview: vscode.Webview, surface: ChatSurface): void {
@@ -1110,9 +1113,7 @@ export class App implements vscode.WebviewViewProvider {
         }
     }
 
-    private _postWebviewLog(line: string, level: LogLevel): void {
-        this._postMessage({ type: 'log', line, level });
-    }
+    private _postWebviewLog(line: string, level: LogLevel): void { this._postMessage({ type: 'log', line, level }); }
 
     private _enqueueChatOp(op: () => Promise<void>): void {
         this._chatOpChain = this._chatOpChain
@@ -1123,9 +1124,7 @@ export class App implements vscode.WebviewViewProvider {
             });
     }
 
-    public insertIntoInput(text: string): void {
-        this._postMessage({ type: 'insertInput', text });
-    }
+    public insertIntoInput(text: string): void { this._postMessage({ type: 'insertInput', text }); }
 
     /** Forward this message to the sibling pane, if it is running. Nothing is sent for the user. */
     public forwardMessage(text?: string, sourceMessageId?: string, history?: HistoryRef, body?: string): void {

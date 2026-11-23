@@ -26,6 +26,7 @@
   "commands.tommys.setupNotesMirror.title": "设置笔记镜像…",
   "commands.tommys.repairNotesMirror.title": "修复笔记镜像",
   "commands.tommys.changeNotesMirror.title": "更改笔记镜像位置…",
+  "commands.tommys.agentMemorySize.title": "代理记忆大小…",
   "commands.tommys.detectEnvironment.title": "环境检测",
   "commands.tommys.detectEnvironmentBusy.title": "环境检测中....",
   "commands.tommys.configureEnvironment.title": "环境配置",

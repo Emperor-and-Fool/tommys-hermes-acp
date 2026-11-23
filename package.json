@@ -117,6 +117,10 @@
         "title": "%commands.tommys.changeNotesMirror.title%"
       },
       {
+        "command": "tommys.agentMemorySize",
+        "title": "%commands.tommys.agentMemorySize.title%"
+      },
+      {
         "command": "tommys.detectEnvironment",
         "title": "%commands.tommys.detectEnvironment.title%",
         "icon": "$(search)"
@@ -221,6 +225,10 @@
           "command": "tommys.changeNotesMirror",
           "when": "tommysNotesMirrorSet",
           "group": "0@4"
+        },
+        {
+          "command": "tommys.agentMemorySize",
+          "group": "0@5"
         },
         {
           "command": "tommys.toggleChatSurface",

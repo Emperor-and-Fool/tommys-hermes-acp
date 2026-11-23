@@ -26,6 +26,12 @@ export function createEditorChoices(): EditorChoices {
             return index >= 0 ? (items[index] as EditorChoiceItem).id : undefined;
         },
 
+        prompt: async (title, value) => vscode.window.showInputBox({
+            title,
+            value,
+            ignoreFocusOut: true,
+        }),
+
         pickFolder: async (title, startAt) => {
             const picked = await vscode.window.showOpenDialog({
                 canSelectFiles: false,

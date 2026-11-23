@@ -2,7 +2,9 @@ import { t } from '../i18n';
 import type { HostToPane } from '../../shared/webview';
 import { cliProfileForScopeKey, normalizeHermesCliProfile } from './hermesProfile';
 import { discoverHermesProfiles } from './profileDiscovery';
-import { hasNotesProtectedSection } from './profileMemory';
+import { hasNotesProtectedSection, memoryFill, memoryLimitFor } from './profileMemory';
+import { setHermesConfig } from './hermesConfig';
+import type { ConfigSetResult } from './hermesConfig';
 import {
     hasProfilesRoot,
     isCurrentProfile,
@@ -317,6 +319,32 @@ export class Profiles {
         const present = name ? hasNotesProtectedSection(name, notesDir, hermesHome) : false;
         this._host.store.setPsSet(sessionProfileId, present);
         return present;
+    }
+
+    /**
+     * The agent's memory, as a dialog shows it: its name, what MEMORY.md holds, and its limit.
+     *
+     * Both numbers come from Hermes' own files (H1, H2: read only): the fill is the character count
+     * of the memory file, the limit is `memory.memory_char_limit` or Hermes' default of 2200.
+     */
+    memoryUsage(sessionProfileId: string): { name: string; fill: number; limit: number } {
+        const name = this.agentNameFor(sessionProfileId);
+        const hermesHome = this._host.hermesHome ? this._host.hermesHome() : undefined;
+        return { name, fill: memoryFill(name, hermesHome), limit: memoryLimitFor(name, hermesHome) };
+    }
+
+    /**
+     * Raise an agent's memory limit through Hermes' CLI — the one setting H2a names for this.
+     *
+     * The value is Hermes' to write; nothing here opens config.yaml. What the CLI answered is
+     * handed back for the dialog to say, failure included.
+     */
+    setMemoryLimit(sessionProfileId: string, executable: string | undefined, limit: number): Promise<ConfigSetResult> {
+        const name = this.agentNameFor(sessionProfileId);
+        if (!executable) {
+            return Promise.resolve({ ok: false, message: 'no Hermes executable found' });
+        }
+        return setHermesConfig(executable, name, 'memory.memory_char_limit', String(limit));
     }
 
     /**

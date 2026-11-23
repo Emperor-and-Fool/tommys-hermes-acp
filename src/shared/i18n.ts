@@ -393,6 +393,19 @@ export interface LocaleStrings {
     notesAskDoIt: string;
     notesAskLater: string;
     notesAskNever: string;
+    memorySizeTitle: string;
+    memorySizeDouble: string;
+    memorySizeKeep: string;
+    memorySizeOther: string;
+    memorySizeInput: string;
+    memorySizeInvalid: string;
+    memorySizeConfirm: string;
+    memorySizeApply: string;
+    memorySizeCancel: string;
+    memorySizeDone: string;
+    memorySizeFailed: string;
+    memorySizeUnchanged: string;
+    memorySizeNoAgent: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;
