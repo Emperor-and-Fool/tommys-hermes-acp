@@ -404,8 +404,6 @@ export class App implements vscode.WebviewViewProvider {
             log: (line) => this._log(line),
         });
         this._presence.start();
-        // The budget item reads that table, so it starts after the first beat has swept it.
-        this._budget.start();
         this._attachments = new AttachmentStore(this._historyDir);
         runMigrations(this._historyDir, (scope, ids) => this._profiles.agentForScope(scope, ids), (line) => this._log(line));
 
@@ -570,6 +568,9 @@ export class App implements vscode.WebviewViewProvider {
                 void this._onConfigurationChanged(affects);
             })
         );
+        // Last, and only here: the item draws once as it starts, and its first draw asks this
+        // window for the connection, the profile and the presence table — all three exist now.
+        this._budget.start();
     }
 
     private _otherSessionIsPrompting(): boolean {
