@@ -23,6 +23,11 @@ export const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** What the setup needs: the machine's answer, the CLI, and the editor's three ways of speaking. */
 export interface DesktopHost {
+    /**
+     * What this machine is. Hermes' Electron Desktop is a Windows install; on Linux the window the
+     * user wants is our own dashboard, and building Electron here is 344 MB nobody asked for.
+     */
+    platform(): NodeJS.Platform;
     /** Only the primary prepares the machine: this is one Desktop per machine, not per window. */
     isPrimary(): boolean;
     /** What is on disk right now, read from the checkout. */
@@ -52,6 +57,11 @@ export class DesktopSetup {
     }
 
     private async _start(): Promise<void> {
+        if (this._host.platform() !== 'win32') {
+            // Not a bug and not a warning: on Linux and macOS there is nothing here to prepare.
+            this._host.log('Desktop: not built on this platform');
+            return;
+        }
         if (!this._host.isPrimary()) {
             this._host.log('Desktop setup: the secondant leaves the machine\'s Desktop to the primary');
             return;

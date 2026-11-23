@@ -54,6 +54,7 @@ const setup = (options: {
     presence: DesktopPresence;
     result?: DesktopBuildResult;
     isPrimary?: boolean;
+    platform?: NodeJS.Platform;
     answer?: string;
     now?: number;
 }) => {
@@ -65,6 +66,7 @@ const setup = (options: {
     const logs: string[] = [];
     let answer = options.answer;
     const host: DesktopHost = {
+        platform: () => options.platform ?? 'win32',
         isPrimary: () => options.isPrimary !== false,
         presence: async () => options.presence,
         build: async (report) => {
@@ -111,6 +113,23 @@ const storeIn = (): { store: DesktopStore; dir: string } => {
 };
 
 describe('the Desktop setup: build once, and only when there is nothing to keep', () => {
+    it('does nothing on Linux or macOS: that Desktop is not ours to build', async () => {
+        for (const platform of ['linux', 'darwin'] as NodeJS.Platform[]) {
+            const { store, dir } = storeIn();
+            const step = setup({ store, presence: missing, platform });
+            await step.desktop.start();
+            assert.deepStrictEqual(step.builds, [], `${platform}: no build`);
+            assert.deepStrictEqual(step.runs, [], `${platform}: no notification`);
+            assert.deepStrictEqual(step.infos, [], `${platform}: nothing to tell`);
+            assert.ok(
+                step.logs.includes('Desktop: not built on this platform'),
+                `${platform}: ${step.logs.join(' | ')}`,
+            );
+            assert.strictEqual(store.read(), undefined, `${platform}: and nothing recorded`);
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('does nothing when a build is already there', async () => {
         const { store, dir } = storeIn();
         const step = setup({ store, presence: present });

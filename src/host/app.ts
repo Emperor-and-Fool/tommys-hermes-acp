@@ -359,6 +359,7 @@ export class App implements vscode.WebviewViewProvider {
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
         this._desktop = new DesktopSetup(new DesktopStore(this._historyDir), {
+            platform: () => process.platform,
             isPrimary: () => this._id.role === 'primary',
             presence: async () => desktopPresence(),
             build: (report) => this._detection.buildDesktop(report),
