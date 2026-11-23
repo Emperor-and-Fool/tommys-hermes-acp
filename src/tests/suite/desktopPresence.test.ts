@@ -12,11 +12,13 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     desktopBuildArgs,
+    desktopBuildOptions,
     desktopExecutableCandidates,
     desktopPresence,
     findDesktopBuild,
     findHermesSourceCheckout,
 } from '../../host/environment/desktopBuild';
+import { electronCapableEnv } from '../../host/environment/childEnv';
 
 const dir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-presence-'));
 
@@ -38,6 +40,39 @@ const home = (build?: { platform: 'linux' | 'win32'; name: string; dir: string }
 describe('the Desktop build command', () => {
     it('is Hermes\' own --build-only, which builds and does not launch', () => {
         assert.deepStrictEqual(desktopBuildArgs(), ['desktop', '--build-only']);
+    });
+});
+
+/**
+ * The editor's own environment says "Electron, run as Node". A build that packs Electron, and the
+ * launcher that starts it, must not pass that on: the app exits 0 at once, silently.
+ */
+describe('the environment a child that starts Electron gets', () => {
+    it('drops the editor\'s run-as-node variable and keeps the rest', () => {
+        const env = electronCapableEnv({ ELECTRON_RUN_AS_NODE: '1', PATH: '/usr/bin', HOME: '/h' });
+        assert.strictEqual(env.ELECTRON_RUN_AS_NODE, undefined);
+        assert.strictEqual(env.PATH, '/usr/bin');
+        assert.strictEqual(env.HOME, '/h');
+    });
+
+    it('is what the build spawns with, even when this process has the variable set', () => {
+        const before = process.env.ELECTRON_RUN_AS_NODE;
+        process.env.ELECTRON_RUN_AS_NODE = '1';
+        try {
+            const options = desktopBuildOptions('/checkout', 'linux');
+            assert.strictEqual(options.env.ELECTRON_RUN_AS_NODE, undefined, 'the build never sees it');
+            assert.strictEqual(options.cwd, '/checkout');
+            assert.deepStrictEqual(options.stdio, ['ignore', 'pipe', 'pipe'], 'stdin closed, output read');
+            assert.strictEqual(options.windowsHide, true);
+            assert.strictEqual(options.shell, false, 'linux needs no shell');
+            assert.strictEqual(desktopBuildOptions('/checkout', 'win32').shell, true, 'windows does');
+        } finally {
+            if (before === undefined) {
+                delete process.env.ELECTRON_RUN_AS_NODE;
+            } else {
+                process.env.ELECTRON_RUN_AS_NODE = before;
+            }
+        }
     });
 });
 

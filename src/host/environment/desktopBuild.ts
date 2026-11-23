@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { electronCapableEnv } from './childEnv';
 import { resolveHermesRoot } from './hermesPaths';
 
 /**
@@ -131,6 +132,24 @@ export interface DesktopBuildResult {
 const TAIL_LINES = 40;
 
 /**
+ * The spawn options of the build, in one place.
+ *
+ * stdin closed so nothing can wait for an answer, no window, and the env from `childEnv.ts`: this
+ * build packs an Electron app and may run the Electron binary, which with the editor's own variable
+ * in place would exit at once instead of building. Exported so a test can read the options without
+ * spawning anything.
+ */
+export function desktopBuildOptions(checkout: string, platform: NodeJS.Platform = process.platform) {
+    return {
+        cwd: checkout,
+        stdio: ['ignore', 'pipe', 'pipe'] as Array<'ignore' | 'pipe'>,
+        shell: platform === 'win32',
+        windowsHide: true,
+        env: electronCapableEnv(),
+    };
+}
+
+/**
  * Run the build and answer how it ended.
  *
  * stdin is closed, so nothing can wait for an answer that will never come; the window is hidden on
@@ -154,12 +173,7 @@ export function runDesktopBuild(
         };
         let proc: ReturnType<typeof spawn>;
         try {
-            proc = spawn(executable, desktopBuildArgs(), {
-                cwd: checkout,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                shell: platform === 'win32',
-                windowsHide: true,
-            });
+            proc = spawn(executable, desktopBuildArgs(), desktopBuildOptions(checkout, platform));
         } catch (error) {
             finish({ ok: false, code: null, build: null, tail, message: messageOf(error) });
             return;
