@@ -197,7 +197,9 @@ describe('the dialog: a fixed recommendation, a look-only "Keep", and Hermes\' v
     });
 
     it('shows the same number, twice, as nothing to do', async () => {
-        const d = dialog(usage, 'other', '2200', t('memorySizeApply'));
+        // The typed number is the limit already in force, and it is not below the file: the file
+        // sits exactly at it, which is the case the dialog can answer with "nothing to do".
+        const d = dialog({ name: 'kitt', fill: 2200, limit: 2200 }, 'other', '2200', t('memorySizeApply'));
         await d.size.run('id-kitt');
         assert.deepStrictEqual(d.set, []);
         assert.deepStrictEqual(d.infos, [t('memorySizeUnchanged', '2,200', 'kitt')]);
