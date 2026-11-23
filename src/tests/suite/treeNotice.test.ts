@@ -39,8 +39,10 @@ describe('the tree notice block: the notes section', () => {
         const withNotes = treeNoticeBlock(paths, notes);
         assert.ok(withNotes.startsWith('<clientworkspace-tree>'));
         assert.ok(withNotes.indexOf('/p/tree-passive.json') < withNotes.indexOf('<agent-notes>'), 'the notes come second');
-        assert.ok(withNotes.endsWith('</agent-notes>'));
+        assert.ok(withNotes.includes('<agent-notes>'), 'the notes ride in the same block');
 
+        // Since 92e3440 the notice ends on the line about itself, after the notes section: it is
+        // about the block as a whole, not about the notes.
         assert.ok(withNotes.endsWith("Repeats each session; don't save to memory."), 'the closing line comes last');
 
         const alone = treeNoticeBlock(paths);
