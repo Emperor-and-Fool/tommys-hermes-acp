@@ -485,4 +485,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     catalogDetails: 'Details',
     catalogDetailsBody: 'What Hermes answered: {0}\n\n{1}\n\nPatch files: {2}',
     catalogNoFiles: 'none for this version',
+    desktopPreparing: 'Preparing Hermes Desktop… (the first build takes a few minutes)',
+    desktopReady: 'Hermes Desktop is ready ({0}).',
+    desktopFailed: 'Hermes Desktop could not be built.',
+    desktopFailedBody: 'Hermes\' last lines:\n{0}',
+    desktopTryAgain: 'Try again',
+    desktopDetails: 'Details',
 };

@@ -191,6 +191,26 @@ export class PromptRunner {
     }
 
     /**
+     * Back on the tab whose turn is running: draw the prompt state it left behind.
+     *
+     * A tab switch repaints the pane from the tab's own transcript, which has no prompt in it, so
+     * the status and the two buffers have to be posted again — for that tab only, which `postScoped`
+     * enforces. A return to any other tab has nothing to restore.
+     */
+    restoreOwnerPromptUi(): void {
+        if (!this.promptSessionId || this.host.acpStatus() !== 'prompting') {
+            return;
+        }
+        this.postScoped({ type: 'status', status: 'prompting' });
+        if (this.lastThoughtText) {
+            this.postScoped({ type: 'addMessage', role: 'thought', text: this.lastThoughtText });
+        }
+        if (this.lastAssistantText) {
+            this.postScoped({ type: 'addMessage', role: 'assistant', text: this.lastAssistantText });
+        }
+    }
+
+    /**
      * End the turn that belongs to `fromSessionId`, keeping whatever had streamed.
      * A no-op when no turn is running or when the turn belongs to another tab.
      */

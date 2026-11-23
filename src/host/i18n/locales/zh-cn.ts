@@ -480,4 +480,10 @@ hermes --profile &lt;name&gt; acp</code></pre>
     catalogDetails: '详情',
     catalogDetailsBody: 'Hermes 的回答：{0}\n\n{1}\n\n补丁文件：{2}',
     catalogNoFiles: '此版本没有',
+    desktopPreparing: '正在准备 Hermes 桌面版……（首次构建需要几分钟）',
+    desktopReady: 'Hermes 桌面版已就绪（{0}）。',
+    desktopFailed: '无法构建 Hermes 桌面版。',
+    desktopFailedBody: 'Hermes 的最后几行输出：\n{0}',
+    desktopTryAgain: '重试',
+    desktopDetails: '详情',
 };

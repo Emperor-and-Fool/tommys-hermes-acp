@@ -432,6 +432,13 @@ export interface LocaleStrings {
     catalogDetails: string;
     catalogDetailsBody: string;
     catalogNoFiles: string;
+    /** Hermes Desktop prepared once, when the machine has none (setup step, H2a). */
+    desktopPreparing: string;
+    desktopReady: string;
+    desktopFailed: string;
+    desktopFailedBody: string;
+    desktopTryAgain: string;
+    desktopDetails: string;
 }
 
 export type LocaleKey = keyof LocaleStrings;

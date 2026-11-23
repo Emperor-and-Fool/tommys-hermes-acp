@@ -54,6 +54,10 @@ import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
 import { CatalogNotice } from './workspace/catalogNotice';
+import { DesktopSetup } from './desktop/desktop';
+import { DesktopStore } from './desktop/store';
+import { createEditorProgress } from './editor/progress';
+import { desktopPresence } from './environment/desktopBuild';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -287,6 +291,9 @@ export class App implements vscode.WebviewViewProvider {
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
 
+    /** Hermes Desktop, prepared once per machine when it is missing (H2a's named step). */
+    private readonly _desktop: DesktopSetup;
+
     /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
     private readonly _catalogNotice = new CatalogNotice({
         hermesVersion: () => this._connection.acp?.agentVersion || '',
@@ -351,6 +358,16 @@ export class App implements vscode.WebviewViewProvider {
         onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
+        this._desktop = new DesktopSetup(new DesktopStore(this._historyDir), {
+            isPrimary: () => this._id.role === 'primary',
+            presence: async () => desktopPresence(),
+            build: (report) => this._detection.buildDesktop(report),
+            progress: createEditorProgress(),
+            notices: this._notices,
+            choices: createEditorChoices(),
+            log: (line) => this._log(line),
+            now: () => Date.now(),
+        });
         // The workspace registry and its per-workspace rows are built first: a pane's profile
         // pick is saved per workspace, and the start reads it before anything connects. The roots
         // live with the workspace record, so the locator reads and writes them there; the store
@@ -504,7 +521,7 @@ export class App implements vscode.WebviewViewProvider {
             detachActivePrompt: (id, options) => this._turn.detachActivePrompt(id, options),
             otherSessionIsPrompting: () => this._otherSessionIsPrompting(),
             syncModelStateForCurrentSession: () => this._syncModelStateForCurrentSession(),
-            syncPromptUiIfReturningToOwner: () => this._syncPromptUiIfReturningToOwner(),
+            syncPromptUiIfReturningToOwner: () => this._turn.restoreOwnerPromptUi(),
             snapshotModelFromProfile: () => this._models.snapshotFromProfile(),
             saveCatalog: () => this._session.saveCatalog(),
             saveCurrent: () => this._session.saveCurrent(),
@@ -580,38 +597,15 @@ export class App implements vscode.WebviewViewProvider {
         // Last, and only here: the item draws once as it starts, and its first draw asks this
         // window for the connection, the profile and the presence table — all three exist now.
         this._budget.start();
+        // Last: the machine's Desktop is the one step that outlives a window, so it starts when the
+        // window it reports into is whole. It never blocks the first chat.
+        void this._desktop.start();
     }
 
     private _otherSessionIsPrompting(): boolean {
         return this._connection.acp?.status === 'prompting'
             && !!this._turn.promptSessionId
             && this._turn.promptSessionId !== this._session.activeId;
-    }
-
-    private _syncPromptUiIfReturningToOwner(): void {
-        if (!this._turn.promptSessionId || this._turn.promptSessionId !== this._session.activeId) {
-            return;
-        }
-        if (this._connection.acp?.status !== 'prompting') {
-            return;
-        }
-        this._postMessage({ type: 'status', status: 'prompting', sessionId: this._session.activeId });
-        if (this._turn.lastThoughtText) {
-            this._postMessage({
-                type: 'addMessage',
-                role: 'thought',
-                text: this._turn.lastThoughtText,
-                sessionId: this._session.activeId,
-            });
-        }
-        if (this._turn.lastAssistantText) {
-            this._postMessage({
-                type: 'addMessage',
-                role: 'assistant',
-                text: this._turn.lastAssistantText,
-                sessionId: this._session.activeId,
-            });
-        }
     }
 
     private async _handleUserMessage(text: string, images?: Array<{ mimeType: string; data: string }>): Promise<void> {
