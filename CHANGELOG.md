@@ -7,12 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.6.0] - 2026-11-23
+
+Every agent now has a home for what it needs to keep: a notes folder of its own, beside its session
+tabs, with an index in it. The user reads along through a mirror of links in their own vault, and
+each agent's memory cap is shown and raised from the ⋯ menu — by Hermes' own CLI, on a click.
+
+### What changed along the way
+
+| First | Later | Why |
+|---|---|---|
+| Notes an agent wanted to keep went into its memory, which Hermes caps at 2200 characters. | Each agent has `profiles/<uuid>/notes/`, one level under the folder that holds its sessions, with an index that lists what is there. | What only the agent needs stays out of the memory, so the memory stays small. |
+| Where that memory ended was written by hand into each agent's `MEMORY.md`, and nothing told the agent where its notes are. | The repeating notice names the notes folder and its index, and asks once for a protected section in `MEMORY.md` that holds the pointer. | A pointer the software never mentions rots; a section the user controls survives the agent's own judgement. |
+| A turn's blocks were composed in `app.ts`, the tree's agent from the project feature and its tabs from the session feature. | The blocks are composed in the turn's own runner, and the tree reads its agent and its tabs from one owner. | During a profile change the two disagreed for a moment, and the tree file was written under the wrong agent. |
+| The memory cap was invisible: 2200 characters, and raising it meant editing `config.yaml`. | The ⋯ agent group shows what `MEMORY.md` holds against the limit, and raises it through `hermes config set`. | The cap costs tokens in every session of that agent; the user decides that, with the numbers in front of them. |
+
+### Added
+
+- **An agent's notes folder.** Every agent has a `notes/` folder beside its session tabs, and an
+  index (`00 Index.md`) that names the agent and lists the files there, rewritten when they change.
+  The notice sent with every session names the folder and the index. The material that older memory
+  entries pointed at is moved in by hand, once.
+- **A protected section in the agent's memory.** While an agent's `MEMORY.md` has no section opening
+  with `== Protected section` and naming its notes folder, the notice asks once for it: the agent
+  creates it, or renames the markers of the one it has and adds the `Notes:` line. The extension never
+  writes a Hermes file; it reads the memory to know whether the ask is still needed. The section is
+  the agent's one place the user controls: the agent may not change it on its own.
+- **The notes mirror.** Set up a folder `PAs - AgentsProfileInfo` in a location you choose — an
+  Obsidian vault, your Documents folder, or any folder — with one link per agent, named after the
+  agent, pointing at its notes. Symlinks on Linux and macOS, junctions on Windows. The ⋯ menu opens
+  the current agent's notes in your file manager, sets the mirror up, repairs it, and changes its
+  location; a repair recreates a missing link, renames a renamed agent's link, and reports a link
+  whose target is gone. A real file or folder in the mirror with an agent's name is never touched.
+- **A first-run question, once per install:** *Your agents have their own notes. Mirror them where
+  you can read along? Obsidian is recommended.* **Let's do it** runs the setup; **Remind me in 2
+  weeks** asks again then; **Don't ask again** settles it. Closing the notice writes nothing, so it is
+  asked again at the next start. Both extensions share the answer, so it is asked once.
+- **"Agent memory size…" in the ⋯ agent group.** For the current agent it shows its name, what
+  `MEMORY.md` holds and the limit it is under — *kitt — memory 2,210 / 2,200 (100%)*. Three answers:
+  **Recommended: 4,400** (twice Hermes' default, offered while the agent is under it), **Keep**
+  (nothing is written), or a number of your own, never below what the file already holds; lowering
+  the limit asks once more. The cost is said before it is applied: *About +800 tokens in every
+  session of kitt.* The write is Hermes' own — `hermes -p <agent> config set
+  memory.memory_char_limit <n>` — and its answer, error included, is what the notice shows. `USER.md`
+  has its own limit and it is not touched.
+
+### Changed
+
+- **The ⋯ menu leads with the agent group:** open notes location, set up or repair the mirror, change
+  its location, agent memory size.
+- **The notice that opens every session** names the notes folder and its index, and, while the
+  protected section is missing, how to write it. It closes with one line: *Repeats each session;
+  don't save to memory.*
+
+### Fixed
+
+- **Tree files were written under the wrong agent's folder** while a profile change was landing: the
+  tree took the agent from one feature and the tabs from another, and in the moment between them they
+  disagreed.
+- **The name in a tree file now comes from the id the file is written under**, so a renamed agent no
+  longer leaves its old name in a file that describes another.
+
 ### Removed
 
 - **The `tommys.agents` setting.** A hand-written agent list that switched Hermes' own profile
   discovery off; `profiles.json`, filled by discovery, already does that job, and the setting was
   the one place an agent's folder was not `profiles/<uuid>/`. Nothing set it. Agents configured
   through it are gone; use the Profile picker, which lists what Hermes has.
+
+### Repository
+
+- The blocks a turn sends are composed in the turn's runner, in one order (history, tree and notes,
+  the user's text, images) instead of in `app.ts`, and the tree's agent and tabs come from one owner.
+- The notes feature is four files under `host/notes/` (the notes themselves, the store, the mirror,
+  the memory dialog) with one port in the composition root; `environment/` reads Hermes' memory and
+  config and runs the one CLI call.
+- `app.ts` did not grow across the six orders that built this: 1507 lines at the first order, 1470 at
+  the last.
+- Tests the removed agent list had left behind now read the profiles Hermes discovers, and the new
+  work is covered as it was written: the tree's scope, the prompt blocks, the notes and their index,
+  the mirror's links and refusals, the protected section's detection, and the memory dialog's rows.
 
 ## [2.5.1] - 2026-11-22
 
