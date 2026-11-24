@@ -146,7 +146,12 @@ async function installOnWindows(extensionUri?: vscode.Uri): Promise<void> {
     launchInstaller([], extensionUri);
 }
 
-/** Start the installer with the interpreter that has PyQt6. */
+/**
+ * Start the installer with the interpreter that has PyQt6 — and do not lose what it says.
+ *
+ * `stdio: 'ignore'` used to hide every failure. Now both streams are read: a non-zero exit becomes a
+ * message with its last lines, and the context key is refreshed once it is over.
+ */
 function launchInstaller(args: string[], extensionUri?: vscode.Uri): void {
     const installer = findInstaller(extensionUri);
     if (!installer) {
@@ -171,11 +176,39 @@ function launchInstaller(args: string[], extensionUri?: vscode.Uri): void {
         );
         return;
     }
+    const output = outputChannel();
+    output.appendLine(`$ ${python} ${installer} ${args.join(' ')}`);
+    let child: ReturnType<typeof spawn>;
     try {
-        const child = spawn(python, [installer, ...args], { detached: true, stdio: 'ignore' });
-        child.unref();
+        child = spawn(python, [installer, ...args], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (error) {
         void vscode.window.showErrorMessage(`Hermes systray: could not start the window (${String(error)}).`);
+        return;
+    }
+    let stderr = '';
+    child.stdout?.on('data', chunk => output.appendLine(String(chunk).trimEnd()));
+    child.stderr?.on('data', chunk => {
+        stderr += String(chunk);
+        output.appendLine(String(chunk).trimEnd());
+    });
+    child.on('error', error => {
+        void vscode.window.showErrorMessage(`Hermes systray: could not start the window (${String(error)}).`);
+    });
+    child.on('exit', code => {
+        output.appendLine(`installer exited ${code ?? 'by signal'}`);
+        refreshSystrayContext();
+        if (code !== 0 && code !== null) {
+            const tail = stderr.trim().split(/\r?\n/).filter(Boolean).slice(-5).join('\n');
+            void vscode.window.showErrorMessage(
+                `Hermes systray: the installer stopped with exit ${code}` + (tail ? `:\n${tail}` : '.')
+            );
+        }
+    });
+    // The window is the user's now: the extension host must not keep it alive or wait for it.
+    try {
+        child.unref();
+    } catch {
+        // Nothing to detach.
     }
 }
 
