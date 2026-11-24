@@ -50,11 +50,6 @@ export function dashboardUnitText(hermesExe: string): string {
     ].join('\n');
 }
 
-/** Whether the text carries our marker. Read from the file, never remembered. */
-export function isOurUnit(text: string): boolean {
-    return text.includes(UNIT_MARKER);
-}
-
 /** What one systemd call answered. */
 interface Call {
     ok: boolean;
@@ -118,35 +113,4 @@ export async function ensureDashboardUnit(
     }
     const enabled = await run(['enable', '--now', DASHBOARD_UNIT]);
     return { created: true, ok: enabled.ok, message: enabled.ok ? 'written and started' : `enable: ${enabled.message}` };
-}
-
-/**
- * Remove the unit only when it carries our marker — and disable it first, so systemd forgets it.
- *
- * A unit the user wrote is reported and left: "uninstall" means what we installed.
- */
-export async function removeOurDashboardUnit(
-    unitPath: string,
-    run: (args: string[]) => Promise<Call> = systemctl,
-): Promise<Call & { removed: boolean }> {
-    if (!unitPath || !fs.existsSync(unitPath)) {
-        return { removed: false, ok: true, message: 'no dashboard unit' };
-    }
-    let text = '';
-    try {
-        text = fs.readFileSync(unitPath, 'utf8');
-    } catch (error) {
-        return { removed: false, ok: false, message: `could not read ${unitPath}: ${String(error)}` };
-    }
-    if (!isOurUnit(text)) {
-        return { removed: false, ok: true, message: 'the dashboard unit was not written by us; left alone' };
-    }
-    const disabled = await run(['disable', '--now', DASHBOARD_UNIT]);
-    try {
-        fs.unlinkSync(unitPath);
-    } catch (error) {
-        return { removed: false, ok: false, message: `could not delete ${unitPath}: ${String(error)}` };
-    }
-    await run(['daemon-reload']);
-    return { removed: true, ok: disabled.ok, message: 'removed' };
 }
