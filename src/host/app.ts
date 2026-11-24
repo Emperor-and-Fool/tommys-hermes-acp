@@ -54,11 +54,6 @@ import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
 import { CatalogNotice } from './workspace/catalogNotice';
-import { DesktopSetup } from './desktop/desktop';
-import { DesktopStore } from './desktop/store';
-import { createEditorProgress } from './editor/progress';
-import { desktopPresence } from './environment/desktopBuild';
-import { startupFolder } from './environment/desktopTray';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -99,8 +94,6 @@ export class App implements vscode.WebviewViewProvider {
 
     /** The ⋯ menu's agent group: the notes folder, the mirror, the memory limit. */
     get notes() { return { ...this._mirror.commands, memorySize: () => this._size.run(this._session.sessionProfileId) }; }
-
-    get desktop() { return { setUpTray: () => this._desktop.setUpTray(), removeTray: () => this._desktop.removeTray() }; }
 
     /** Fires when this extension's agent moves to another profile; the secondant listens. */
     private readonly _profileListeners = new Set<(name: string) => void>();
@@ -294,9 +287,6 @@ export class App implements vscode.WebviewViewProvider {
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
 
-    /** Hermes Desktop, prepared once per machine when it is missing (H2a's named step). */
-    private readonly _desktop: DesktopSetup;
-
     /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
     private readonly _catalogNotice = new CatalogNotice({
         hermesVersion: () => this._connection.acp?.agentVersion || '',
@@ -361,20 +351,6 @@ export class App implements vscode.WebviewViewProvider {
         onStoreWriteError(line => this._log(`Store: ${line}`));
         const storagePath = ensureDataHome();
         this._historyDir = storagePath;
-        this._desktop = new DesktopSetup(new DesktopStore(this._historyDir), {
-            platform: () => process.platform,
-            isPrimary: () => this._id.role === 'primary',
-            presence: async () => desktopPresence(),
-            build: (report) => this._detection.buildDesktop(report),
-            progress: createEditorProgress(),
-            notices: this._notices,
-            choices: createEditorChoices(),
-            log: (line) => this._log(line),
-            now: () => Date.now(),
-            scriptFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'windows'),
-            startupFolder: () => startupFolder(),
-            setContext: (key, value) => this._commands.setContext(key, value),
-        });
         // The workspace registry and its per-workspace rows are built first: a pane's profile
         // pick is saved per workspace, and the start reads it before anything connects. The roots
         // live with the workspace record, so the locator reads and writes them there; the store
@@ -604,8 +580,6 @@ export class App implements vscode.WebviewViewProvider {
         // Last, and only here: the item draws once as it starts, and its first draw asks this
         // window for the connection, the profile and the presence table — all three exist now.
         this._budget.start();
-        // Last: it is per machine, so it starts once the window it reports into is whole.
-        void this._desktop.start();
     }
 
     private _otherSessionIsPrompting(): boolean {
