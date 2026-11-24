@@ -52,6 +52,48 @@ class TheMarkerRule(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
 
+class TheDashboardEntryRule(unittest.TestCase):
+    """The entry is written because the file is missing — never because a port is free.
+
+    A dashboard that answers at install time says nothing about the next login. This is the rule the
+    first Windows version got wrong: it looked at http://127.0.0.1:9119/ and skipped the entry.
+    """
+
+    def setUp(self) -> None:
+        self.startup = Path(tempfile.mkdtemp(prefix="startup-"))
+        self.saved = gui.STARTUP_DIR
+        gui.STARTUP_DIR = self.startup
+
+    def tearDown(self) -> None:
+        gui.STARTUP_DIR = self.saved
+        for path in self.startup.glob("*"):
+            path.unlink()
+        self.startup.rmdir()
+
+    def test_missing_entry_is_written(self) -> None:
+        self.assertTrue(gui.dashboard_entry_missing())
+
+    def test_existing_entry_is_left_alone(self) -> None:
+        (self.startup / gui.DASHBOARD_LINK).write_text("")
+        self.assertFalse(gui.dashboard_entry_missing())
+
+    def test_the_port_is_never_consulted(self) -> None:
+        def forbidden(*_args, **_kwargs):
+            raise AssertionError("the port must not decide whether the login entry is written")
+
+        saved = gui.api_answers
+        gui.api_answers = forbidden
+        try:
+            self.assertTrue(gui.dashboard_entry_missing())
+            (self.startup / gui.DASHBOARD_LINK).write_text("")
+            self.assertFalse(gui.dashboard_entry_missing())
+        finally:
+            gui.api_answers = saved
+
+    def test_starting_now_off_windows_fails_quietly(self) -> None:
+        self.assertFalse(gui.start_dashboard_now(self.startup / "no-such.vbs"))
+
+
 class TheWindowsShape(unittest.TestCase):
     def test_the_app_and_its_venv_live_beside_the_user(self) -> None:
         # These are resolved at import time from the environment this process runs in; on Linux

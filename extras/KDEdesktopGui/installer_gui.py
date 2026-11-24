@@ -125,6 +125,27 @@ def login_written(name: str) -> bool:
     return login_entry(name).exists()
 
 
+def dashboard_entry_missing() -> bool:
+    """True when the dashboard's login entry has to be written.
+
+    The file's existence decides, never whether the port answers right now: a dashboard that is up
+    says nothing about the next login (Linux decides on the unit file the same way). And a second
+    `hermes dashboard --no-open` does not start a second server — Hermes prints "already running"
+    and exits 0 — so a written entry is harmless even when one is already up.
+    """
+    return not login_written(DASHBOARD_LINK)
+
+
+def start_dashboard_now(launcher: Path) -> bool:
+    """Start the dashboard the way its login entry will: hidden, through the .vbs, not waited for."""
+    try:
+        subprocess.Popen(["wscript.exe", str(launcher)], close_fds=True,
+                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def shortcut_script() -> Path | None:
     return SHORTCUT_SCRIPT if SHORTCUT_SCRIPT.exists() else None
 
@@ -686,9 +707,16 @@ class Installer(QDialog):
             self.say(f"login {APP_LINK}: {'written' if ok else 'not written'} ({said})")
             try:
                 launcher = write_dashboard_launcher()
-                dashboard = (not api_answers(DASHBOARD_URL)) and run_shortcut(
-                    "enable", DASHBOARD_LINK, str(launcher)) or (True, "the dashboard already answers")
-                self.say(f"login {DASHBOARD_LINK}: {dashboard[1]}")
+                if dashboard_entry_missing():
+                    ok, said = run_shortcut("enable", DASHBOARD_LINK, str(launcher))
+                    self.say(f"login {DASHBOARD_LINK}: {'written' if ok else f'not written ({said})'}")
+                else:
+                    self.say(f"login {DASHBOARD_LINK}: already there")
+                # Linux runs `systemctl enable --now` here, so the read-back screen can say
+                # "answering". Same for Windows: start it once, hidden; if one is already up,
+                # Hermes attaches to it and exits.
+                if not api_answers(DASHBOARD_URL) and start_dashboard_now(launcher):
+                    self.say("dashboard: starting now (hidden)")
             except OSError as exc:
                 self.say(f"login {DASHBOARD_LINK}: not written ({exc})")
             return
@@ -746,7 +774,7 @@ class Installer(QDialog):
         if not self.dry_run:
             lines.append("Autostart at login is on." if autostart_written()
                          else "Autostart at login is off.")
-            opens = browser_opens_at_login()
+            opens = browser_opens_at_login() if not IS_WINDOWS else None
             if opens is False:
                 lines.append("The dashboard no longer opens a browser at login.")
         else:
@@ -815,6 +843,16 @@ class Uninstaller(QDialog):
         removed.setWordWrap(True)
         removed.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
+        if IS_WINDOWS:
+            removed = QLabel(
+                "This removes:<br>"
+                f"<code>{INSTALL_DIR}</code> — the app, its venv and its icons<br>"
+                f"<code>{login_entry(APP_LINK)}</code> — the tray app at login<br>"
+                f"<code>{login_entry(DASHBOARD_LINK)}</code> — if it was written"
+            )
+            removed.setWordWrap(True)
+            removed.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
         kept = QLabel(
             "<b>System packages are not removed.</b> Still installed: "
             f"<b>{'</b>, <b>'.join(APT_PACKAGES)}</b>. They are shared with other Qt "
@@ -845,6 +883,7 @@ class Uninstaller(QDialog):
         nothing_to_do = system_installed() or not (
             installed_copy().exists() or autostart_written()
             or (DESKTOP_DIR / f"{APP_ID}.desktop").exists()
+            or (IS_WINDOWS and login_written(DASHBOARD_LINK))
         )
 
         if system_installed():
@@ -865,10 +904,13 @@ class Uninstaller(QDialog):
 
         panel.addWidget(title)
         panel.addWidget(removed)
-        panel.addSpacing(8)
-        panel.addWidget(kept)
-        panel.addLayout(command_row)
-        panel.addWidget(note)
+        # Nothing is kept on Windows: the venv lives inside INSTALL_DIR and goes with it, and there
+        # are no system packages to offer a removal line for.
+        if not IS_WINDOWS:
+            panel.addSpacing(8)
+            panel.addWidget(kept)
+            panel.addLayout(command_row)
+            panel.addWidget(note)
 
         self.buttons = QWidget()
         row = QHBoxLayout(self.buttons)
