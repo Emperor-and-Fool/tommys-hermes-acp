@@ -9,11 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [2.6.1] - 2026-11-23
+## [2.6.1] - 2026-11-24
 
-The Windows round. A Hermes 0.23 install now shows its sessions again — the patch that answers the
+The Windows round. A Hermes 0.23 install shows its sessions again — the patch that answers the
 catalog ships with the extension — and a catalog Hermes does not answer says so instead of looking
-empty. Hermes' Desktop is built where it belongs, and can start in the tray.
+empty. The tray app that puts the dashboard one click away now installs on Windows too.
+
+### Windows
+
+- **The tray app installs on Windows the way it does on Linux: from our own sources.** No prebuilt
+  binary and no download route: the same `extras/KDEdesktopGui` runs here, with a venv of our own at
+  `%LOCALAPPDATA%\hermesdesktopgui\venv` built from Hermes' Python with Hermes' `uv` (`PyQt6 6.12.1`,
+  `PyQt6-WebEngine 6.140.1`; about 220 MB), and a venv whose base Python left with a Hermes update is
+  rebuilt. The installer owns the same three screens on both platforms.
+- **Nothing about the Qt bindings is silent any more.** The installer imports PyQt6 at import time,
+  so on a machine without it the menu used to open nothing at all. The menu now checks first — the
+  two apt packages on Linux (`pkexec apt-get install -y` when missing), the venv on Windows — behind
+  one notification, with the full output in the **Hermes systray** channel. A window that dies is
+  reported with its exit code and the last lines of its stderr.
+- **The dashboard starts at login, once and only when it is missing, on both platforms.** Linux: a
+  `hermes-dashboard.service` in the user's own unit folder, in the shape of a hand-written one
+  (`--no-open`, port 9119, `graphical-session.target`) and marked as ours. Windows: two Startup
+  shortcuts — the app, and a hidden `hermes dashboard --no-open`. Uninstall removes only a unit
+  carrying that marker and only those two `.lnk` files; a unit you wrote yourself is left byte for
+  byte.
+- **Hermes' Electron Desktop is not the extension's business any more.** No build step, no
+  start-in-tray question, no menu entries for it. A machine that answered the 2.6.1-eve question has
+  that one shortcut and the copied launcher scripts removed at the next start, and nothing else.
 
 ### New
 
@@ -24,12 +46,7 @@ empty. Hermes' Desktop is built where it belongs, and can start in the tray.
   through the primary's.
 - **The item turns red when the provider cannot be reached**, whichever call found out — a failed
   turn or a failed balance read — with Hermes' own message in the tooltip.
-- **Start Hermes Desktop in the tray at login (Windows).** A first-run question with three answers
-  (Yes / Remind me in 2 weeks / Don't ask again), one Startup shortcut, and the ⋯ menu entries that
-  put it in place or take it away again. Only our shortcut is ever touched.
-- **Hermes Desktop is built once, unattended, where there is none (Windows).** One progress
-  notification while Hermes' own build runs; a failure is remembered with its time and offered again
-  on a click or after 24 hours.
+- **The tray app runs on Windows too**, from these sources and the same installer (*Windows*, below).
 
 ### Fixed
 
@@ -48,22 +65,18 @@ empty. Hermes' Desktop is built where it belongs, and can start in the tray.
 - **Hermes 0.23 needs its own patch, and it ships in the VSIX.** `0003` answers
   `_session/catalog`, `_session/setHidden` and `_session/setTitle` from Hermes 0.23's own store; the
   README's table says which set each Hermes version needs (0.22.2–0.22.4: `0001`; 0.22.5–0.22.x:
-  `0001` + `0002`; 0.23.x: `0003`). The patches are inside both VSIXes under
-  `packaging/hermes-patches/`, so an installed extension always carries its own copy.
-- **The Desktop build no longer exits at once.** The editor sets `ELECTRON_RUN_AS_NODE` for its
-  children; Electron with that variable runs as plain Node, so `Hermes.exe` quit silently. Every
-  child that can start Electron now gets an environment without it.
-- **Hermes' Electron Desktop is built on Windows only.** On Linux the window to want is our own
-  systray app; the step logs one line and does nothing.
+  `0001` + `0002`; 0.23.x: `0003`, alone — remove the 0.22 set first). The patches are inside both
+  VSIXes under `packaging/hermes-patches/`, so an installed extension always carries its own copy.
 
 ### Repository
 
-- New: `host/desktop/` (the build step, its store, the tray), `host/environment/desktopBuild.ts`,
-  `environment/desktopTray.ts`, `environment/childEnv.ts`, `environment/hermesPatches.ts`,
-  `editor/progress.ts`, and `packaging/windows/`.
+- New: `host/desktop/` (the 2.6.1 leftovers and their one removal), `environment/trayApp.ts`
+  (the Windows asset and its verification), `environment/startupShortcut.ts`,
+  `environment/dashboard.ts`, `environment/dashboardUnit.ts`, and
+  `packaging/windows/Set-HermesTrayShortcut.ps1`.
 - The catalog read answers `{ answered: true, sessions }` or `{ answered: false, reason }`, so an
   unanswered catalog cannot be mistaken for an empty one by a `?? []`.
-- Tests: 653 → 706 passing; `app.ts` 1470 → 1470.
+- Tests: 653 → 686 passing; `app.ts` 1470 → 1444.
 
 ## [2.6.0] - 2026-11-23
 

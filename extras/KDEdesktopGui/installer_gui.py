@@ -59,15 +59,139 @@ DASHBOARD_URL = "http://127.0.0.1:9119/"
 APT_PACKAGES = ("python3-pyqt6", "python3-pyqt6.qtwebengine")
 HERE = Path(__file__).resolve().parent
 
-INSTALL_DIR = Path.home() / ".local/share/hermes-desktopgui"
+# The app is the same source on both platforms; what differs is the interpreter, where it lives,
+# and how a login entry is made. Linux runs it with /usr/bin/python3 and apt brings PyQt6; Windows
+# runs it with a venv we own (built by the extension's pre-flight before this window opens).
+IS_WINDOWS = os.name == "nt"
+
+LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+APPDATA = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+
+INSTALL_DIR = (LOCALAPPDATA / "hermesdesktopgui") if IS_WINDOWS else (Path.home() / ".local/share/hermes-desktopgui")
+VENV_DIR = INSTALL_DIR / "venv"
 DESKTOP_DIR = Path.home() / ".local/share/applications"
 AUTOSTART_DIR = Path.home() / ".config/autostart"
-STATE_DIR = Path.home() / ".local/state/hermes-desktopgui"
+STATE_DIR = (INSTALL_DIR / "logs") if IS_WINDOWS else (Path.home() / ".local/state/hermes-desktopgui")
 UNIT_PATH = Path.home() / ".config/systemd/user/hermes-dashboard.service"
+# The line that makes a unit ours; it must equal UNIT_MARKER in
+# src/host/environment/dashboardUnit.ts, which writes the file.
+UNIT_MARKER = "# Written by the Tommys Hermes ACP extension — remove this unit with the tray app."
+
+# Windows: two Startup shortcuts, written through the script the extension ships.
+STARTUP_DIR = APPDATA / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+APP_LINK = "Hermes Desktop GUI.lnk"
+DASHBOARD_LINK = "Hermes Dashboard.lnk"
+DASHBOARD_LAUNCHER = "Start-HermesDashboard.vbs"
+SHORTCUT_SCRIPT = HERE.parent.parent / "packaging" / "windows" / "Set-HermesTrayShortcut.ps1"
 ACCENT = "#e37d26"
 
 
 # ---------------------------------------------------------------- detection
+
+
+def venv_python() -> Path:
+    return VENV_DIR / "Scripts" / "python.exe"
+
+
+def venv_pythonw() -> Path:
+    return VENV_DIR / "Scripts" / "pythonw.exe"
+
+
+def _runs(argv: list[str], timeout: int = 60) -> bool:
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0
+
+
+def venv_runs() -> bool:
+    """The venv's interpreter still starts — false when its base Python left with a Hermes update."""
+    python = venv_python()
+    return python.exists() and _runs([str(python), "-c", "import sys"])
+
+
+def venv_ready() -> bool:
+    """The venv starts and imports QtWebEngine: everything the app needs."""
+    python = venv_python()
+    return python.exists() and _runs([str(python), "-c", "import PyQt6.QtWebEngineWidgets"])
+
+
+def login_entry(name: str) -> Path:
+    return STARTUP_DIR / name
+
+
+def login_written(name: str) -> bool:
+    return login_entry(name).exists()
+
+
+def dashboard_entry_missing() -> bool:
+    """True when the dashboard's login entry has to be written.
+
+    The file's existence decides, never whether the port answers right now: a dashboard that is up
+    says nothing about the next login (Linux decides on the unit file the same way). And a second
+    `hermes dashboard --no-open` does not start a second server — Hermes prints "already running"
+    and exits 0 — so a written entry is harmless even when one is already up.
+    """
+    return not login_written(DASHBOARD_LINK)
+
+
+def start_dashboard_now(launcher: Path) -> bool:
+    """Start the dashboard the way its login entry will: hidden, through the .vbs, not waited for."""
+    try:
+        subprocess.Popen(["wscript.exe", str(launcher)], close_fds=True,
+                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def shortcut_script() -> Path | None:
+    return SHORTCUT_SCRIPT if SHORTCUT_SCRIPT.exists() else None
+
+
+def run_shortcut(action: str, name: str, target: str = "", args: str = "") -> tuple[bool, str]:
+    """Write or remove one Startup shortcut, through the extension's own script."""
+    script = shortcut_script()
+    if script is None:
+        return False, f"the shortcut script is missing: {SHORTCUT_SCRIPT}"
+    command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+               "-File", str(script), "-Action", action, "-Name", name, "-Startup", str(STARTUP_DIR)]
+    if target:
+        command += ["-Target", target]
+    if args:
+        command += ["-Arguments", args]
+    try:
+        out = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    return out.returncode == 0, (out.stdout or out.stderr).strip().splitlines()[-1:] or [f"exit {out.returncode}"]
+
+
+def hermes_executable() -> str:
+    """The `hermes` a login entry can run: an absolute path when one exists, else the bare command."""
+    candidates = [
+        LOCALAPPDATA / "hermes" / "bin" / "hermes.exe",
+        Path.home() / ".local" / "bin" / "hermes",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("hermes") or "hermes"
+
+
+def write_dashboard_launcher(hermes: str = "") -> Path:
+    """A hidden `hermes dashboard --no-open`, so login never shows a console window."""
+    hermes = hermes or hermes_executable()
+    VENV_DIR.parent.mkdir(parents=True, exist_ok=True)
+    launcher = INSTALL_DIR / DASHBOARD_LAUNCHER
+    launcher.write_text(
+        "' Start the Hermes dashboard with no console window. Written by the installer.\r\n"
+        'Set shell = CreateObject("WScript.Shell")\r\n'
+        f'shell.Run Chr(34) & "{hermes}" & Chr(34) & " dashboard --no-open", 0, False\r\n',
+        encoding="utf-8",
+    )
+    return launcher
 
 
 def pkg_installed(package: str) -> bool:
@@ -83,7 +207,12 @@ def pkg_installed(package: str) -> bool:
 
 def missing_packages(force: bool = False) -> list[str]:
     """Packages apt still has to install. `force` pretends they are all missing, so the
-    install step can be walked on a machine that already satisfies it."""
+    install step can be walked on a machine that already satisfies it.
+
+    Windows has no apt and no packages: what it needs is the venv, which the extension's
+    pre-flight builds before this window opens. The check only reads it."""
+    if IS_WINDOWS:
+        return [] if venv_ready() else ["PyQt6 venv"]
     if force:
         return list(APT_PACKAGES)
     return [p for p in APT_PACKAGES if not pkg_installed(p)]
@@ -158,6 +287,8 @@ def autostart_entry() -> Path:
 
 
 def autostart_written() -> bool:
+    if IS_WINDOWS:
+        return login_written(APP_LINK)
     return autostart_entry().exists()
 
 
@@ -307,6 +438,18 @@ class Installer(QDialog):
 
     def _step1(self) -> None:
         self._heading(1, "System check")
+        if IS_WINDOWS:
+            ready = venv_ready()
+            lines = [
+                f"PyQt6 for the app lives in our own venv: <code>{VENV_DIR}</code>",
+                "Found: <b>PyQt6</b>, <b>QtWebEngine</b>" if ready
+                else "To create: the venv is <b>not ready</b> — the menu's install builds it before "
+                     "this window opens, so this only shows its state.",
+            ]
+            self.body.setText("<br>".join(lines))
+            self._button("Cancel", self._abort)
+            self._button("Next", lambda: self._goto(2), primary=True)
+            return
         if system_installed():
             self.body.setText(
                 "System packages: <b>provided by the package</b> (Debian dependency)."
@@ -331,6 +474,9 @@ class Installer(QDialog):
             self._button("Next", lambda: self._goto(2), primary=True)
 
     def _install_packages(self) -> None:
+        if IS_WINDOWS:
+            self.say("Windows: the venv is built by the extension before this window opens")
+            return self._goto(2)
         if self.dry_run:
             self.say("dry run: would install the system packages with apt")
             self.packages_installed = True
@@ -412,6 +558,14 @@ class Installer(QDialog):
             icons_dst.mkdir(exist_ok=True)
             for svg in (HERE / "icons").glob("*.svg"):
                 shutil.copy2(svg, icons_dst / svg.name)
+            if IS_WINDOWS:
+                self.app_installed = True
+                self.say(f"installed: {INSTALL_DIR}")
+                self._clear()
+                self.body.setText(f"Installed in <code>{INSTALL_DIR}</code>.")
+                self._button("Cancel", self._abort)
+                self._button("Next", lambda: self._goto(3), primary=True)
+                return
             DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
             entry = DESKTOP_DIR / f"{APP_ID}.desktop"
             entry.write_text(
@@ -446,7 +600,10 @@ class Installer(QDialog):
         self._heading(3, "Currently set")
         self.body.setText(self._autostart_report())
 
-        self.autostart_box = QCheckBox("Autostart Hermes Desktop GUI at login")
+        self.autostart_box = QCheckBox(
+            "Start Hermes Desktop GUI at login (and the hidden dashboard)" if IS_WINDOWS
+            else "Autostart Hermes Desktop GUI at login"
+        )
         self.autostart_box.setChecked(
             self.want_autostart if self.want_autostart is not None else autostart_written()
         )
@@ -472,6 +629,17 @@ class Installer(QDialog):
 
     def _autostart_report(self) -> str:
         """Server first, then the desktop app, each in words followed by where it is set."""
+        if IS_WINDOWS:
+            reachable = api_answers(DASHBOARD_URL)
+            return "<br>".join([
+                "Dashboard at <code>http://127.0.0.1:9119/</code> — "
+                + ("<b>answering</b>" if reachable else "<b>not answering</b> (it starts at login)"),
+                f"PyQt6 venv: <code>{VENV_DIR}</code> — "
+                + ("<b>ready</b>" if venv_ready() else "<b>not ready</b>"),
+                "Login: app <b>" + ("on" if login_written(APP_LINK) else "off") + "</b>, dashboard <b>"
+                + ("on" if login_written(DASHBOARD_LINK) else "off") + "</b>",
+                "",
+            ])
         lines: list[str] = []
 
         enabled = service_enabled()
@@ -513,11 +681,16 @@ class Installer(QDialog):
         if want_autostart:
             self._enable_autostart()
         elif autostart_written():
-            try:
-                autostart_entry().unlink()
-                self.say("autostart: removed")
-            except OSError as exc:
-                self.say(f"autostart: could not remove ({exc})")
+            if IS_WINDOWS:
+                for name in (APP_LINK, DASHBOARD_LINK):
+                    ok, said = run_shortcut("disable", name)
+                    self.say(f"login {name}: {'removed' if ok else 'not removed'} ({said})")
+            else:
+                try:
+                    autostart_entry().unlink()
+                    self.say("autostart: removed")
+                except OSError as exc:
+                    self.say(f"autostart: could not remove ({exc})")
 
         # Not a choice, and only applied here: the Desktop TUI stops opening a browser
         # once the tray app exists. Backing out before Done leaves it as it was.
@@ -528,6 +701,25 @@ class Installer(QDialog):
         self._done()
 
     def _enable_autostart(self) -> None:
+        if IS_WINDOWS:
+            target = str(venv_pythonw())
+            ok, said = run_shortcut("enable", APP_LINK, target, f'"{installed_copy()}"')
+            self.say(f"login {APP_LINK}: {'written' if ok else 'not written'} ({said})")
+            try:
+                launcher = write_dashboard_launcher()
+                if dashboard_entry_missing():
+                    ok, said = run_shortcut("enable", DASHBOARD_LINK, str(launcher))
+                    self.say(f"login {DASHBOARD_LINK}: {'written' if ok else f'not written ({said})'}")
+                else:
+                    self.say(f"login {DASHBOARD_LINK}: already there")
+                # Linux runs `systemctl enable --now` here, so the read-back screen can say
+                # "answering". Same for Windows: start it once, hidden; if one is already up,
+                # Hermes attaches to it and exits.
+                if not api_answers(DASHBOARD_URL) and start_dashboard_now(launcher):
+                    self.say("dashboard: starting now (hidden)")
+            except OSError as exc:
+                self.say(f"login {DASHBOARD_LINK}: not written ({exc})")
+            return
         try:
             AUTOSTART_DIR.mkdir(parents=True, exist_ok=True)
             autostart_entry().write_text(
@@ -545,6 +737,9 @@ class Installer(QDialog):
             QMessageBox.critical(self, APP_NAME, f"Could not write the autostart entry:\n{exc}")
 
     def _disable_browser_open(self) -> None:
+        if IS_WINDOWS:
+            self.say("dashboard login entry: runs --no-open by construction")
+            return
         text = UNIT_PATH.read_text() if UNIT_PATH.exists() else ""
         if "--no-open" in text:
             self.say("dashboard unit: already runs with --no-open")
@@ -579,11 +774,14 @@ class Installer(QDialog):
         if not self.dry_run:
             lines.append("Autostart at login is on." if autostart_written()
                          else "Autostart at login is off.")
-            opens = browser_opens_at_login()
+            opens = browser_opens_at_login() if not IS_WINDOWS else None
             if opens is False:
                 lines.append("The dashboard no longer opens a browser at login.")
         else:
             lines.append("Dry run: nothing was written.")
+        if IS_WINDOWS:
+            lines.append("Login: app " + ("on" if login_written(APP_LINK) else "off")
+                         + ", dashboard " + ("on" if login_written(DASHBOARD_LINK) else "off") + ".")
         lines.append("Open it from the tray or the menu.")
         self.body.setText("<br>".join(lines))
         self._button("Launch now", self._launch, primary=True)
@@ -597,7 +795,10 @@ class Installer(QDialog):
         if not app_path.exists():
             QMessageBox.warning(self, APP_NAME, "The installed copy was not found.")
             return self.accept()
-        QProcess.startDetached("/usr/bin/python3", [str(app_path)])
+        if IS_WINDOWS:
+            QProcess.startDetached(str(venv_pythonw()), [str(app_path)])
+        else:
+            QProcess.startDetached("/usr/bin/python3", [str(app_path)])
         self.accept()
 
 
@@ -642,6 +843,16 @@ class Uninstaller(QDialog):
         removed.setWordWrap(True)
         removed.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
+        if IS_WINDOWS:
+            removed = QLabel(
+                "This removes:<br>"
+                f"<code>{INSTALL_DIR}</code> — the app, its venv and its icons<br>"
+                f"<code>{login_entry(APP_LINK)}</code> — the tray app at login<br>"
+                f"<code>{login_entry(DASHBOARD_LINK)}</code> — if it was written"
+            )
+            removed.setWordWrap(True)
+            removed.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
         kept = QLabel(
             "<b>System packages are not removed.</b> Still installed: "
             f"<b>{'</b>, <b>'.join(APT_PACKAGES)}</b>. They are shared with other Qt "
@@ -672,6 +883,7 @@ class Uninstaller(QDialog):
         nothing_to_do = system_installed() or not (
             installed_copy().exists() or autostart_written()
             or (DESKTOP_DIR / f"{APP_ID}.desktop").exists()
+            or (IS_WINDOWS and login_written(DASHBOARD_LINK))
         )
 
         if system_installed():
@@ -692,10 +904,13 @@ class Uninstaller(QDialog):
 
         panel.addWidget(title)
         panel.addWidget(removed)
-        panel.addSpacing(8)
-        panel.addWidget(kept)
-        panel.addLayout(command_row)
-        panel.addWidget(note)
+        # Nothing is kept on Windows: the venv lives inside INSTALL_DIR and goes with it, and there
+        # are no system packages to offer a removal line for.
+        if not IS_WINDOWS:
+            panel.addSpacing(8)
+            panel.addWidget(kept)
+            panel.addLayout(command_row)
+            panel.addWidget(note)
 
         self.buttons = QWidget()
         row = QHBoxLayout(self.buttons)
@@ -757,7 +972,24 @@ class Uninstaller(QDialog):
         self.resize(440, 170)
 
     def _uninstall(self) -> None:
-        failed: list[str] = []
+        if IS_WINDOWS:
+            failed: list[str] = []
+            for name in (APP_LINK, DASHBOARD_LINK):
+                ok, said = run_shortcut("disable", name)
+                if not ok:
+                    failed.append(f"{name}: {said}")
+            if INSTALL_DIR.exists():
+                try:
+                    shutil.rmtree(INSTALL_DIR)
+                except OSError as exc:
+                    failed.append(f"{INSTALL_DIR}: {exc}")
+            if failed:
+                self._show_result("Some files could not be removed:<br>" + "<br>".join(failed))
+                return
+            self._show_result("<b>Removed.</b> The two login entries and the app folder are gone.")
+            return
+        failed = []
+        said = remove_our_unit()
         if INSTALL_DIR.exists():
             try:
                 shutil.rmtree(INSTALL_DIR)
@@ -773,7 +1005,7 @@ class Uninstaller(QDialog):
             self._show_result("Some files could not be removed:<br>" + "<br>".join(failed))
             return
         self._show_result(
-            "<b>Removed.</b> The system packages are still installed."
+            "<b>Removed.</b> The system packages are still installed.<br>" + said
         )
 
 
@@ -782,6 +1014,38 @@ def uninstall() -> int:
     app.setApplicationName(APP_ID)
     dialog = Uninstaller()
     return dialog.exec()
+
+
+def _systemctl(args: list[str]) -> None:
+    try:
+        subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def remove_our_unit(unit_path: Path | None = None, run=_systemctl) -> str:
+    """Disable and delete the dashboard unit, only when it carries our marker.
+
+    The runner is a parameter so a test can prove the marker rule without asking this machine's
+    systemd to stop the user's own dashboard."""
+    if IS_WINDOWS:
+        return "dashboard unit: not on this platform"
+    unit_path = unit_path or UNIT_PATH
+    if not unit_path.exists():
+        return "dashboard unit: none"
+    try:
+        text = unit_path.read_text()
+    except OSError as exc:
+        return f"dashboard unit: could not read ({exc})"
+    if not text.startswith(UNIT_MARKER):
+        return f"left alone: {unit_path} (not written by us)"
+    run(["disable", "--now", "hermes-dashboard.service"])
+    try:
+        unit_path.unlink()
+    except OSError as exc:
+        return f"dashboard unit: could not delete ({exc})"
+    run(["daemon-reload"])
+    return f"removed {unit_path}"
 
 
 def clean() -> int:
@@ -795,7 +1059,15 @@ def clean() -> int:
             print(f"removed {path}")
         else:
             print(f"absent  {path}")
-    print(f"left alone: {UNIT_PATH} (restore its .bak-* copy to get the browser tab back)")
+    if IS_WINDOWS:
+        for name in (APP_LINK, DASHBOARD_LINK):
+            link = login_entry(name)
+            if link.exists():
+                link.unlink()
+                print(f"removed {link}")
+            else:
+                print(f"absent  {link}")
+    print(remove_our_unit())
     return 0
 
 
@@ -812,7 +1084,8 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=f"{APP_NAME} — installer")
     parser.add_argument("--dry-run", action="store_true", help="detect and report, change nothing")
     parser.add_argument("--self-test", action="store_true", help="print the detection report and exit")
-    parser.add_argument("--clean", action="store_true", help="remove the app, menu entry and autostart")
+    parser.add_argument("--clean", action="store_true",
+                        help="remove the app, its login entries, and a dashboard unit we wrote")
     parser.add_argument("--uninstall", action="store_true",
                         help="small dialog: remove the app, keep the system packages")
     parser.add_argument("--force-packages", action="store_true",
