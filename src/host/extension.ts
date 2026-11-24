@@ -4,6 +4,7 @@ import { activateExtension } from './activate';
 import { PRIMARY, commandId, setActiveIdentity } from '../shared/extensionId';
 import { installSecondant, refreshSecondantContext, uninstallSecondant } from './secondantInstall';
 import { installSystray, startSystrayWatch, uninstallSystray } from './systrayInstall';
+import { migrateLegacyDesktop } from './desktop/legacy';
 
 let app: App | undefined;
 
@@ -48,6 +49,15 @@ export function activate(context: vscode.ExtensionContext): TommysHermesAcpApi {
         )
     );
     context.subscriptions.push(startSystrayWatch());
+    // 2.6.1 built Hermes Desktop and asked about a start in the tray; both left the extension.
+    // What they wrote is taken back here, once, and only on Windows (no-op everywhere else).
+    const legacy = migrateLegacyDesktop();
+    for (const path of legacy.removed) {
+        console.log(`Removed 2.6.1's Desktop leftover: ${path}`);
+    }
+    for (const line of legacy.failed) {
+        console.warn(`2.6.1's Desktop leftover could not be removed: ${line}`);
+    }
     void refreshSecondantContext();
 
     return {

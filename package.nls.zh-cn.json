@@ -41,7 +41,5 @@
   "configuration.tommys.showToolCalls.description": "在聊天中显示工具调用通知。",
   "configuration.tommys.models.description": "当 Hermes 未暴露 ACP 会话配置选项时使用的备用模型列表。",
   "configuration.tommys.models.markdownDescription": "当 Agent 未返回带模型选择器的 `configOptions` 时使用。示例：\n```json\n[\n  { \"id\": \"claude-sonnet\", \"name\": \"Claude Sonnet\" },\n  { \"id\": \"gpt-4o\", \"name\": \"GPT-4o\" }\n]\n```",
-  "configuration.tommys.defaultModel.description": "hermes.models 中的默认模型 id（仅备用列表）。",
-  "commands.tommys.setupDesktopTray.title": "登录时让 Hermes 桌面版启动到托盘",
-  "commands.tommys.removeDesktopTray.title": "不再在登录时启动 Hermes 桌面版到托盘"
+  "configuration.tommys.defaultModel.description": "hermes.models 中的默认模型 id（仅备用列表）。"
 }
