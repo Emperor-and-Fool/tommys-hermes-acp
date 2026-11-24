@@ -94,6 +94,39 @@ class TheDashboardEntryRule(unittest.TestCase):
         self.assertFalse(gui.start_dashboard_now(self.startup / "no-such.vbs"))
 
 
+class RemovingTheFolder(unittest.TestCase):
+    """The uninstall must not leave a half-deleted folder behind.
+
+    Run from outside the install folder (as on this machine) it simply removes it. Run from inside it
+    — the Windows case, where the interpreter is venv/Scripts/python.exe — it hands the deletion to a
+    detached PowerShell that waits for this process, which is why the caller gets words back instead
+    of an exception.
+    """
+
+    def test_removing_from_outside_removes_it(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="appdir-"))
+        (root / "hermes_desktop_gui.py").write_text("")
+        saved = gui.INSTALL_DIR
+        gui.INSTALL_DIR = root
+        try:
+            ok, said = gui.remove_install_dir()
+            self.assertTrue(ok, said)
+            self.assertEqual(said, "removed")
+            self.assertFalse(root.exists())
+        finally:
+            gui.INSTALL_DIR = saved
+
+    def test_nothing_to_remove_is_not_an_error(self) -> None:
+        saved = gui.INSTALL_DIR
+        gui.INSTALL_DIR = Path(tempfile.mkdtemp(prefix="gone-")) / "absent"
+        try:
+            ok, said = gui.remove_install_dir()
+            self.assertTrue(ok)
+            self.assertIn("nothing", said)
+        finally:
+            gui.INSTALL_DIR = saved
+
+
 class TheWindowsShape(unittest.TestCase):
     def test_the_app_and_its_venv_live_beside_the_user(self) -> None:
         # These are resolved at import time from the environment this process runs in; on Linux

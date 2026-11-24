@@ -125,6 +125,25 @@ describe('the pre-flight on Windows', () => {
         fs.rmSync(root, { recursive: true, force: true });
     });
 
+    it('upgrades pip before the wheels when Hermes has no uv', async () => {
+        const root = dir();
+        const python = pythonIn(root);
+        const asked: string[][] = [];
+        const run = async (command: string, args: string[]): Promise<RunResult> => {
+            asked.push([command, ...args]);
+            return { code: 0, output: '' };
+        };
+        const built = await buildWindowsVenv(run, quiet, python, 'C:\\hermes\\python.exe', '');
+        assert.strictEqual(built.ok, true, built.message);
+        const venv = asked.find(call => call.includes('venv'));
+        assert.deepStrictEqual(venv, ['C:\\hermes\\python.exe', '-m', 'venv', path.join(root, 'venv')]);
+        const upgrade = asked.findIndex(call => call.includes('--upgrade'));
+        const wheels = asked.findIndex(call => call.includes(`PyQt6==${PYQT6_VERSION}`));
+        assert.ok(upgrade >= 0, 'pip is upgraded first');
+        assert.ok(wheels > upgrade, `upgrade (${upgrade}) comes before the wheels (${wheels})`);
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
     it('rebuilds a venv whose interpreter no longer starts', async () => {
         const root = dir();
         const python = pythonIn(root);

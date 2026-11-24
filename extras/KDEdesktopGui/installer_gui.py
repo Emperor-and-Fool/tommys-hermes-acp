@@ -136,6 +136,43 @@ def dashboard_entry_missing() -> bool:
     return not login_written(DASHBOARD_LINK)
 
 
+def remove_install_dir() -> tuple[bool, str]:
+    """Remove the app folder — after this window closes when we are running from inside it.
+
+    On Windows the installer's own interpreter lives in the folder it is about to delete
+    (venv/Scripts/python.exe): python.exe, its DLLs and the Qt DLLs are locked while it runs, so
+    deleting the folder from here can only half-succeed. A detached PowerShell waits for our PID,
+    then retries until the folder is gone (the tray app may still be letting go of it).
+    """
+    if not INSTALL_DIR.exists():
+        return True, "nothing to remove"
+    try:
+        Path(sys.executable).resolve().relative_to(INSTALL_DIR.resolve())
+        running_inside = True
+    except (ValueError, OSError):
+        running_inside = False
+    if not running_inside:
+        try:
+            shutil.rmtree(INSTALL_DIR)
+        except OSError as exc:
+            return False, str(exc)
+        return True, "removed"
+    command = (
+        f"$d = '{INSTALL_DIR}'; Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
+        "for ($i = 0; $i -lt 15; $i++) { "
+        "if (-not (Test-Path -LiteralPath $d)) { break }; "
+        "Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue; "
+        "Start-Sleep -Milliseconds 800 }"
+    )
+    try:
+        subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+                          "-Command", command], close_fds=True,
+                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    except OSError as exc:
+        return False, str(exc)
+    return True, "removed a moment after this window closes"
+
+
 def start_dashboard_now(launcher: Path) -> bool:
     """Start the dashboard the way its login entry will: hidden, through the .vbs, not waited for."""
     try:
@@ -560,6 +597,15 @@ class Installer(QDialog):
                 shutil.copy2(svg, icons_dst / svg.name)
             if IS_WINDOWS:
                 self.app_installed = True
+                # Linux has the dashboard running before this window opens (`enable --now`), which is
+                # why its read-back screen can say "answering". Same moment here: start it hidden now,
+                # so screen 3 reports the state the user will actually have.
+                try:
+                    launcher = write_dashboard_launcher()
+                    if not api_answers(DASHBOARD_URL) and start_dashboard_now(launcher):
+                        self.say("dashboard: starting now (hidden)")
+                except OSError as exc:
+                    self.say(f"dashboard launcher: not written ({exc})")
                 self.say(f"installed: {INSTALL_DIR}")
                 self._clear()
                 self.body.setText(f"Installed in <code>{INSTALL_DIR}</code>.")
@@ -712,11 +758,6 @@ class Installer(QDialog):
                     self.say(f"login {DASHBOARD_LINK}: {'written' if ok else f'not written ({said})'}")
                 else:
                     self.say(f"login {DASHBOARD_LINK}: already there")
-                # Linux runs `systemctl enable --now` here, so the read-back screen can say
-                # "answering". Same for Windows: start it once, hidden; if one is already up,
-                # Hermes attaches to it and exits.
-                if not api_answers(DASHBOARD_URL) and start_dashboard_now(launcher):
-                    self.say("dashboard: starting now (hidden)")
             except OSError as exc:
                 self.say(f"login {DASHBOARD_LINK}: not written ({exc})")
             return
@@ -978,15 +1019,16 @@ class Uninstaller(QDialog):
                 ok, said = run_shortcut("disable", name)
                 if not ok:
                     failed.append(f"{name}: {said}")
-            if INSTALL_DIR.exists():
-                try:
-                    shutil.rmtree(INSTALL_DIR)
-                except OSError as exc:
-                    failed.append(f"{INSTALL_DIR}: {exc}")
+            removed, said = remove_install_dir()
+            if not removed:
+                failed.append(f"{INSTALL_DIR}: {said}")
             if failed:
                 self._show_result("Some files could not be removed:<br>" + "<br>".join(failed))
                 return
-            self._show_result("<b>Removed.</b> The two login entries and the app folder are gone.")
+            self._show_result(
+                "<b>Removed.</b> The two login entries are gone and the app folder is "
+                + ("gone." if said == "removed" else said + ".")
+            )
             return
         failed = []
         said = remove_our_unit()
@@ -1050,7 +1092,9 @@ def remove_our_unit(unit_path: Path | None = None, run=_systemctl) -> str:
 
 def clean() -> int:
     """Remove what the installer puts in place (user scope only)."""
-    for path in (INSTALL_DIR, DESKTOP_DIR / f"{APP_ID}.desktop", autostart_entry()):
+    removed, said = remove_install_dir()
+    print(f"{INSTALL_DIR}/: {said}")
+    for path in (DESKTOP_DIR / f"{APP_ID}.desktop", autostart_entry()):
         if path.is_dir():
             shutil.rmtree(path)
             print(f"removed {path}/")

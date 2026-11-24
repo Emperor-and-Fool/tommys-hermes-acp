@@ -208,8 +208,7 @@ export async function buildWindowsVenv(
     const wheels = uvPath
         ? await run(uvPath, ['pip', 'install', '--python', python,
             `PyQt6==${PYQT6_VERSION}`, `PyQt6-WebEngine==${PYQT6_WEBENGINE_VERSION}`])
-        : await run(python, ['-m', 'pip', 'install',
-            `PyQt6==${PYQT6_VERSION}`, `PyQt6-WebEngine==${PYQT6_WEBENGINE_VERSION}`]);
+        : await pipInstallWheels(run, report, python);
     report.log(wheels.output.trim());
     if (wheels.code !== 0) {
         return { ok: false, message: `the wheels could not be installed: ${lastLine(wheels.output)}` };
@@ -218,6 +217,17 @@ export async function buildWindowsVenv(
     return probe.code === 0
         ? { ok: true, message: `PyQt6 ${PYQT6_VERSION} is ready in ${python}` }
         : { ok: false, message: `PyQt6 still does not import: ${lastLine(probe.output)}` };
+}
+
+/**
+ * pip, without uv. A Python 3.10 install ships pip 22.0.4, whose warnings and metadata handling are
+ * older than the wheels; upgrading it first costs a second and removes a whole class of failure.
+ */
+async function pipInstallWheels(run: Runner, report: StepReport, python: string): Promise<RunResult> {
+    const upgraded = await run(python, ['-m', 'pip', 'install', '--upgrade', 'pip'], 300_000);
+    report.log(`pip --upgrade: ${lastLine(upgraded.output)}`);
+    return run(python, ['-m', 'pip', 'install',
+        `PyQt6==${PYQT6_VERSION}`, `PyQt6-WebEngine==${PYQT6_WEBENGINE_VERSION}`]);
 }
 
 /** Install the wheels into a venv that already starts (its base Python is fine). */
@@ -231,8 +241,7 @@ export async function installWheels(
     const wheels = uvPath
         ? await run(uvPath, ['pip', 'install', '--python', python,
             `PyQt6==${PYQT6_VERSION}`, `PyQt6-WebEngine==${PYQT6_WEBENGINE_VERSION}`])
-        : await run(python, ['-m', 'pip', 'install',
-            `PyQt6==${PYQT6_VERSION}`, `PyQt6-WebEngine==${PYQT6_WEBENGINE_VERSION}`]);
+        : await pipInstallWheels(run, report, python);
     report.log(wheels.output.trim());
     if (wheels.code !== 0) {
         return { ok: false, message: `the wheels could not be installed: ${lastLine(wheels.output)}` };
