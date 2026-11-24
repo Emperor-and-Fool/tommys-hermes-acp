@@ -16,12 +16,28 @@ click away from it. 200 lines of PyQt6, no venv, no build step.
 
 ## Requirements
 
+**Linux** — two packages:
+
 ```
 sudo apt install python3-pyqt6 python3-pyqt6.qtwebengine
 ```
 
-Nothing else. No venv: the app imports only PyQt6, so the distro interpreter
+No venv: the app imports only PyQt6, so the distro interpreter
 (`/usr/bin/python3`, 3.14.4 here) runs it directly.
+
+**Windows** — a venv of our own, `%LOCALAPPDATA%\hermesdesktopgui\venv`, holding
+`PyQt6 6.12.1` and `PyQt6-WebEngine 6.140.1` (about 220 MB to download, and the
+two Qt6 wheels are the bulk of it). It is built from Hermes' own Python with
+Hermes' own `uv`; a venv whose base Python left with a Hermes update is rebuilt.
+
+Both platforms: `installer_gui.py` sits in the ⋯ menu behind **Install Desktop
+GUI**, and it is the menu — not this window — that does the work above. That is
+deliberate: this file imports PyQt6 at import time, so it cannot install PyQt6.
+Without the pre-flight, a machine lacking it shows nothing at all.
+
+At the moment — 2.6.1 — both platforms are handled by `src/host/systrayInstall.ts`
+(pre-flight, then the window) and this installer (the three screens, the copy,
+the read-back, and the login entries).
 
 ## Run
 
@@ -87,8 +103,28 @@ ExecStart=/usr/bin/python3 %h/_GitProjects/emperorandfools-repos/tommys-hermes-a
 
 ## Windows
 
-PyQt6 publishes win wheels (`PyQt6`, `PyQt6-WebEngine`, `PyQt6-Qt6`,
-`PyQt6-WebEngine-Qt6` — about 220 MB of downloads), `QSystemTrayIcon` works
-there, and the code has no platform-specific paths. The only thing that does not
-come with it is Hermes itself: the app is a shell around
-`http://127.0.0.1:9119`, so the dashboard has to be running on the same machine.
+The same sources, run by the venv's `pythonw.exe`. Python 3.10.5 with PyQt6
+6.12.1 and PyQt6-WebEngine 6.140.1 was run on a Windows VM: tray icon, the
+dashboard window with its sessions, close hides and a click restores, the menu as
+on Linux, no Qt warnings.
+
+What differs from Linux, in the installer (`IS_WINDOWS` in `installer_gui.py`):
+
+| | Linux | Windows |
+|---|---|---|
+| app copy | `~/.local/share/hermes-desktopgui` | `%LOCALAPPDATA%\hermesdesktopgui` |
+| interpreter | `/usr/bin/python3` | `venv\Scripts\pythonw.exe` |
+| check screen | the two apt packages | whether the venv imports QtWebEngine |
+| install screen | apt through pkexec | copy only; the menu built the venv |
+| start at login | `~/.config/autostart/*.desktop` | two Startup `.lnk`: the app, and a hidden `hermes dashboard --no-open` |
+| uninstall | app, menu entry, autostart, our unit | app folder and the two `.lnk` files |
+
+The two `.lnk` files are written through
+`packaging/windows/Set-HermesTrayShortcut.ps1` (`-Action enable|disable -Name …`),
+so one script owns both the write and the removal; the dashboard launcher is a
+generated `.vbs` beside the app, which needs the `hermes` path this machine
+actually has.
+
+The one thing that does not come with the wheels is Hermes itself: the app is a
+shell around `http://127.0.0.1:9119`, so the dashboard has to run on the same
+machine — the installer's dashboard entry starts it, hidden, at login.

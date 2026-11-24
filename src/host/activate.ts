@@ -38,8 +38,6 @@ const CHAT_COMMANDS: Array<[string, (app: App) => void | Promise<void>]> = [
     ['repairNotesMirror', app => app.notes.repair()],
     ['changeNotesMirror', app => app.notes.changeLocation()],
     ['agentMemorySize', app => app.notes.memorySize()],
-    ['setupDesktopTray', app => app.desktop.setUpTray()],
-    ['removeDesktopTray', app => app.desktop.removeTray()],
 ];
 
 /**

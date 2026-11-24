@@ -1,58 +1,65 @@
 param(
     [ValidateSet("enable", "disable")][string]$Action = "enable",
-    [string]$ScriptPath = "",
+    [Parameter(Mandatory = $true)][string]$Name,
+    [string]$Target = "",
+    [string]$Arguments = "",
+    [int]$WindowStyle = 1,
     [string]$Startup = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup",
-    [string]$Log = "$env:TEMP\hermes-tray-setup.log"
+    [string]$Log = "$env:TEMP\hermes-startup-shortcut.log"
 )
 
-# Put — or take away — the one Startup shortcut this extension owns.
+# Write — or take away — one named shortcut in the user's Startup folder, and nothing else.
 #
-# It points at Start-HermesInTray.vbs, which this extension copied into its own data folder first, so
-# an extension update (a new version folder) cannot leave the login item pointing at nothing.
-# "disable" removes that shortcut and nothing else: no other entry in the Startup folder is touched,
-# and nothing of Hermes' is written.
+# That folder holds every program the user starts at login, so this script names one file, writes it,
+# and a "disable" removes exactly that file (or succeeds and changes nothing when it is not there).
+# Both of this extension's login entries go through it: the tray app, and the hidden command that
+# starts the dashboard.
 
-function Write-SetupLog([string]$m) {
+function Write-ShortcutLog([string]$m) {
     try { Add-Content $Log ("{0:yyyy-MM-dd HH:mm:ss.fff} {1}" -f (Get-Date), $m) -Encoding utf8 } catch {}
 }
 
-$linkName = "Hermes Desktop (tray).lnk"
-$link = Join-Path $Startup $linkName
+$link = Join-Path $Startup $Name
 
-if (-not (Test-Path $Startup)) { Write-SetupLog "no Startup folder: $Startup"; Write-Output "no Startup folder: $Startup"; exit 2 }
+if (-not (Test-Path $Startup)) {
+    Write-ShortcutLog "no Startup folder: $Startup"
+    Write-Output "no Startup folder: $Startup"
+    exit 2
+}
 
 if ($Action -eq "disable") {
     if (Test-Path $link) {
         Remove-Item $link -Force -EA Stop
-        Write-SetupLog "removed $link"
+        Write-ShortcutLog "removed $link"
         Write-Output "removed $link"
     } else {
-        Write-SetupLog "no shortcut to remove at $link"
+        Write-ShortcutLog "no shortcut at $link"
         Write-Output "no shortcut at $link"
     }
     exit 0
 }
 
-if (-not $ScriptPath -or -not (Test-Path $ScriptPath)) {
-    Write-SetupLog "the launcher script is missing: $ScriptPath"
-    Write-Output "the launcher script is missing: $ScriptPath"
+if (-not $Target -or -not (Test-Path $Target)) {
+    Write-ShortcutLog "the target is missing: $Target"
+    Write-Output "the target is missing: $Target"
     exit 2
 }
 
 try {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($link)
-    $shortcut.TargetPath = $ScriptPath
-    $shortcut.WorkingDirectory = (Split-Path -Parent $ScriptPath)
-    $shortcut.Description = "Start Hermes Desktop in the tray"
-    $shortcut.WindowStyle = 7
+    $shortcut.TargetPath = $Target
+    if ($Arguments) { $shortcut.Arguments = $Arguments }
+    $shortcut.WorkingDirectory = (Split-Path -Parent $Target)
+    $shortcut.Description = "Hermes: $Name"
+    $shortcut.WindowStyle = $WindowStyle
     $shortcut.Save()
 } catch {
-    Write-SetupLog ("could not write the shortcut: {0}" -f $_.Exception.Message)
+    Write-ShortcutLog ("could not write the shortcut: {0}" -f $_.Exception.Message)
     Write-Output ("could not write the shortcut: {0}" -f $_.Exception.Message)
     exit 1
 }
 
-Write-SetupLog "wrote $link -> $ScriptPath"
+Write-ShortcutLog "wrote $link -> $Target $Arguments"
 Write-Output "wrote $link"
 exit 0
