@@ -80,8 +80,9 @@ the failure quiet: the patch succeeds and changes nothing.
 - **Date:** 2026-11-23
 - **Base:** NousResearch/hermes-agent `caafe5389a` (tag `v0.23.3`)
 - **Files:** `acp_adapter/catalog.py`, `acp_adapter/gateway_server.py`
-- **Applies to:** 0.23.x. It is **not** applied on top of 0001/0002, and 0001/0002 are not applied on
-  top of it.
+- **Applies to:** 0.23.x, and **only** on a checkout without 0001/0002. Coming from 0.22:
+  `git checkout -- acp_adapter`, then apply this patch; `git status --short acp_adapter` must show
+  exactly two `M` lines (`catalog.py`, `gateway_server.py`).
 
 **Why 0001 and 0002 stop working there.** `SessionManager._get_db()`
 (`acp_adapter/session.py:392`) no longer hands out a database object: it returns the `Persistence`
@@ -93,9 +94,13 @@ The wire answers `Internal error` for `_session/catalog` on every connect, so no
 at all.
 
 **Why applying 0001/0002 there is worse than not applying them.** Both still apply cleanly to
-0.23.3 (`git apply --check`: no output), and 0.23.3 ships no `ext_method` on either agent — so a
-clean apply changes nothing reachable and the failure stays quiet. A clean `--check` is not the
-test; the version is.
+0.23.3 (`git apply --check`: no output), so a clean check says nothing. `0002` adds an `ext_method`
+to `GatewayACPAgent` at `gateway_server.py:150`; `0003` inserts its own at `:137` — the later
+definition wins, so **`0002`'s is the one that runs**. It calls `SessionManager.session_catalog`
+(`:268`), which with `0001` present is 0.22 code calling `db.list_sessions_rich` on the `Persistence`
+proxy → `AttributeError` at `persistence_assembly.py:73`, dressed as `Internal error`. Without
+`0001` the same call fails earlier, as a missing attribute. Either way the wire has no catalog. A
+clean `--check` is not the test; the version is.
 
 **What 0003 does.**
 

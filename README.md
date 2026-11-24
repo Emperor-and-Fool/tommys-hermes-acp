@@ -201,7 +201,7 @@ editing-while-it-runs rhythm that most clients make you fight for.
 </ul>
 <p>Without them the sidebar cannot see sessions you have closed, a closed tab stays listed, and renaming a conversation does not survive. They are added by one of three patches, and which one you need is decided by the Hermes version you run. All three ship inside this extension, in its installed folder under <code>packaging/hermes-patches/</code>:</p>
 <ul>
-<li><code>0.23.x</code> &mdash; <code>0003-acp-023x-session-catalog-hidden-title.patch</code> only. It is <strong>not</strong> applied on top of the 0.22 patches, and they are not applied on top of it: 0.23 changed the storage handle the adapter holds, so the 0.22 set stops working there &mdash; it still applies cleanly, which is what makes the failure quiet</li>
+<li><code>0.23.x</code> &mdash; <code>0003-acp-023x-session-catalog-hidden-title.patch</code> only, on a checkout without the 0.22 patches. 0.23 changed the storage handle the adapter holds, so the 0.22 set stops working there &mdash; and both still apply cleanly, which is what makes the failure quiet. If they are there, remove them first: <code>git checkout -- acp_adapter</code>, then apply <code>0003</code>. The step, its reason and its check are under <em>Coming from 0.22</em> below</li>
 <li><code>0.22.5</code> &ndash; <code>0.22.x</code> &mdash; <code>0001-acp-session-catalog-hidden-title.patch</code> and <code>0002-acp-gateway-ext-methods.patch</code>, in that order</li>
 <li><code>0.22.2</code> &ndash; <code>0.22.4</code> &mdash; <code>0001-acp-session-catalog-hidden-title.patch</code></li>
 </ul>
@@ -209,8 +209,27 @@ editing-while-it-runs rhythm that most clients make you fight for.
 <pre><code class="language-bash">cd ~/.hermes/hermes-agent
 git apply --3way ~/.vscode-oss/extensions/emperorandfool.tommys-hermes-acp-2.6.*/packaging/hermes-patches/0003-acp-023x-session-catalog-hidden-title.patch
 </code></pre>
-<p><code>hermes update</code> stashes local changes before its <code>git pull</code> and afterwards asks <em>&ldquo;Restore local changes now?&rdquo;</em> &mdash; answer yes, or re-apply the patch by hand. Every patch touches only <code>acp_adapter/</code> and only calls Hermes&rsquo; own store methods; <code>packaging/hermes-patches/CHANGELOG.md</code> records each base, the symptom when its patch is missing, and why 0.23 needs a set of its own.</p>
-<p><em>Tested on Ubuntu 24.04. Windows is untested &mdash; both the Hermes install location and <code>git apply</code> behave differently there. If you try it, please open an issue and say what happened; this section will then state it honestly rather than guess.</em></p>
+<p>On Windows the same, in PowerShell as your normal user (nothing here needs admin):</p>
+<pre><code class="language-powershell">cd "$env:LOCALAPPDATA\hermes\hermes-agent"
+git apply --3way "$env:USERPROFILE\.vscode\extensions\emperorandfool.tommys-hermes-acp-2.6.1\packaging\hermes-patches\0003-acp-023x-session-catalog-hidden-title.patch"
+</code></pre>
+<h3>Coming from 0.22</h3>
+<p>A machine that ran 0.22 has <code>0001</code> (and from 0.22.5, <code>0002</code>) in its checkout, and
+<code>hermes update</code> can bring them back. The 0.22 set must be gone before <code>0003</code> goes in,
+and nothing on disk will tell you so: both patches still apply cleanly to 0.23, and the result is a file
+where <code>0002</code>&rsquo;s <code>ext_method</code> is defined <em>after</em> the block <code>0003</code>
+inserts, so the later definition wins and 0.22 code answers the wire. Every connect answers
+<code>Internal error</code>.</p>
+<pre><code class="language-bash">cd ~/.hermes/hermes-agent
+git checkout -- acp_adapter                                 # drop 0001 and 0002 (Windows: the same, after the cd above)
+git apply --3way <this extension copy>/packaging/hermes-patches/0003-acp-023x-session-catalog-hidden-title.patch
+git status --short acp_adapter                              # exactly two M lines
+</code></pre>
+<p>Exactly two &mdash; <code>catalog.py</code> and <code>gateway_server.py</code>. A third
+(<code>server.py</code> or <code>session.py</code>) means the 0.22 set is back.</p>
+<p><code>hermes update</code> stashes local changes before its pull and asks afterwards whether to restore them. Answer <strong>yes</strong> only when the update stays within one minor version (0.22 &rarr; 0.22, 0.23 &rarr; 0.23). Going from <strong>0.22 to 0.23</strong>, answer <strong>no</strong>, then reset the adapter with <code>git checkout -- acp_adapter</code> and apply <code>0003</code> alone with <code>git apply --3way</code>. If <code>0001</code>+<code>0002</code> come back, their code takes over from <code>0003</code>&rsquo;s, and every connect answers <code>Internal error</code>.</p>
+<p>Every patch touches only <code>acp_adapter/</code> and only calls Hermes&rsquo; own store methods; <code>packaging/hermes-patches/CHANGELOG.md</code> records each base, the symptom when its patch is missing, and why 0.23 needs a set of its own.</p>
+<p><em>Tested on Ubuntu 24.04, and on Windows: Hermes 0.23.3 with <code>0003</code> applied (tabs resume, the catalog answers), the Desktop build, and the start-in-tray shortcut.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install
 npm run package                                     # compile + bundle the pane + vsix
@@ -317,8 +336,9 @@ and copies everything into the installed extension directory, verifying each fil
   them; a strict search for the whole quote will not.
 - **Long transcripts are not virtualised** — every message in a tab is a live DOM node. Fine
   for ordinary sessions, slow on transcripts of several thousand messages.
-- **Windows is untested** — the Hermes install location, `git apply` and the Desktop GUI all
-  behave differently there.
+- **Windows coverage is thin** — this round ran the patch on Hermes 0.23.3, the Desktop build and
+  the tray shortcut there; the notes mirror's junctions, the systray app and the secondant install
+  were not run on Windows.
 
 ## FAQ
 
