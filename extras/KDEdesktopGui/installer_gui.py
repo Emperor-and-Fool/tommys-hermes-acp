@@ -147,8 +147,21 @@ def run_shortcut(action: str, name: str, target: str = "", args: str = "") -> tu
     return out.returncode == 0, (out.stdout or out.stderr).strip().splitlines()[-1:] or [f"exit {out.returncode}"]
 
 
-def write_dashboard_launcher(hermes: str = "hermes") -> Path:
+def hermes_executable() -> str:
+    """The `hermes` a login entry can run: an absolute path when one exists, else the bare command."""
+    candidates = [
+        LOCALAPPDATA / "hermes" / "bin" / "hermes.exe",
+        Path.home() / ".local" / "bin" / "hermes",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("hermes") or "hermes"
+
+
+def write_dashboard_launcher(hermes: str = "") -> Path:
     """A hidden `hermes dashboard --no-open`, so login never shows a console window."""
+    hermes = hermes or hermes_executable()
     VENV_DIR.parent.mkdir(parents=True, exist_ok=True)
     launcher = INSTALL_DIR / DASHBOARD_LAUNCHER
     launcher.write_text(
