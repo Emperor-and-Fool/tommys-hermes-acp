@@ -15,6 +15,28 @@ The Windows round. A Hermes 0.23 install shows its sessions again — the patch 
 catalog ships with the extension — and a catalog Hermes does not answer says so instead of looking
 empty. The tray app that puts the dashboard one click away now installs on Windows too.
 
+### Windows
+
+- **The tray app installs on Windows the way it does on Linux: from our own sources.** No prebuilt
+  binary and no download route: the same `extras/KDEdesktopGui` runs here, with a venv of our own at
+  `%LOCALAPPDATA%\hermesdesktopgui\venv` built from Hermes' Python with Hermes' `uv` (`PyQt6 6.12.1`,
+  `PyQt6-WebEngine 6.140.1`; about 220 MB), and a venv whose base Python left with a Hermes update is
+  rebuilt. The installer owns the same three screens on both platforms.
+- **Nothing about the Qt bindings is silent any more.** The installer imports PyQt6 at import time,
+  so on a machine without it the menu used to open nothing at all. The menu now checks first — the
+  two apt packages on Linux (`pkexec apt-get install -y` when missing), the venv on Windows — behind
+  one notification, with the full output in the **Hermes systray** channel. A window that dies is
+  reported with its exit code and the last lines of its stderr.
+- **The dashboard starts at login, once and only when it is missing, on both platforms.** Linux: a
+  `hermes-dashboard.service` in the user's own unit folder, in the shape of a hand-written one
+  (`--no-open`, port 9119, `graphical-session.target`) and marked as ours. Windows: two Startup
+  shortcuts — the app, and a hidden `hermes dashboard --no-open`. Uninstall removes only a unit
+  carrying that marker and only those two `.lnk` files; a unit you wrote yourself is left byte for
+  byte.
+- **Hermes' Electron Desktop is not the extension's business any more.** No build step, no
+  start-in-tray question, no menu entries for it. A machine that answered the 2.6.1-eve question has
+  that one shortcut and the copied launcher scripts removed at the next start, and nothing else.
+
 ### New
 
 - **A status-bar item for the agent and its budget.** Bottom right: the agent of the pane you are
@@ -24,18 +46,7 @@ empty. The tray app that puts the dashboard one click away now installs on Windo
   through the primary's.
 - **The item turns red when the provider cannot be reached**, whichever call found out — a failed
   turn or a failed balance read — with Hermes' own message in the tooltip.
-- **The tray app installs on Windows (the ⋯ menu, as on Linux).** The menu downloads the release
-  asset, refuses anything whose size and sha256 do not match the build this version names, unpacks it
-  with Windows' own extractor into `%LOCALAPPDATA%\hermesdesktopgui`, and writes two login entries:
-  the app, and a hidden `hermes dashboard --no-open`. After installing, the state is read back —
-  whether `127.0.0.1:9119` answers, and whether the app is running.
-- **The dashboard starts at login, once and only when it is missing, on both platforms.** Linux: a
-  `hermes-dashboard.service` in the user's own unit folder, in the shape of a hand-written one
-  (`--no-open`, port 9119, `graphical-session.target`) and marked as ours, so uninstall removes only
-  a unit we wrote. Windows: the two Startup shortcuts above, each written once.
-- **Hermes' Electron Desktop is not the extension's business any more.** No build step, no
-  start-in-tray question, no menu entries for it. A machine that answered the 2.6.1-eve question has
-  that one shortcut and the copied launcher scripts removed at the next start, and nothing else.
+- **The tray app runs on Windows too**, from these sources and the same installer (*Windows*, below).
 
 ### Fixed
 

@@ -116,18 +116,30 @@ questions and answering until both are satisfied within their role.</p>
 dashboard: the same sessions the TUI and the panes see.</p>
 <p>It is our own program (<code>extras/KDEdesktopGui</code>), not Hermes' Electron Desktop — that one is a
 separate app for you to install if you want it, and the extension neither builds nor starts it.</p>
-<p>On Linux the menu starts the program's installer, which asks its questions and installs the apt
-packages. On Windows there is nothing to ask: the menu downloads the release asset
-(<code>hermesdesktopgui-windows-x86_64.zip</code>, 199 MB), refuses anything whose size and sha256 do not
-match the build this version names, unpacks it with Windows' own extractor, and puts it in
-<code>%LOCALAPPDATA%\hermesdesktopgui</code>.</p>
+<p>It is the same source on both platforms and the same installer window: three screens — system
+check, install, start-at-login — and a Done. What differs is the interpreter and where the Qt bindings
+come from. Both are handled by the menu before the window opens, and every failure is a message plus
+the full output in the <strong>Hermes systray</strong> output channel, never silence.</p>
+<ul>
+<li><strong>Linux</strong>: the system Python (<code>/usr/bin/python3</code>) with
+<code>python3-pyqt6</code> and <code>python3-pyqt6.qtwebengine</code>. If the import fails, the menu runs
+<code>pkexec apt-get install -y</code> for exactly those two, so you see one password prompt and
+nothing else.</li>
+<li><strong>Windows</strong>: nothing to ask. The menu builds a venv of our own at
+<code>%LOCALAPPDATA%\hermesdesktopgui\venv</code> from Hermes' own Python with Hermes' own
+<code>uv</code> (plain <code>python -m venv</code> plus pip when <code>uv</code> is not found), and
+installs <code>PyQt6 6.12.1</code> and <code>PyQt6-WebEngine 6.140.1</code> into it. That is about
+<strong>220 MB</strong> to download. A venv whose base Python left with a Hermes update is rebuilt
+rather than trusted.</li>
+</ul>
 <p>Both platforms also get the dashboard started at login, once and only when it is missing: a
-systemd user unit on Linux (<code>hermes-dashboard.service</code>, written with a marker, so uninstall
-removes only a unit we wrote), and two Startup shortcuts on Windows — the app, and a hidden
-<code>hermes dashboard --no-open</code>. After installing, the state is read back: whether
-<code>127.0.0.1:9119</code> answers, and whether the app is running.</p>
-<p><strong>Uninstall Desktop GUI</strong> removes the app, our login entries and, on Linux, a unit carrying our
-marker — nothing else in your Startup folder or unit folder is touched.</p>
+systemd user unit on Linux (<code>hermes-dashboard.service</code>, written with a marker) and a hidden
+<code>hermes dashboard --no-open</code> shortcut on Windows, which is not written at all when
+something already answers on <code>127.0.0.1:9119</code>. The installer reads the state back before it
+closes: whether the port answers, and which login entries exist.</p>
+<p><strong>Uninstall Desktop GUI</strong> removes the app folder, our login entries and a dashboard unit
+that carries our marker — nothing else in your Startup folder or unit folder is touched. A unit you
+wrote yourself is reported and left byte for byte.</p>
 
 <h2>Steer a run while it runs</h2>
 <p>With a turn in flight, type into the composer and <strong>Stop becomes Steer</strong>. Your words go
@@ -201,7 +213,7 @@ editing-while-it-runs rhythm that most clients make you fight for.
 <li><a href="https://hermes-agent.nousresearch.com">Hermes Agent</a> installed and configured</li>
 <li><code>hermes</code> on <code>PATH</code>, or <code>tommys.path</code> set in settings</li>
 <li>For the secondant: a <strong>second Hermes profile</strong>, because the two panes may not share one</li>
-<li>For the desktop app in the tray: Linux (the installer's own apt step) or Windows (the release asset, downloaded by the menu)</li>
+<li>For the desktop app in the tray: Linux <code>python3-pyqt6</code> + <code>python3-pyqt6.qtwebengine</code> (installed by the menu when missing), or on Windows a venv the menu builds (~220 MB of PyQt6 wheels)</li>
 <li>The <strong>Hermes ACP patch</strong>, applied to your Hermes install — see <em>Important: the Hermes patch</em> below. Without it the tab list cannot see hidden sessions, closing a tab leaves it listed, and renames do not stick</li>
 </ul>
 <h2>Important: the Hermes patch</h2>
@@ -317,7 +329,8 @@ and copies everything into the installed extension directory, verifying each fil
 7. For a second agent, open the three-dot menu and run **Install secondant**. It appears as a
    second activity-bar container with its own orange accent. **Uninstall secondant** takes
    it out again, version directories included.
-8. **Install Desktop GUI** from the same menu adds the Hermes tray icon (Linux and Windows).
+8. **Install Desktop GUI** from the same menu adds the Hermes tray icon (Linux and Windows; the
+   first run may install PyQt6 or build a venv — see the requirements table).
 
 > Opening a tab for a session Hermes knows resumes it over ACP (`session/load`), and the
 > transcript arrives from Hermes itself — nothing is read back from a local copy.
@@ -348,9 +361,10 @@ and copies everything into the installed extension directory, verifying each fil
   them; a strict search for the whole quote will not.
 - **Long transcripts are not virtualised** — every message in a tab is a live DOM node. Fine
   for ordinary sessions, slow on transcripts of several thousand messages.
-- **Windows coverage is thin** — this round ran the patch on Hermes 0.23.3 and the tray app (built
-  by hand on the VM); the menu's download-and-install, its two login entries, the notes mirror's
-  junctions and the secondant install have not been run there yet.
+- **Windows coverage is thin** — this round ran the patch on Hermes 0.23.3, and the tray app's
+  sources (which it then ran from a venv of its own); the menu's venv pre-flight and install
+  window, its two login entries, the notes mirror's junctions and the secondant install have not
+  been run there yet.
 
 ## FAQ
 
