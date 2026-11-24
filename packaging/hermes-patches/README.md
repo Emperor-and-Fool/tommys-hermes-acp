@@ -49,6 +49,26 @@ The symptom when the right set is missing, and the cause on 0.23.x, are in [`CHA
     git apply --3way <this folder>/0001-acp-session-catalog-hidden-title.patch        # 0.22.x …
     git apply --3way <this folder>/0002-acp-gateway-ext-methods.patch                 # … 0.22.5 and later
 
-`hermes update` stashes local changes before its `git pull` and afterwards asks *"Restore local
-changes now?"* — answer yes, or re-apply the patch by hand. Check before opening a pane:
-`_session/catalog` answering `null` or an error is the patch's absence.
+### Coming from 0.22 to 0.23
+
+The 0.22 set must be gone before `0003` goes in, and nothing on disk will tell you so: both patches
+still apply cleanly to 0.23, and the result is a file where `0002`'s `ext_method` is defined *after*
+the block `0003` inserts — so Python keeps `0002`'s, and that one calls
+`SessionManager.session_catalog`, which is 0.22 code calling `list_sessions_rich` on a store 0.23 no
+longer has. Every connect answers `Internal error`.
+
+    cd ~/.hermes/hermes-agent                                   # Windows: %LOCALAPPDATA%\hermes\hermes-agent
+    git checkout -- acp_adapter                                 # drop 0001 and 0002
+    git apply --3way <this folder>/0003-acp-023x-session-catalog-hidden-title.patch
+    git status --short acp_adapter                              # exactly two M lines
+
+Exactly two — `catalog.py` and `gateway_server.py`. A third (`server.py` or `session.py`) means the
+0.22 set is back.
+
+`hermes update` stashes local changes before its pull and asks afterwards whether to restore
+them. Answer **yes** only when the update stays within one minor version (0.22 → 0.22,
+0.23 → 0.23). Going from **0.22 to 0.23**, answer **no**, then reset the adapter with
+`git checkout -- acp_adapter` and apply `0003` alone with `git apply --3way`. If `0001`+`0002`
+come back, their code takes over from `0003`'s, and every connect answers `Internal error`.
+
+Check before opening a pane: `_session/catalog` answering `null` or an error is the patch's absence.

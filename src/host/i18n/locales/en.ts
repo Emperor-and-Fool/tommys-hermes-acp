@@ -483,7 +483,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     catalogNoPatchKnown: 'Hermes does not answer the session catalog, so this window cannot see its chats. No patch set is known for Hermes {0}.',
     catalogOpenPatchFolder: 'Open patch folder',
     catalogDetails: 'Details',
-    catalogDetailsBody: 'What Hermes answered: {0}\n\n{1}\n\nPatch files: {2}',
+    catalogDetailsBody: 'What Hermes answered: {0}\n\n{1}\n\nPatch files: {2}\n\nOn Hermes 0.23 or later the 0.22 patches must not be applied as well: remove them first with git checkout -- acp_adapter, then apply 0003.',
     catalogNoFiles: 'none for this version',
     desktopPreparing: 'Preparing Hermes Desktop… (the first build takes a few minutes)',
     desktopReady: 'Hermes Desktop is ready ({0}).',
