@@ -70,13 +70,19 @@ empty. The tray app that puts the dashboard one click away now installs on Windo
 
 ### Repository
 
-- New: `host/desktop/` (the 2.6.1 leftovers and their one removal), `environment/trayApp.ts`
-  (the Windows asset and its verification), `environment/startupShortcut.ts`,
-  `environment/dashboard.ts`, `environment/dashboardUnit.ts`, and
-  `packaging/windows/Set-HermesTrayShortcut.ps1`.
+- New: `host/desktop/` (the store, and the one migration that removes what the 2.6.1-eve build
+  left), `environment/trayPreflight.ts` (the Qt bindings and the venv, checked before the installer
+  window opens), `environment/startupShortcut.ts` (where Windows' Startup folder is),
+  `environment/dashboardUnit.ts` (the Linux dashboard unit), `packaging/windows/` with
+  `Set-HermesTrayShortcut.ps1` (one named shortcut, written or removed), and
+  `extras/KDEdesktopGui/test_installer.py` (the installer's rules as Python tests).
+- Removed with Hermes' Desktop: `environment/desktopBuild.ts`, `environment/desktopTray.ts`,
+  `host/desktop/desktop.ts`, `host/desktop/tray.ts`, `environment/childEnv.ts`,
+  `editor/progress.ts`, `packaging/windows/Start-HermesInTray.ps1` and `.vbs` — and, with the
+  download route, `environment/trayApp.ts` and `environment/dashboard.ts`.
 - The catalog read answers `{ answered: true, sessions }` or `{ answered: false, reason }`, so an
   unanswered catalog cannot be mistaken for an empty one by a `?? []`.
-- Tests: 653 → 686 passing; `app.ts` 1470 → 1444.
+- Tests: 653 → 687 passing; `app.ts` 1470 → 1444.
 
 ## [2.6.0] - 2026-11-23
 
