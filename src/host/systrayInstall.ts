@@ -19,6 +19,12 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { isDashboardServing } from './environment/dashboard';
+import {
+    dashboardUnitPath,
+    ensureDashboardUnit,
+    removeOurDashboardUnit,
+} from './environment/dashboardUnit';
+import { accessExecutable, buildHermesExecutableCandidates } from './environment/hermesPaths';
 import { setStartupShortcut, shortcutInstalled, startupFolder } from './environment/startupShortcut';
 import {
     downloadTrayApp,
@@ -112,13 +118,47 @@ function shortcutScript(extensionUri?: vscode.Uri): string {
 export function installSystray(extensionUri?: vscode.Uri): Promise<void> {
     return process.platform === 'win32'
         ? installWindowsTrayApp(extensionUri)
-        : Promise.resolve(runInstaller([], extensionUri));
+        : installLinuxTrayApp(extensionUri);
 }
 
 export function uninstallSystray(extensionUri?: vscode.Uri): Promise<void> {
     return process.platform === 'win32'
         ? uninstallWindowsTrayApp(extensionUri)
-        : Promise.resolve(runInstaller(['--uninstall'], extensionUri));
+        : uninstallLinuxTrayApp(extensionUri);
+}
+
+/**
+ * Linux: the dashboard's autostart, then the Qt installer's own dialogs.
+ *
+ * Nothing in Hermes writes `hermes-dashboard.service`, so this writes one — only when the user has
+ * none — and starts it. An existing unit is left to the installer, which already offers `--no-open`
+ * with a backup; ours only fills the gap.
+ */
+async function installLinuxTrayApp(extensionUri?: vscode.Uri): Promise<void> {
+    const unitPath = dashboardUnitPath();
+    if (unitPath) {
+        const unit = await ensureDashboardUnit(await resolveHermesCli(), unitPath);
+        if (unit.created) {
+            console.log(`Dashboard unit: ${unit.message} — ${unitPath}`);
+        } else if (!unit.ok) {
+            console.warn(`Dashboard unit: ${unit.message}`);
+        }
+    }
+    runInstaller([], extensionUri);
+    refreshSystrayContext();
+}
+
+/** Linux: remove our unit (only when it is ours), then the installer's own uninstall dialog. */
+async function uninstallLinuxTrayApp(extensionUri?: vscode.Uri): Promise<void> {
+    const unitPath = dashboardUnitPath();
+    if (unitPath) {
+        const unit = await removeOurDashboardUnit(unitPath);
+        if (unit.removed || !unit.ok) {
+            console.log(`Dashboard unit: ${unit.message}`);
+        }
+    }
+    runInstaller(['--uninstall'], extensionUri);
+    refreshSystrayContext();
 }
 
 /**
@@ -172,7 +212,7 @@ async function installWindowsTrayApp(extensionUri?: vscode.Uri): Promise<void> {
     const dashboardAlready = await isDashboardServing();
     let dashboardLink = { ok: true, message: dashboardAlready ? 'already serving' : 'not written' };
     if (!dashboardAlready) {
-        const launcher = writeDashboardLauncher(resolveHermesCli(), dir);
+        const launcher = writeDashboardLauncher(await resolveHermesCli(), dir);
         dashboardLink = shortcutInstalled(DASHBOARD_LINK, startup)
             ? { ok: true, message: 'already there' }
             : await setStartupShortcut({ script, action: 'enable', name: DASHBOARD_LINK, target: launcher, startup });
@@ -232,7 +272,19 @@ async function reportWindowsState(dir: string): Promise<void> {
     refreshSystrayContext();
 }
 
-/** The `hermes` the dashboard login entry runs: a configured path, else the one on PATH. */
-function resolveHermesCli(): string {
-    return process.env.HERMES_CLI_PATH || 'hermes';
+/**
+ * The `hermes` a login entry runs: the configured path, else the first candidate that exists, else
+ * the bare command (a unit or a `.vbs` runs it through the shell, where PATH decides).
+ */
+async function resolveHermesCli(): Promise<string> {
+    const configured = (process.env.HERMES_CLI_PATH || '').trim();
+    if (configured) {
+        return configured;
+    }
+    for (const candidate of buildHermesExecutableCandidates()) {
+        if (await accessExecutable(candidate)) {
+            return candidate;
+        }
+    }
+    return 'hermes';
 }
