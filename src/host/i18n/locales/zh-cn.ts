@@ -478,7 +478,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     catalogNoPatchKnown: 'Hermes 没有回应会话目录，因此本窗口看不到它的对话。没有适用于 Hermes {0} 的补丁集。',
     catalogOpenPatchFolder: '打开补丁文件夹',
     catalogDetails: '详情',
-    catalogDetailsBody: 'Hermes 的回答：{0}\n\n{1}\n\n补丁文件：{2}',
+    catalogDetailsBody: 'Hermes 的回答：{0}\n\n{1}\n\n补丁文件：{2}\n\n在 Hermes 0.23 及更高版本上，0.22 的补丁不能同时应用：请先执行 git checkout -- acp_adapter 移除它们，再应用 0003。',
     catalogNoFiles: '此版本没有',
     desktopPreparing: '正在准备 Hermes 桌面版……（首次构建需要几分钟）',
     desktopReady: 'Hermes 桌面版已就绪（{0}）。',
