@@ -109,13 +109,25 @@ your own messages under your own permissions, and you sit in the middle of every
 a few rounds and you can watch, at human reading speed, how the two keep asking each other
 questions and answering until both are satisfied within their role.</p>
 
-<h2>A tray for the backend</h2>
-<p>On Linux, <strong>Install Desktop GUI</strong> from the same menu puts a Hermes icon in your system
-tray. Right-click shows whether the dashboard is up and on which port, and offers
-<strong>Open Hermes GUI</strong>, <strong>Open VSCodium</strong>, <strong>Reload</strong> and <strong>Quit</strong>. It does not start on
-login the way Hermes does by default; it sits in the tray for one-click access to the backend.
-It is a separate program that ships inside the VSIX — the extension only launches its installer.
-<strong>Uninstall Desktop GUI</strong> removes it.</p>
+<h2>A tray for the backend: our own window on the dashboard</h2>
+<p><strong>Install Desktop GUI</strong> from the ⋯ menu puts a Hermes icon in your system tray, on Linux
+<em>and</em> Windows. Right-click shows whether the dashboard is up and on which port, and offers
+<strong>Open Hermes GUI</strong>, <strong>Open VSCodium</strong>, <strong>Reload</strong> and <strong>Quit</strong>. The window shows the
+dashboard: the same sessions the TUI and the panes see.</p>
+<p>It is our own program (<code>extras/KDEdesktopGui</code>), not Hermes' Electron Desktop — that one is a
+separate app for you to install if you want it, and the extension neither builds nor starts it.</p>
+<p>On Linux the menu starts the program's installer, which asks its questions and installs the apt
+packages. On Windows there is nothing to ask: the menu downloads the release asset
+(<code>hermesdesktopgui-windows-x86_64.zip</code>, 199 MB), refuses anything whose size and sha256 do not
+match the build this version names, unpacks it with Windows' own extractor, and puts it in
+<code>%LOCALAPPDATA%\hermesdesktopgui</code>.</p>
+<p>Both platforms also get the dashboard started at login, once and only when it is missing: a
+systemd user unit on Linux (<code>hermes-dashboard.service</code>, written with a marker, so uninstall
+removes only a unit we wrote), and two Startup shortcuts on Windows — the app, and a hidden
+<code>hermes dashboard --no-open</code>. After installing, the state is read back: whether
+<code>127.0.0.1:9119</code> answers, and whether the app is running.</p>
+<p><strong>Uninstall Desktop GUI</strong> removes the app, our login entries and, on Linux, a unit carrying our
+marker — nothing else in your Startup folder or unit folder is touched.</p>
 
 <h2>Steer a run while it runs</h2>
 <p>With a turn in flight, type into the composer and <strong>Stop becomes Steer</strong>. Your words go
@@ -189,7 +201,7 @@ editing-while-it-runs rhythm that most clients make you fight for.
 <li><a href="https://hermes-agent.nousresearch.com">Hermes Agent</a> installed and configured</li>
 <li><code>hermes</code> on <code>PATH</code>, or <code>tommys.path</code> set in settings</li>
 <li>For the secondant: a <strong>second Hermes profile</strong>, because the two panes may not share one</li>
-<li>For the Desktop GUI: Linux. Tested on Ubuntu 24.04</li>
+<li>For the desktop app in the tray: Linux (the installer's own apt step) or Windows (the release asset, downloaded by the menu)</li>
 <li>The <strong>Hermes ACP patch</strong>, applied to your Hermes install — see <em>Important: the Hermes patch</em> below. Without it the tab list cannot see hidden sessions, closing a tab leaves it listed, and renames do not stick</li>
 </ul>
 <h2>Important: the Hermes patch</h2>
@@ -229,13 +241,13 @@ git status --short acp_adapter                              # exactly two M line
 (<code>server.py</code> or <code>session.py</code>) means the 0.22 set is back.</p>
 <p><code>hermes update</code> stashes local changes before its pull and asks afterwards whether to restore them. Answer <strong>yes</strong> only when the update stays within one minor version (0.22 &rarr; 0.22, 0.23 &rarr; 0.23). Going from <strong>0.22 to 0.23</strong>, answer <strong>no</strong>, then reset the adapter with <code>git checkout -- acp_adapter</code> and apply <code>0003</code> alone with <code>git apply --3way</code>. If <code>0001</code>+<code>0002</code> come back, their code takes over from <code>0003</code>&rsquo;s, and every connect answers <code>Internal error</code>.</p>
 <p>Every patch touches only <code>acp_adapter/</code> and only calls Hermes&rsquo; own store methods; <code>packaging/hermes-patches/CHANGELOG.md</code> records each base, the symptom when its patch is missing, and why 0.23 needs a set of its own.</p>
-<p><em>Tested on Ubuntu 24.04, and on Windows: Hermes 0.23.3 with <code>0003</code> applied (tabs resume, the catalog answers), the Desktop build, and the start-in-tray shortcut.</em></p>
+<p><em>Tested on Ubuntu 24.04, and on Windows: Hermes 0.23.3 with <code>0003</code> applied — tabs resume and the catalog answers.</em></p>
 <h2>Build and install</h2>
 <pre><code class="language-bash">npm install
 npm run package                                     # compile + bundle the pane + vsix
 codium --install-extension ./tommys-hermes-acp-&lt;version&gt;.vsix --force
 </code></pre>
-<p><code>npm run package</code> bundles the secondant VSIX and the Desktop GUI inside the primary.
+<p><code>npm run package</code> bundles the secondant VSIX and the desktop app's sources and installer inside the primary.
 <code>npm run package:secondant</code> builds the companion on its own; users never need it, because
 the primary installs it from the menu.</p>
 <p><code>npm run deploy</code> is the fast path while developing: it compiles, rebuilds the pane bundle
@@ -305,7 +317,7 @@ and copies everything into the installed extension directory, verifying each fil
 7. For a second agent, open the three-dot menu and run **Install secondant**. It appears as a
    second activity-bar container with its own orange accent. **Uninstall secondant** takes
    it out again, version directories included.
-8. On Linux, **Install Desktop GUI** from the same menu adds the Hermes tray icon.
+8. **Install Desktop GUI** from the same menu adds the Hermes tray icon (Linux and Windows).
 
 > Opening a tab for a session Hermes knows resumes it over ACP (`session/load`), and the
 > transcript arrives from Hermes itself — nothing is read back from a local copy.
@@ -336,9 +348,9 @@ and copies everything into the installed extension directory, verifying each fil
   them; a strict search for the whole quote will not.
 - **Long transcripts are not virtualised** — every message in a tab is a live DOM node. Fine
   for ordinary sessions, slow on transcripts of several thousand messages.
-- **Windows coverage is thin** — this round ran the patch on Hermes 0.23.3, the Desktop build and
-  the tray shortcut there; the notes mirror's junctions, the systray app and the secondant install
-  were not run on Windows.
+- **Windows coverage is thin** — this round ran the patch on Hermes 0.23.3 and the tray app (built
+  by hand on the VM); the menu's download-and-install, its two login entries, the notes mirror's
+  junctions and the secondant install have not been run there yet.
 
 ## FAQ
 
