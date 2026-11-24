@@ -21,8 +21,6 @@ import {
     formatDetectSummaryForReport,
 } from './detectFormat';
 import { detectHermesEnvironment, tryResolveHermesQuick } from './hermesEnvironmentDetect';
-import { buildDesktop as buildDesktopCli } from './desktopBuild';
-import type { DesktopBuildResult } from './desktopBuild';
 import { findHermesExecutable } from './profileDiscovery';
 import { addHermesDirectoryToSystemPath, getHermesExecutableDirectory } from './hermesPathSetup';
 import { accessExecutable, agentVenv, venvHermesCandidates } from './hermesPaths';
@@ -186,13 +184,6 @@ export class EnvironmentDetection {
             return quick;
         }
         return (await findHermesExecutable(configured)) || undefined;
-    }
-
-    /** Run Hermes' own Desktop build, unattended: the executable, the checkout, and its lines. */
-    public async buildDesktop(report: (line: string) => void): Promise<DesktopBuildResult> {
-        const executable = await this.resolveExecutable();
-        this._host.log(`Desktop build: ${executable ?? 'no Hermes executable was found'}`);
-        return buildDesktopCli(executable, report);
     }
 
     public async detectEnvironment(): Promise<void> {

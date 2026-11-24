@@ -142,14 +142,6 @@
       {
         "command": "tommys.uninstallSystray",
         "title": "%commands.tommys.uninstallSystray.title%"
-      },
-      {
-        "command": "tommys.setupDesktopTray",
-        "title": "%commands.tommys.setupDesktopTray.title%"
-      },
-      {
-        "command": "tommys.removeDesktopTray",
-        "title": "%commands.tommys.removeDesktopTray.title%"
       }
     ],
     "submenus": [
@@ -260,16 +252,6 @@
         {
           "command": "tommys.uninstallSystray",
           "when": "tommysSystrayInstalled",
-          "group": "2@0"
-        },
-        {
-          "command": "tommys.setupDesktopTray",
-          "when": "isWindows && !tommysDesktopTraySet",
-          "group": "2@0"
-        },
-        {
-          "command": "tommys.removeDesktopTray",
-          "when": "isWindows && tommysDesktopTraySet",
           "group": "2@0"
         },
         {
