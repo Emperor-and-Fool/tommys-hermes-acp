@@ -11,10 +11,28 @@ function blockMetaKind(block: Record<string, unknown>): string {
 }
 
 /**
- * The text of every approval-tagged block in an update, or '' when there is none.
+ * The line unpatched Hermes writes for a terminal result's `approval` field: its generic formatter
+ * turns every result key into `- **key:** value` (acp_adapter/tools.py, _format_structured_value;
+ * the field is set in tools/terminal_tool_result.py and terminal_tool_background.py).
+ */
+const APPROVAL_LINE = /^- \*\*approval:\*\* (.+)$/m;
+
+/** The note from that line, and the text without it. */
+function splitApprovalLine(text: string): { note: string; rest: string } {
+    const match = APPROVAL_LINE.exec(text);
+    if (!match) {
+        return { note: '', rest: text };
+    }
+    const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).replace(/\n{3,}/g, '\n\n');
+    return { note: match[1].trim(), rest };
+}
+
+/**
+ * The text of every approval note in an update, or '' when there is none.
  *
- * Hermes sends the note a gate wrote ("flagged … and auto-approved by smart approval") as its own
- * block so a client can draw it as a card; it is not tool prose, so the body extractor skips it.
+ * Two shapes: a block tagged `_meta.kind = approval` (a patched Hermes), or the `- **approval:** …`
+ * line inside the tool's text (every Hermes). Either way it is not tool prose, so the body
+ * extractor leaves it out and the pane draws it as its own line.
  */
 export function extractApprovalNoteFromContent(content: unknown): string {
     if (Array.isArray(content)) {
@@ -26,6 +44,9 @@ export function extractApprovalNoteFromContent(content: unknown): string {
     const block = content as Record<string, unknown>;
     if (blockMetaKind(block) === APPROVAL_NOTE_KIND) {
         return typeof block.text === 'string' ? block.text.trim() : '';
+    }
+    if (typeof block.text === 'string') {
+        return splitApprovalLine(block.text).note;
     }
     if (Array.isArray(block.content) || block.content != null) {
         return extractApprovalNoteFromContent(block.content);
@@ -54,7 +75,7 @@ export function extractTextFromContentBlock(content: unknown): string {
         return '';
     }
     if (typeof block.text === 'string') {
-        return block.text;
+        return splitApprovalLine(block.text).rest;
     }
     if (typeof block.thought === 'string') {
         return block.thought;
