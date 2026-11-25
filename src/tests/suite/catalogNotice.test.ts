@@ -26,6 +26,7 @@ const noticeOver = (version: string, answer?: string) => {
         info: (message) => { infos.push(message); },
         log: (line) => { logs.push(line); },
         patch: async () => { patched += 1; },
+        patchAvailable: () => true,
         choices: {
             pick: async (_title: string, _items: EditorChoiceItem[]) => undefined,
             prompt: async () => undefined,

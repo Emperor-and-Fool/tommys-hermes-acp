@@ -73,6 +73,48 @@ export interface PatchSetupHost {
     choices: EditorChoices;
     /** Start the panes again, so they load the patched code. */
     reconnect(): Promise<void>;
+    /** The primary window is the one fixer; a secondant asks nothing and writes nothing. */
+    isPrimary(): boolean;
+    /** The file the one fixer holds while it works, in this data home. */
+    lockPath(): string;
+}
+
+/** How long a lock file may stay before it is treated as left behind by a crash. */
+const LOCK_STALE_MS = 120_000;
+
+/** Take the lock, or report that somebody else holds it. A stale file is replaced, not obeyed. */
+function takeLock(file: string): boolean {
+    const stamp = (): string => JSON.stringify({ pid: process.pid, at: Date.now() });
+    try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, stamp(), { flag: 'wx' });
+        return true;
+    } catch {
+        try {
+            if (Date.now() - fs.statSync(file).mtimeMs > LOCK_STALE_MS) {
+                fs.unlinkSync(file);
+                fs.writeFileSync(file, stamp(), { flag: 'wx' });
+                return true;
+            }
+        } catch {
+            // The file vanished between the two calls: try once more through the same path.
+            try {
+                fs.writeFileSync(file, stamp(), { flag: 'wx' });
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        return false;
+    }
+}
+
+function releaseLock(file: string): void {
+    try {
+        fs.unlinkSync(file);
+    } catch {
+        // Already gone: nothing to release.
+    }
 }
 
 export class PatchSetup {
@@ -89,6 +131,9 @@ export class PatchSetup {
      * read runs, and the dialog appears only when it is not ok.
      */
     async onConnect(): Promise<void> {
+        if (!this._host.isPrimary()) {
+            return;
+        }
         const version = this._host.hermesVersion();
         if (!version) {
             return;
@@ -124,6 +169,10 @@ export class PatchSetup {
 
     /** The catalog notice's [Patch]: read, then say what was found and offer the fix. */
     async promptCatalog(): Promise<void> {
+        if (!this._host.isPrimary()) {
+            this._host.log('patch: this window is the secondant; the primary handles the patch');
+            return;
+        }
         const version = this._host.hermesVersion();
         if (!version) {
             this._host.log('patch: no version from Hermes yet; nothing read');
@@ -181,37 +230,62 @@ export class PatchSetup {
         }
     }
 
-    /** The one place that writes: reverse what is wrong, apply what is missing, then read again. */
+    /**
+     * The one place that writes: take the lock, let fixPatchState read the checkout again and act,
+     * then say what happened. A second window that presses Patch at the same moment finds the lock
+     * taken and does nothing — the same picture twice must not be acted on twice.
+     */
     private async _fix(state: PatchState): Promise<void> {
         if (state.kind !== 'missing' && state.kind !== 'wrong') {
             return;
         }
-        const result = await fixPatchState({
-            checkout: this._host.checkout(),
-            patchDir: this._host.patchDir(),
-            state,
-            run: this._host.run,
-        });
-        for (const line of result.log) {
-            this._host.log(line);
-        }
-        const after = await this._inspect(state.version);
-        if (after.kind === 'ok') {
-            const answer = await this._host.choices.modal(
-                t('patchAppliedTitle', after.label),
-                [t('patchReconnectButton'), t('patchOkButton')],
-                t('patchAppliedBody'),
-            );
-            if (answer === t('patchReconnectButton')) {
-                await this._host.reconnect();
-            }
+        const lock = this._host.lockPath();
+        if (!takeLock(lock)) {
+            this._host.log('patch: another window is fixing the set; this one did nothing');
             return;
         }
-        await this._host.choices.modal(
-            t('patchFailedTitle', state.label, after.kind === 'unknown' ? after.reason : after.kind),
-            [t('patchDetailsButton'), t('patchOkButton')],
-            t('patchManualSteps'),
-        );
+        try {
+            const result = await fixPatchState({
+                checkout: this._host.checkout(),
+                patchDir: this._host.patchDir(),
+                version: state.version,
+                run: this._host.run,
+            });
+            for (const line of result.log) {
+                this._host.log(line);
+            }
+            for (const other of result.state.others) {
+                this._host.log(`patch: kept an unrelated change in acp_adapter — ${other}`);
+            }
+            if (result.state.kind === 'ok') {
+                const answer = await this._host.choices.modal(
+                    t('patchAppliedTitle', result.state.label),
+                    [t('patchReconnectButton'), t('patchOkButton')],
+                    t('patchAppliedBody'),
+                );
+                if (answer === t('patchReconnectButton')) {
+                    await this._host.reconnect();
+                }
+                return;
+            }
+            if (!result.changed) {
+                // Nothing was written: either it was already right, or it cannot be decided. Both are
+                // told, not hidden.
+                await this._host.choices.modal(
+                    t('patchNothingDoneTitle', state.label),
+                    [t('patchOkButton')],
+                    t('patchManualSteps'),
+                );
+                return;
+            }
+            await this._host.choices.modal(
+                t('patchFailedTitle', state.label, result.state.kind === 'unknown' ? result.state.reason : result.state.kind),
+                [t('patchDetailsButton'), t('patchOkButton')],
+                t('patchManualSteps'),
+            );
+        } finally {
+            releaseLock(lock);
+        }
     }
 }
 

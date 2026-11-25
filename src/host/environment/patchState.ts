@@ -75,10 +75,45 @@ export const runGit: GitRunner = async (args, cwd) => {
 
 /** What one checkout holds, as far as the patch set is concerned. */
 export type PatchState =
-    | { kind: 'ok'; version: string; label: string; present: string[] }
-    | { kind: 'missing'; version: string; label: string; applicable: string[]; reason: string }
-    | { kind: 'wrong'; version: string; label: string; present: string[]; extra: string[]; missing: string[] }
-    | { kind: 'unknown'; version: string; reason: string; present: string[] };
+    | { kind: 'ok'; version: string; label: string; present: string[]; others: string[] }
+    | { kind: 'missing'; version: string; label: string; applicable: string[]; reason: string; others: string[] }
+    | { kind: 'wrong'; version: string; label: string; present: string[]; extra: string[]; missing: string[]; others: string[] }
+    | { kind: 'unknown'; version: string; reason: string; present: string[]; others: string[] };
+
+/**
+ * The files one patch touches, read from the patch file's own headers.
+ *
+ * `git diff` writes `+++ b/<path>` per file, so the patch file is the authority on what it changes —
+ * and the clean check has to be scoped to exactly those paths. An edit elsewhere in `acp_adapter/` is
+ * somebody's business, not a reason to refuse.
+ */
+export function touchedFiles(patchDir: string, patches: readonly HermesPatch[]): string[] {
+    const paths = new Set<string>();
+    for (const patch of patches) {
+        let text = '';
+        try {
+            text = fs.readFileSync(path.join(patchDir, patch.file), 'utf8');
+        } catch {
+            continue;
+        }
+        for (const match of text.matchAll(/^\+\+\+ b\/(.+)$/gm)) {
+            paths.add(match[1].trim());
+        }
+    }
+    return [...paths].sort();
+}
+
+/** The paths `git status --porcelain` lists under acp_adapter, as the paths git would name. */
+async function dirtyPaths(checkout: string, run: GitRunner): Promise<string[]> {
+    const answer = await run(['status', '--porcelain', '--', 'acp_adapter'], checkout);
+    if (answer.code !== 0) {
+        return [];
+    }
+    return answer.output
+        .split(/\r?\n/)
+        .map(line => line.slice(3).trim())
+        .filter(Boolean);
+}
 
 /** The path of one patch file inside this extension's patch folder. */
 export function patchPath(patchDir: string, patch: HermesPatch): string {
@@ -108,10 +143,11 @@ export async function readPatchState(options: {
             version,
             reason: `no patch set is known for Hermes ${version || '(version not reported)'}`,
             present: [],
+            others: [],
         };
     }
     if (!fs.existsSync(path.join(checkout, 'acp_adapter'))) {
-        return { kind: 'unknown', version, reason: `no acp_adapter in ${checkout}`, present: [] };
+        return { kind: 'unknown', version, reason: `no acp_adapter in ${checkout}`, present: [], others: [] };
     }
     const absent = required.filter(patch => !fs.existsSync(patchPath(patchDir, patch)));
     if (absent.length) {
@@ -120,6 +156,7 @@ export async function readPatchState(options: {
             version,
             reason: `the patch folder has no ${absent.map(patch => patch.id).join(', ')}`,
             present: [],
+            others: [],
         };
     }
 
@@ -140,20 +177,27 @@ export async function readPatchState(options: {
     const missing = requiredIds.filter(id => !present.includes(id));
     const label = requiredIds.join(' + ');
 
+    const dirtyAll = await dirtyPaths(checkout, run);
+    const othersAll = dirtyAll.filter(path => !touchedFiles(patchDir, ALL_PATCHES).includes(path));
+
     if (!extra.length && !missing.length) {
-        return { kind: 'ok', version, label, present };
+        return { kind: 'ok', version, label, present, others: othersAll };
     }
     if (extra.length) {
-        return { kind: 'wrong', version, label, present, extra, missing };
+        return { kind: 'wrong', version, label, present, extra, missing, others: othersAll };
     }
 
-    const diff = await run(['diff', '--quiet', '--', 'acp_adapter'], checkout);
-    if (diff.code !== 0) {
+    const ours = touchedFiles(patchDir, required);
+    const clean = await run(['diff', '--quiet', '--', ...ours], checkout);
+    const dirty = await dirtyPaths(checkout, run);
+    const others = dirty.filter(path => !ours.includes(path));
+    if (clean.code !== 0) {
         return {
             kind: 'unknown',
             version,
-            reason: 'acp_adapter has changes that are not one of our sets',
+            reason: `our own files carry changes that are not the patch set: ${ours.join(', ')}`,
             present,
+            others,
         };
     }
     for (const patch of required) {
@@ -167,6 +211,7 @@ export async function readPatchState(options: {
                 version,
                 reason: `${patch.id} does not apply to this checkout: ${(check.output.trim().split(/\r?\n/).pop() ?? 'no output')}`,
                 present,
+                others,
             };
         }
     }
@@ -176,37 +221,46 @@ export async function readPatchState(options: {
         label,
         applicable: missing,
         reason: `${label} is not applied and applies cleanly`,
+        others,
     };
 }
 
 /**
  * Bring the checkout to the required set. Only ever called from the user's click.
  *
+ * The state it acts on is read here, not handed in: two windows can both hold a dialog opened before
+ * the other one ran, and a stale picture would reverse a set that is already gone. The caller holds
+ * the lock; this function only decides and acts on what the checkout says *now*.
+ *
  * wrong   — reverse the extra patches, newest first (`0002` before `0001`), then apply what is missing
  * missing — apply the required patches in order
- * ok      — nothing
+ * ok      — nothing, and it says so
  * unknown — nothing; the caller shows what was found and the manual steps
  *
- * Returns the commands it ran and their output, so the output channel can carry the whole story.
+ * `git apply` without `--3way` on purpose: `--3way` implies `--index`, which stages the result in
+ * Hermes' index — a tree that reads `M ` in the status column afterwards.
  */
 export async function fixPatchState(options: {
     checkout: string;
     patchDir: string;
-    state: PatchState;
+    version: string;
     run: GitRunner;
-}): Promise<{ changed: boolean; log: string[] }> {
-    const { checkout, patchDir, state, run } = options;
+}): Promise<{ changed: boolean; state: PatchState; log: string[] }> {
+    const { checkout, patchDir, version, run } = options;
     const log: string[] = [];
-    if (state.kind === 'unknown' || state.kind === 'ok') {
-        return { changed: false, log: [`nothing done: ${state.kind}`] };
+    const before = await readPatchState({ checkout, patchDir, version, run });
+    if (before.kind === 'unknown') {
+        return { changed: false, state: before, log: [`nothing done: the state is unknown — ${before.reason}`] };
+    }
+    if (before.kind === 'ok') {
+        return { changed: false, state: before, log: [`nothing done: ${before.label} is already in place`] };
     }
 
     const byId = (id: string): HermesPatch | undefined => ALL_PATCHES.find(patch => patch.id === id);
 
-    if (state.kind === 'wrong') {
+    if (before.kind === 'wrong') {
         // Reverse newest first: 0002 depends on 0001 having been applied before it.
-        const extras = [...state.extra].reverse();
-        for (const id of extras) {
+        for (const id of [...before.extra].reverse()) {
             const patch = byId(id);
             if (!patch) {
                 continue;
@@ -216,23 +270,25 @@ export async function fixPatchState(options: {
             const answer = await run(args, checkout);
             log.push(answer.output.trim() || `exit ${answer.code}`);
             if (answer.code !== 0) {
-                return { changed: false, log: [...log, `stopped: ${id} could not be reversed`] };
+                return { changed: false, state: await readPatchState({ checkout, patchDir, version, run }),
+                    log: [...log, `stopped: ${id} could not be reversed`] };
             }
         }
     }
 
-    for (const id of state.kind === 'wrong' ? state.missing : state.applicable) {
+    for (const id of before.kind === 'wrong' ? before.missing : before.applicable) {
         const patch = byId(id);
         if (!patch) {
             continue;
         }
-        const args = ['apply', '--3way', patchPath(patchDir, patch)];
+        const args = ['apply', patchPath(patchDir, patch)];
         log.push(`$ git ${args.join(' ')}`);
         const answer = await run(args, checkout);
         log.push(answer.output.trim() || `exit ${answer.code}`);
         if (answer.code !== 0) {
-            return { changed: false, log: [...log, `stopped: ${id} did not apply`] };
+            return { changed: false, state: await readPatchState({ checkout, patchDir, version, run }),
+                log: [...log, `stopped: ${id} did not apply`] };
         }
     }
-    return { changed: true, log };
+    return { changed: true, state: await readPatchState({ checkout, patchDir, version, run }), log };
 }

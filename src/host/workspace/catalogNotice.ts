@@ -23,6 +23,8 @@ export interface CatalogNoticeHost {
     info(message: string): void;
     /** Bring the checkout to the set this Hermes needs, after the user asks for it. */
     patch(): Promise<void>;
+    /** Whether this window may offer that: the primary is the one fixer. */
+    patchAvailable(): boolean;
     choices: EditorChoices;
     log(line: string): void;
 }
@@ -66,11 +68,15 @@ export class CatalogNotice implements CatalogVoice {
         const openFolder = t('catalogOpenPatchFolder');
         const details = t('catalogDetails');
         const patchButton = t('patchButton');
+        const canPatch = set !== undefined && this._host.patchAvailable();
+        if (set && !canPatch) {
+            this._host.log('patch: this window is the secondant; the primary offers the Patch button');
+        }
         const answer = await this._host.choices.ask(
             set
                 ? t('catalogNeedsPatch', version, set.label)
                 : t('catalogNoPatchKnown', version || 'unknown'),
-            set ? [patchButton, openFolder, details] : [openFolder, details],
+            canPatch ? [patchButton, openFolder, details] : [openFolder, details],
         );
         if (answer === patchButton) {
             await this._host.patch();

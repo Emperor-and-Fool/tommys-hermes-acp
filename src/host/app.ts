@@ -58,6 +58,7 @@ import { PatchSetup, createPatchVersionStore } from './patches/patchSetup';
 import { runGit } from './environment/patchState';
 import { resolveHermesRoot } from './environment/hermesPaths';
 import { PATCH_FOLDER } from './environment/hermesPatches';
+import { patchLockPathFor } from './store/paths';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -306,6 +307,8 @@ export class App implements vscode.WebviewViewProvider {
         store: createPatchVersionStore(() => this._historyDir),
         choices: createEditorChoices(),
         reconnect: async () => { await this._connection.reconnectForConfig(); },
+        isPrimary: () => this._id.role === 'primary',
+        lockPath: () => patchLockPathFor(this._historyDir),
     });
 
     /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
@@ -315,6 +318,7 @@ export class App implements vscode.WebviewViewProvider {
         info: (message) => this._notices.info(message),
         choices: createEditorChoices(),
         patch: () => this._patchSetup.promptCatalog(),
+        patchAvailable: () => this._id.role === 'primary',
         log: (line) => this._log(line),
     });
 

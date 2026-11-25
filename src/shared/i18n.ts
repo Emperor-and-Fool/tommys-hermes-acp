@@ -442,6 +442,7 @@ export interface LocaleStrings {
     patchAppliedTitle: string;
     patchAppliedBody: string;
     patchFailedTitle: string;
+    patchNothingDoneTitle: string;
     patchManualSteps: string;
     catalogNoPatchKnown: string;
     catalogOpenPatchFolder: string;

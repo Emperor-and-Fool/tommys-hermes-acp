@@ -4,8 +4,8 @@
  * The other patch tests model a checkout so the decisions can be read; this one runs the actual
  * commands against a throwaway repository built from two pristine snapshots — `acp_adapter/` at
  * Hermes v0.22.6 and at v0.23.3 (see `src/tests/fixtures/`, MIT, Nous Research). It is the only test
- * that can show that our patch files apply where we say they do, and that a Fix leaves exactly the
- * set it claims.
+ * that can show that our patch files apply where we say they do, that a Fix leaves exactly the set it
+ * claims, and that a second Fix on the same tree writes nothing.
  *
  * Git runs offline against the temp repository. Nothing here touches ~/.hermes.
  */
@@ -55,6 +55,10 @@ function state(cwd: string, version: string): Promise<PatchState> {
     return readPatchState({ checkout: cwd, patchDir: PATCH_DIR, version, run: runGit });
 }
 
+function fix(cwd: string, version: string) {
+    return fixPatchState({ checkout: cwd, patchDir: PATCH_DIR, version, run: runGit });
+}
+
 /** Every file's content hash, to prove a tree was left alone. */
 function fingerprint(cwd: string): string {
     const hash = crypto.createHash('sha256');
@@ -68,12 +72,13 @@ function fingerprint(cwd: string): string {
     return hash.digest('hex');
 }
 
-/** Run the fix where the state asks for one, then require the checkout to read ok. */
-async function fixAndCheck(cwd: string, version: string, before: PatchState): Promise<void> {
-    const result = await fixPatchState({ checkout: cwd, patchDir: PATCH_DIR, state: before, run: runGit });
-    assert.strictEqual(result.changed, true, result.log.join('\n'));
-    const after = await state(cwd, version);
-    assert.strictEqual(after.kind, 'ok', `after Fix: ${after.kind} ${after.kind === 'unknown' ? after.reason : ''}`);
+async function nothingStaged(cwd: string): Promise<void> {
+    const answer = await runGit(['diff', '--cached', '--quiet'], cwd);
+    assert.strictEqual(answer.code, 0, `something was staged: ${answer.output}`);
+}
+
+function sha(file: string): string {
+    return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 describe('real git: Hermes v0.22.6 needs 0001 + 0002', () => {
@@ -83,7 +88,10 @@ describe('real git: Hermes v0.22.6 needs 0001 + 0002', () => {
             const before = await state(dir, '0.22.6');
             assert.strictEqual(before.kind, 'missing', before.kind);
             assert.deepStrictEqual(before.kind === 'missing' ? before.applicable : [], ['0001', '0002']);
-            await fixAndCheck(dir, '0.22.6', before);
+            const result = await fix(dir, '0.22.6');
+            assert.strictEqual(result.changed, true, result.log.join('\n'));
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            await nothingStaged(dir);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -97,7 +105,7 @@ describe('real git: Hermes v0.22.6 needs 0001 + 0002', () => {
             const before = await state(dir, '0.22.6');
             assert.strictEqual(before.kind, 'ok', before.kind);
             const fingerprintBefore = fingerprint(dir);
-            const result = await fixPatchState({ checkout: dir, patchDir: PATCH_DIR, state: before, run: runGit });
+            const result = await fix(dir, '0.22.6');
             assert.strictEqual(result.changed, false);
             assert.strictEqual(fingerprint(dir), fingerprintBefore, 'byte for byte');
         } finally {
@@ -105,15 +113,35 @@ describe('real git: Hermes v0.22.6 needs 0001 + 0002', () => {
         }
     });
 
-    it('an edit of our own reads unknown, and Fix leaves it untouched', async () => {
+    it('an edit outside our files is reported and does not stop the Fix', async () => {
         const dir = await repository('hermes-0.22.6');
         try {
-            const file = path.join(dir, 'acp_adapter', 'session.py');
-            fs.appendFileSync(file, '\n# a hand edit that is not one of our sets\n');
+            // catalog.py is not touched by 0001/0002: somebody else's edit, not our business.
+            const other = path.join(dir, 'acp_adapter', 'catalog.py');
+            fs.appendFileSync(other, '\n# an unrelated local edit\n');
+            const before = sha(other);
+
+            const found = await state(dir, '0.22.6');
+            assert.strictEqual(found.kind, 'missing', `${found.kind} ${found.kind === 'unknown' ? found.reason : ''}`);
+            assert.ok(found.others.includes('acp_adapter/catalog.py'), `others: ${found.others.join(', ')}`);
+
+            const result = await fix(dir, '0.22.6');
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            assert.strictEqual(sha(other), before, 'the unrelated edit is untouched');
+            await nothingStaged(dir);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('an edit inside one of our files reads unknown, and Fix leaves it untouched', async () => {
+        const dir = await repository('hermes-0.22.6');
+        try {
+            fs.appendFileSync(path.join(dir, 'acp_adapter', 'session.py'), '\n# a hand edit of our own file\n');
             const fingerprintBefore = fingerprint(dir);
             const found = await state(dir, '0.22.6');
             assert.strictEqual(found.kind, 'unknown', found.kind);
-            const result = await fixPatchState({ checkout: dir, patchDir: PATCH_DIR, state: found, run: runGit });
+            const result = await fix(dir, '0.22.6');
             assert.strictEqual(result.changed, false);
             assert.strictEqual(fingerprint(dir), fingerprintBefore, 'byte for byte');
         } finally {
@@ -129,7 +157,10 @@ describe('real git: Hermes v0.23.3 needs 0003 alone', () => {
             const before = await state(dir, '0.23.3');
             assert.strictEqual(before.kind, 'missing', before.kind);
             assert.deepStrictEqual(before.kind === 'missing' ? before.applicable : [], ['0003']);
-            await fixAndCheck(dir, '0.23.3', before);
+            const result = await fix(dir, '0.23.3');
+            assert.strictEqual(result.changed, true, result.log.join('\n'));
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            await nothingStaged(dir);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -156,7 +187,30 @@ describe('real git: Hermes v0.23.3 needs 0003 alone', () => {
             assert.strictEqual(before.kind, 'wrong', before.kind);
             assert.deepStrictEqual(before.kind === 'wrong' ? before.extra : [], ['0001', '0002']);
             assert.deepStrictEqual(before.kind === 'wrong' ? before.missing : [], ['0003']);
-            await fixAndCheck(dir, '0.23.3', before);
+            const result = await fix(dir, '0.23.3');
+            assert.strictEqual(result.changed, true, result.log.join('\n'));
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            await nothingStaged(dir);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('two fixes on the same wrong tree end ok, and the second writes nothing', async () => {
+        const dir = await repository('hermes-0.23.3');
+        try {
+            await apply(dir, P0001);
+            await apply(dir, P0002);
+            // Two windows, each holding a dialog opened on this picture.
+            const first = await fix(dir, '0.23.3');
+            assert.strictEqual(first.state.kind, 'ok', first.log.join('\n'));
+            const fingerprintAfterFirst = fingerprint(dir);
+
+            const second = await fix(dir, '0.23.3');
+            assert.strictEqual(second.changed, false, 'the second one must not act');
+            assert.ok(second.log[0].includes('already in place'), second.log[0]);
+            assert.strictEqual(fingerprint(dir), fingerprintAfterFirst, 'byte for byte');
+            assert.strictEqual(second.state.kind, 'ok');
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -172,21 +226,41 @@ describe('real git: Hermes v0.23.3 needs 0003 alone', () => {
             assert.strictEqual(before.kind, 'wrong', before.kind);
             assert.deepStrictEqual(before.kind === 'wrong' ? before.extra : [], ['0001', '0002']);
             assert.deepStrictEqual(before.kind === 'wrong' ? before.missing : [], []);
-            await fixAndCheck(dir, '0.23.3', before);
+            const result = await fix(dir, '0.23.3');
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            await nothingStaged(dir);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
 
-    it('an edit of our own reads unknown, and Fix leaves it untouched', async () => {
+    it('an unrelated edit does not stop the set from reading missing', async () => {
         const dir = await repository('hermes-0.23.3');
         try {
-            const file = path.join(dir, 'acp_adapter', 'session.py');
-            fs.appendFileSync(file, '\n# a hand edit that is not one of our sets\n');
+            const other = path.join(dir, 'acp_adapter', 'tools.py');
+            fs.appendFileSync(other, '\n# an unrelated local edit\n');
+            const before = sha(other);
+            const found = await state(dir, '0.23.3');
+            assert.strictEqual(found.kind, 'missing', `${found.kind} ${found.kind === 'unknown' ? found.reason : ''}`);
+            assert.ok(found.others.includes('acp_adapter/tools.py'), `others: ${found.others.join(', ')}`);
+            const result = await fix(dir, '0.23.3');
+            assert.strictEqual(result.state.kind, 'ok', result.log.join('\n'));
+            assert.strictEqual(sha(other), before, 'the unrelated edit is untouched');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('an edit inside one of our files reads unknown, and Fix leaves it untouched', async () => {
+        const dir = await repository('hermes-0.23.3');
+        try {
+            // gateway_server.py is ours for 0.23.3 (0003 touches it); session.py is not, and an edit
+            // there is the unrelated case below.
+            fs.appendFileSync(path.join(dir, 'acp_adapter', 'gateway_server.py'), '\n# a hand edit of our own file\n');
             const fingerprintBefore = fingerprint(dir);
             const found = await state(dir, '0.23.3');
             assert.strictEqual(found.kind, 'unknown', found.kind);
-            const result = await fixPatchState({ checkout: dir, patchDir: PATCH_DIR, state: found, run: runGit });
+            const result = await fix(dir, '0.23.3');
             assert.strictEqual(result.changed, false);
             assert.strictEqual(fingerprint(dir), fingerprintBefore, 'byte for byte');
         } finally {

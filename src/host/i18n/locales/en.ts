@@ -493,6 +493,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     patchUnknownTitle: 'The ACP patch state could not be decided',
     patchAppliedTitle: 'The patch set is now {0}',
     patchAppliedBody: 'Reconnect so the panes start on the patched code.',
+    patchNothingDoneTitle: 'Nothing was changed ({0})',
     patchFailedTitle: 'The checkout was not brought to {0}: {1}',
     patchManualSteps: 'Manual steps: packaging/hermes-patches/README.md — git checkout -- acp_adapter, then git apply --3way with the patch for this version.',
     catalogNeedsPatch: 'Hermes does not answer the session catalog, so this window cannot see its chats. This Hermes ({0}) needs the patch for {1}: open the folder below, or see Details.',

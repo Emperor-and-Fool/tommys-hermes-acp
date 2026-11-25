@@ -44,11 +44,15 @@ function harness(options: { version: string; present?: string[]; applicable?: st
     const calls: string[][] = [];
     let reconnects = 0;
     let stored: { checkout: string; version: string } | undefined;
+    let primary = true;
 
     const run = async (args: string[]): Promise<GitResult> => {
         calls.push(args);
         const file = args[args.length - 1];
         if (args[0] === 'diff' && args[1] === '--quiet') {
+            return { code: 0, output: '' };
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain') {
             return { code: 0, output: '' };
         }
         if (args[1] === '--reverse' && args[2] === '--check') {
@@ -61,7 +65,7 @@ function harness(options: { version: string; present?: string[]; applicable?: st
             present.delete(idOf(file));
             return { code: 0, output: '' };
         }
-        if (args[1] === '--3way') {
+        if (args[0] === 'apply' && args[1] !== '--check' && args[1] !== '--reverse') {
             present.add(idOf(file));
             return { code: 0, output: '' };
         }
@@ -91,11 +95,14 @@ function harness(options: { version: string; present?: string[]; applicable?: st
             },
         },
         reconnect: async () => { reconnects += 1; },
+        isPrimary: () => primary,
+        lockPath: () => path.join(path.dirname(checkout), 'patches.lock'),
     });
 
     return {
         setup,
         checkout,
+        setPrimary: (value: boolean) => { primary = value; },
         dialogs,
         logs,
         calls,

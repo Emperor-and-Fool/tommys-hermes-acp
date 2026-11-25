@@ -47,6 +47,9 @@ function fakeCheckout(options: { present?: string[]; clean?: boolean; applicable
             if (args[0] === 'diff' && args[1] === '--quiet') {
                 return { code: state.clean ? 0 : 1, output: '' };
             }
+            if (args[0] === 'status' && args[1] === '--porcelain') {
+                return { code: 0, output: '' };
+            }
             if (args[0] === 'apply' && args[1] === '--reverse' && args[2] === '--check') {
                 return { code: state.present.has(idOf(file)) ? 0 : 1, output: '' };
             }
@@ -61,7 +64,7 @@ function fakeCheckout(options: { present?: string[]; clean?: boolean; applicable
                 state.present.delete(id);
                 return { code: 0, output: '' };
             }
-            if (args[0] === 'apply' && args[1] === '--3way') {
+            if (args[0] === 'apply' && args[1] !== '--check' && args[1] !== '--reverse') {
                 state.present.add(idOf(file));
                 return { code: 0, output: '' };
             }
@@ -123,7 +126,7 @@ describe('the patch state of a checkout', () => {
         const fake = fakeCheckout({ clean: false, applicable: ['0003'] });
         const state = await readPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
         assert.strictEqual(state.kind, 'unknown');
-        assert.ok(state.kind === 'unknown' && state.reason.includes('not one of our sets'), state.kind === 'unknown' ? state.reason : '');
+        assert.ok(state.kind === 'unknown' && state.reason.includes('not the patch set'), state.kind === 'unknown' ? state.reason : '');
     });
 
     it('reads unknown for a version with no set', async () => {
@@ -139,53 +142,60 @@ describe('fixing the patch state', () => {
     it('reverses the wrong set newest-first, then applies the required one', async () => {
         const { checkout, patchDir } = workspace();
         const fake = fakeCheckout({ present: ['0001', '0002'], applicable: ['0003'] });
-        const before = await readPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
-        fake.calls.length = 0;
-        const result = await fixPatchState({ checkout, patchDir, state: before, run: fake.run });
+        const result = await fixPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
         assert.strictEqual(result.changed, true, result.log.join('\n'));
-        const reversed = fake.calls
-            .filter(args => args[0] === 'apply' && args[1] === '--reverse')
+        const writes = fake.calls.filter(args => args[0] === 'apply' && !args.includes('--check'));
+        const reversed = writes
+            .filter(args => args[1] === '--reverse')
             .map(args => idOf(args[args.length - 1]));
         assert.deepStrictEqual(reversed, ['0002', '0001'], 'newest first');
-        const applied = fake.calls
-            .filter(args => args[0] === 'apply' && args[1] === '--3way')
+        const applied = writes
+            .filter(args => args[1] !== '--reverse')
             .map(args => idOf(args[args.length - 1]));
         assert.deepStrictEqual(applied, ['0003']);
-
-        const after = await readPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
-        assert.strictEqual(after.kind, 'ok');
+        assert.ok(!fake.calls.some(args => args.includes('--3way')), 'no --3way: it stages the result');
+        assert.strictEqual(result.state.kind, 'ok');
     });
 
     it('applies a missing set in order', async () => {
         const { checkout, patchDir } = workspace();
         const fake = fakeCheckout({ applicable: ['0001', '0002'] });
-        const before = await readPatchState({ checkout, patchDir, version: '0.22.6', run: fake.run });
-        fake.calls.length = 0;
-        await fixPatchState({ checkout, patchDir, state: before, run: fake.run });
+        await fixPatchState({ checkout, patchDir, version: '0.22.6', run: fake.run });
         const applied = fake.calls
-            .filter(args => args[0] === 'apply' && args[1] === '--3way')
+            .filter(args => args[0] === 'apply' && !args.includes('--check') && args[1] !== '--reverse')
             .map(args => idOf(args[args.length - 1]));
         assert.deepStrictEqual(applied, ['0001', '0002']);
+    });
+
+    it('reads again before acting: a second fix on an already-right tree does nothing', async () => {
+        const { checkout, patchDir } = workspace();
+        const fake = fakeCheckout({ present: ['0001', '0002'], applicable: ['0003'] });
+        const first = await fixPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
+        assert.strictEqual(first.changed, true);
+        fake.calls.length = 0;
+        // The same window (or the other one) still holding the old picture: it asks for the fix again.
+        const second = await fixPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
+        assert.strictEqual(second.changed, false);
+        assert.deepStrictEqual(fake.calls.filter(args => args[0] === 'apply' && !args.includes('--check')), [],
+            'not one write on the second run');
+        assert.ok(second.log[0].includes('already in place'), second.log[0]);
+        assert.strictEqual(second.state.kind, 'ok');
     });
 
     it('changes nothing when the state is already ok', async () => {
         const { checkout, patchDir } = workspace();
         const fake = fakeCheckout({ present: ['0003'] });
-        const state = await readPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
-        fake.calls.length = 0;
-        const result = await fixPatchState({ checkout, patchDir, state, run: fake.run });
+        const result = await fixPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
         assert.strictEqual(result.changed, false);
-        assert.deepStrictEqual(fake.calls, []);
+        assert.deepStrictEqual(fake.calls.filter(a => a[0] === 'apply' && !a.includes('--check')), []);
     });
 
     it('leaves an unknown tree byte for byte alone', async () => {
         const { checkout, patchDir } = workspace();
         const fake = fakeCheckout({ clean: false });
-        const state = await readPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
-        fake.calls.length = 0;
-        const result = await fixPatchState({ checkout, patchDir, state, run: fake.run });
+        const result = await fixPatchState({ checkout, patchDir, version: '0.23.3', run: fake.run });
         assert.strictEqual(result.changed, false);
-        assert.deepStrictEqual(fake.calls, [], 'not one command');
+        assert.deepStrictEqual(fake.calls.filter(a => a[0] === 'apply' && !a.includes('--check')), [], 'not one write');
     });
 });
 

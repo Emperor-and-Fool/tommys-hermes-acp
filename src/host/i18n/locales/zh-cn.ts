@@ -488,6 +488,7 @@ hermes --profile &lt;name&gt; acp</code></pre>
     patchUnknownTitle: '无法判定 ACP 补丁状态',
     patchAppliedTitle: '补丁集现在为 {0}',
     patchAppliedBody: '重新连接后，面板将在已打补丁的代码上启动。',
+    patchNothingDoneTitle: '未做任何更改（{0}）',
     patchFailedTitle: '未能将代码检出切换到 {0}：{1}',
     patchManualSteps: '手动步骤：packaging/hermes-patches/README.md — 先执行 git checkout -- acp_adapter，再用对应版本的补丁执行 git apply --3way。',
     catalogNeedsPatch: 'Hermes 没有回应会话目录，因此本窗口看不到它的对话。当前 Hermes（{0}）需要 {1} 补丁：请打开下面的文件夹，或查看详情。',
