@@ -235,7 +235,7 @@ git apply --3way ~/.vscode-oss/extensions/emperorandfool.tommys-hermes-acp-2.6.*
 </code></pre>
 <p>On Windows the same, in PowerShell as your normal user (nothing here needs admin):</p>
 <pre><code class="language-powershell">cd "$env:LOCALAPPDATA\hermes\hermes-agent"
-git apply --3way "$env:USERPROFILE\.vscode\extensions\emperorandfool.tommys-hermes-acp-2.6.1\packaging\hermes-patches\0003-acp-023x-session-catalog-hidden-title.patch"
+git apply --3way "$env:USERPROFILE\.vscode\extensions\emperorandfool.tommys-hermes-acp-2.6.*\packaging\hermes-patches\0003-acp-023x-session-catalog-hidden-title.patch"
 </code></pre>
 <h3>Coming from 0.22</h3>
 <p>A machine that ran 0.22 has <code>0001</code> (and from 0.22.5, <code>0002</code>) in its checkout, and
