@@ -1,0 +1,36 @@
+name: publish
+
+# Tags only: a release is cut by pushing v<version>, never by a branch push.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  # Trusted publishing: the job proves its identity to open-vsx.org with this token.
+  id-token: write
+
+jobs:
+  open-vsx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The tag and the manifest must agree, or the registry gets a version nobody asked for.
+      - name: version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          [ "$tag" = "$pkg" ] || { echo "tag v$tag != package.json $pkg"; exit 1; }
+
+      # packageSecondant.mjs runs first: the secondant VSIX is bundled inside the primary one.
+      - run: npm run package
+
+      - run: npx --yes ovsx publish dist/*.vsix --trusted-publishing
