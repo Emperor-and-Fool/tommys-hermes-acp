@@ -141,9 +141,11 @@ at the tab list, or send `_session/catalog` and see whether it answers `null` or
 ## After a `hermes update`
 
 `hermes update` runs `git pull` in that checkout. Local changes are stashed first
-(`hermes-update-autostash-…`) and afterwards it asks *“Restore local changes now?”*
-(`hermes_cli/update_cmd_stash.py:568-573`) — answer **y** to keep the patch; if you answer no,
-re-apply it by hand. Either way, check the patch is present before opening a pane.
+(`hermes-update-autostash-…`) and afterwards it asks *"Restore local changes now?"*
+(`hermes_cli/update_cmd_stash.py:568-573`). **Either answer is fine now:** the extension reads the
+checkout at the next connect and, when the wrong set is in place, offers **Patch** — which reverses
+`0001`+`0002` and applies `0003` with git. By hand, that is `git checkout -- acp_adapter` followed by
+`git apply --3way` with `0003`; `git status --short acp_adapter` must show exactly two `M` lines.
 
 ## Not done yet
 

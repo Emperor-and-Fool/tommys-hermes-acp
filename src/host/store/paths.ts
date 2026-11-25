@@ -59,6 +59,16 @@ export function profileStatePathFor(historyDir: string, sessionProfileId: string
 }
 
 /**
+ * The file that remembers which Hermes version this checkout was last seen at.
+ *
+ * Machine-wide, like `desktopDirFor` and for the same reason: the checkout belongs to the machine,
+ * not to a profile, so both windows of this data home read the same answer.
+ */
+export function patchVersionPathFor(historyDir: string): string {
+    return path.join(historyDir, 'patches.json');
+}
+
+/**
  * The Desktop step's machine-wide facts: the last build attempt, and the lock one window holds.
  *
  * Above the profiles, like the workspace registry, and for the same reason: there is one Hermes

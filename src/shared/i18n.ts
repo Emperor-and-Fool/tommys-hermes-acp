@@ -427,6 +427,22 @@ export interface LocaleStrings {
     budgetClickRefresh: string;
     /** The session catalog went unanswered: the patch this Hermes needs, and what it answered. */
     catalogNeedsPatch: string;
+    patchButton: string;
+    patchTestButton: string;
+    patchNotNow: string;
+    patchOkButton: string;
+    patchDetailsButton: string;
+    patchReconnectButton: string;
+    patchUpdatedTitle: string;
+    patchUpdatedBody: string;
+    patchOkTitle: string;
+    patchMissingTitle: string;
+    patchWrongTitle: string;
+    patchUnknownTitle: string;
+    patchAppliedTitle: string;
+    patchAppliedBody: string;
+    patchFailedTitle: string;
+    patchManualSteps: string;
     catalogNoPatchKnown: string;
     catalogOpenPatchFolder: string;
     catalogDetails: string;

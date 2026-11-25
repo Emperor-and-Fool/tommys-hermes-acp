@@ -54,6 +54,10 @@ import { Profiles, excludedProfiles } from './environment/profiles';
 import { Connection } from './chat/connection';
 import { TabLifecycle } from './workspace/lifecycle';
 import { CatalogNotice } from './workspace/catalogNotice';
+import { PatchSetup, createPatchVersionStore } from './patches/patchSetup';
+import { runGit } from './environment/patchState';
+import { resolveHermesRoot } from './environment/hermesPaths';
+import { PATCH_FOLDER } from './environment/hermesPatches';
 import { PromptRunner } from './chat/promptRunner';
 import { HistoryStages, blockMessageLines, historySliceBody } from './chat/historyAttach';
 import { exportSessionMessages, matchMessageIds, toChatMessages } from './chat/historyLookup';
@@ -287,12 +291,30 @@ export class App implements vscode.WebviewViewProvider {
     /** Permissions: the profile's approval mode and the red action, with its own store. */
     private readonly _approvals: Approvals;
 
+    /**
+     * The ACP patch set: read at each connect, and fixed only when the user presses Patch.
+     *
+     * The dialog appears when the version changed since the last connect — that is the moment
+     * `hermes update` may have brought the old set back, or left none at all.
+     */
+    private readonly _patchSetup = new PatchSetup({
+        checkout: () => path.join(resolveHermesRoot(), 'hermes-agent'),
+        patchDir: () => path.join(this._extensionUri.fsPath, PATCH_FOLDER),
+        hermesVersion: () => this._connection.acp?.agentVersion || '',
+        run: runGit,
+        log: (line) => this._log(line),
+        store: createPatchVersionStore(() => this._historyDir),
+        choices: createEditorChoices(),
+        reconnect: async () => { await this._connection.reconnectForConfig(); },
+    });
+
     /** A catalog Hermes does not answer earns one notice per connect, naming the patch it needs. */
     private readonly _catalogNotice = new CatalogNotice({
         hermesVersion: () => this._connection.acp?.agentVersion || '',
         patchFolder: () => path.join(this._extensionUri.fsPath, 'packaging', 'hermes-patches'),
         info: (message) => this._notices.info(message),
         choices: createEditorChoices(),
+        patch: () => this._patchSetup.promptCatalog(),
         log: (line) => this._log(line),
     });
 

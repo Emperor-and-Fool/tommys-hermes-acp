@@ -154,6 +154,14 @@ export interface EditorChoices {
     showInFileManager(folderPath: string): Promise<void>;
     /** A notice with buttons: the action the user took, or undefined when it was closed. */
     ask(message: string, actions: string[]): Promise<string | undefined>;
+    /**
+     * A modal dialog: the action the user took, or undefined when it was dismissed.
+     *
+     * `detail` is the small print under the message. Modal is for the moments the answer decides
+     * what happens next — a version change the window has not caught up with, a patch that is not
+     * in place — and never for a hint that can wait.
+     */
+    modal(message: string, actions: string[], detail?: string): Promise<string | undefined>;
     /** The user's home folder: where Documents is, and where a folder dialog starts. */
     home(): string;
 }
