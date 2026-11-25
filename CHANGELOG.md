@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.6.2] - 2026-11-25
+
+The patch a Hermes update can break is now the extension's business: it reads the checkout, says when
+Hermes changed under it, and fixes the set in one click.
+
+### New
+
+- **The window checks the ACP patch set when it connects**, and after an update it says so: *Hermes was
+  updated from X to Y* with **Test patch**. The answer is one of four — the right set is in place,
+  it is missing, the wrong set is in its place, or it cannot be decided — and only the two fixable
+  ones offer **Patch**, which reverses the patches that do not belong and applies the one that does.
+- **The catalog notice gained the same Patch button**: a Hermes that stops answering the catalog
+  without a version change is the same failure, and the notice is where it is seen.
+- **The approval note is read from the line Hermes already sends** (`- **approval:** …`), so no local
+  lines in `acp_adapter/tools.py` are needed for it. The tagged-block path stays for a Hermes that
+  sends the note as its own block.
+
+### Fixed
+
+- **One fixer.** The secondant no longer reads the patch state, shows the dialog or offers the button,
+  and the fix re-reads the checkout under a lock in the data home — two windows can no longer act on
+  the same stale picture and leave the machine with no patch at all.
+- **Nothing is staged.** Applying uses `git apply` without `--3way`, which implied `--index` and left
+  the patch staged in Hermes' own index.
+- **The clean check looks only at the files the patch set touches**, read from the patch files' own
+  headers; an edit elsewhere in `acp_adapter/` is reported in the output channel and kept.
+
+### Repository
+
+- `environment/patchState.ts` (the state rules and the fix), `patches/patchSetup.ts` (the dialog, the
+  lock, the version memory), `store/paths.ts` gains `patchVersionPathFor` and `patchLockPathFor`.
+- Tests: 712 → 716 passing; `app.ts` 1466 → 1470.
+
 ## [2.6.1] - 2026-11-24
 
 The Windows round. A Hermes 0.23 install shows its sessions again — the patch that answers the

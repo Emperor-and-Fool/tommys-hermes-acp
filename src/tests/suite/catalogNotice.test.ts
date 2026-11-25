@@ -18,18 +18,22 @@ const noticeOver = (version: string, answer?: string) => {
     const asked: Array<{ message: string; actions: string[] }> = [];
     const infos: string[] = [];
     const logs: string[] = [];
+    let patched = 0;
     const shown: string[] = [];
     const host: CatalogNoticeHost = {
         hermesVersion: () => version,
         patchFolder: () => '/ext/packaging/hermes-patches',
         info: (message) => { infos.push(message); },
         log: (line) => { logs.push(line); },
+        patch: async () => { patched += 1; },
+        patchAvailable: () => true,
         choices: {
             pick: async (_title: string, _items: EditorChoiceItem[]) => undefined,
             prompt: async () => undefined,
             pickFolder: async () => undefined,
             home: () => '/home',
             showInFileManager: async (folderPath) => { shown.push(folderPath); },
+            modal: async () => undefined,
             ask: async (message, actions) => {
                 asked.push({ message, actions });
                 return answer;
@@ -61,7 +65,7 @@ describe('the session catalog notice: a Hermes that does not answer', () => {
         const { message, actions } = asked[0];
         assert.ok(message.includes('0.23.3'), `the version is named: ${message}`);
         assert.ok(message.includes('0003'), `the set is named: ${message}`);
-        assert.deepStrictEqual(actions, [t('catalogOpenPatchFolder'), t('catalogDetails')]);
+        assert.deepStrictEqual(actions, [t('patchButton'), t('catalogOpenPatchFolder'), t('catalogDetails')]);
         assert.ok(!message.includes('Internal error'), 'the error text belongs in Details, not the notice');
     });
 

@@ -59,6 +59,26 @@ export function profileStatePathFor(historyDir: string, sessionProfileId: string
 }
 
 /**
+ * The file that remembers which Hermes version this checkout was last seen at.
+ *
+ * Machine-wide, like `desktopDirFor` and for the same reason: the checkout belongs to the machine,
+ * not to a profile, so both windows of this data home read the same answer.
+ */
+export function patchVersionPathFor(historyDir: string): string {
+    return path.join(historyDir, 'patches.json');
+}
+
+/**
+ * The lock one window holds while it fixes the patch set.
+ *
+ * Machine-wide like the version file above: the checkout is one, and two windows on it must not both
+ * reverse the same patches. A lock that is a process old is stale, not a veto.
+ */
+export function patchLockPathFor(historyDir: string): string {
+    return path.join(historyDir, 'patches.lock');
+}
+
+/**
  * The Desktop step's machine-wide facts: the last build attempt, and the lock one window holds.
  *
  * Above the profiles, like the workspace registry, and for the same reason: there is one Hermes

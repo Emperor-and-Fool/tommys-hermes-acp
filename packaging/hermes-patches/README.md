@@ -66,9 +66,12 @@ Exactly two — `catalog.py` and `gateway_server.py`. A third (`server.py` or `s
 0.22 set is back.
 
 `hermes update` stashes local changes before its pull and asks afterwards whether to restore
-them. Answer **yes** only when the update stays within one minor version (0.22 → 0.22,
-0.23 → 0.23). Going from **0.22 to 0.23**, answer **no**, then reset the adapter with
-`git checkout -- acp_adapter` and apply `0003` alone with `git apply --3way`. If `0001`+`0002`
-come back, their code takes over from `0003`'s, and every connect answers `Internal error`.
+them. **Either answer is fine now.** The extension reads the checkout at the next connect; when the
+wrong set is in place it says so and offers **Patch**, which reverses `0001`+`0002` and applies
+`0003` with git. The manual steps stay as the fallback: reset the adapter with
+`git checkout -- acp_adapter`, apply `0003` alone with `git apply --3way`, and check that
+`git status --short acp_adapter` shows exactly two `M` lines. If `0001`+`0002` stay on top of
+`0003`, their code takes over and every connect answers `Internal error` — the state the
+**Patch** button reports and repairs.
 
 Check before opening a pane: `_session/catalog` answering `null` or an error is the patch's absence.

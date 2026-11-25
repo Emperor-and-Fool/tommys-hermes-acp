@@ -235,7 +235,7 @@ git apply --3way ~/.vscode-oss/extensions/emperorandfool.tommys-hermes-acp-2.6.*
 </code></pre>
 <p>On Windows the same, in PowerShell as your normal user (nothing here needs admin):</p>
 <pre><code class="language-powershell">cd "$env:LOCALAPPDATA\hermes\hermes-agent"
-git apply --3way "$env:USERPROFILE\.vscode\extensions\emperorandfool.tommys-hermes-acp-2.6.1\packaging\hermes-patches\0003-acp-023x-session-catalog-hidden-title.patch"
+git apply --3way "$env:USERPROFILE\.vscode\extensions\emperorandfool.tommys-hermes-acp-2.6.*\packaging\hermes-patches\0003-acp-023x-session-catalog-hidden-title.patch"
 </code></pre>
 <h3>Coming from 0.22</h3>
 <p>A machine that ran 0.22 has <code>0001</code> (and from 0.22.5, <code>0002</code>) in its checkout, and
@@ -251,7 +251,7 @@ git status --short acp_adapter                              # exactly two M line
 </code></pre>
 <p>Exactly two &mdash; <code>catalog.py</code> and <code>gateway_server.py</code>. A third
 (<code>server.py</code> or <code>session.py</code>) means the 0.22 set is back.</p>
-<p><code>hermes update</code> stashes local changes before its pull and asks afterwards whether to restore them. Answer <strong>yes</strong> only when the update stays within one minor version (0.22 &rarr; 0.22, 0.23 &rarr; 0.23). Going from <strong>0.22 to 0.23</strong>, answer <strong>no</strong>, then reset the adapter with <code>git checkout -- acp_adapter</code> and apply <code>0003</code> alone with <code>git apply --3way</code>. If <code>0001</code>+<code>0002</code> come back, their code takes over from <code>0003</code>&rsquo;s, and every connect answers <code>Internal error</code>.</p>
+<p><code>hermes update</code> stashes local changes before its pull and asks afterwards whether to restore them. <strong>Either answer is fine now.</strong> The extension reads the checkout at the next connect; when the wrong set is in place it says so and offers <strong>Patch</strong>, which reverses <code>0001</code>+<code>0002</code> and applies <code>0003</code> with git. The manual steps stay as the fallback: reset the adapter with <code>git checkout -- acp_adapter</code>, apply <code>0003</code> alone with <code>git apply --3way</code>, and check that <code>git status --short acp_adapter</code> shows exactly two <code>M</code> lines. If <code>0001</code>+<code>0002</code> stay on top of <code>0003</code>, their code takes over and every connect answers <code>Internal error</code> &mdash; the state the <strong>Patch</strong> button reports and repairs.</p>
 <p>Every patch touches only <code>acp_adapter/</code> and only calls Hermes&rsquo; own store methods; <code>packaging/hermes-patches/CHANGELOG.md</code> records each base, the symptom when its patch is missing, and why 0.23 needs a set of its own.</p>
 <p><em>Tested on Ubuntu 24.04, and on Windows: Hermes 0.23.3 with <code>0003</code> applied — tabs resume and the catalog answers.</em></p>
 <h2>Build and install</h2>

@@ -97,6 +97,11 @@ export interface TabLifecycleHost {
      * names the patch the installed Hermes needs — the failure is that patch's absence.
      */
     catalog: CatalogVoice;
+    /**
+     * Read the ACP patch set when a connect begins (optional: a caller without a checkout to read
+     * simply does not supply it, and the connect is unchanged).
+     */
+    patchCheck?(): void;
 }
 
 export class TabLifecycle {
@@ -183,6 +188,7 @@ export class TabLifecycle {
             return;
         }
         this._host.catalog.beginConnect();
+        this._host.patchCheck?.();
         await this.syncFromHermes(cwd);
         if (!this._catalogKnown) {
             // An unknown catalog is not an empty one. Nothing here may conclude that a session is
