@@ -33,4 +33,9 @@ jobs:
       # packageSecondant.mjs runs first: the secondant VSIX is bundled inside the primary one.
       - run: npm run package
 
-      - run: npx --yes ovsx publish dist/*.vsix --trusted-publishing
+      # dist/ is committed with older VSIXs, so a glob hands ovsx eleven paths and it publishes
+      # one of those instead. Name the file this run built.
+      - run: |
+          vsix="dist/tommys-hermes-acp-$(node -p "require('./package.json').version").vsix"
+          test -f "$vsix"
+          npx --yes ovsx publish --packagePath "$vsix" --trusted-publishing
