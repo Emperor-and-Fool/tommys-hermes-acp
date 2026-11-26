@@ -6,12 +6,38 @@
   "publisher": "EmperorAndFool",
   "icon": "media/icon.png",
   "license": "GPL-3.0-or-later",
+  "author": {
+    "name": "Emperor & Fool",
+    "url": "https://emperorandfool.nl"
+  },
+  "homepage": "https://github.com/Emperor-and-Fool/tommys-hermes-acp#readme",
+  "bugs": {
+    "url": "https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues"
+  },
+  "qna": "https://github.com/Emperor-and-Fool/tommys-hermes-acp/issues",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "AI",
     "Chat",
     "Other"
+  ],
+  "keywords": [
+    "hermes",
+    "hermes-agent",
+    "nous research",
+    "acp",
+    "agent client protocol",
+    "ai agent",
+    "multi-agent",
+    "chat",
+    "deepseek",
+    "vscodium"
   ],
   "main": "./out/host/extension.js",
   "activationEvents": [
