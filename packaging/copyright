@@ -36,7 +36,7 @@ Files: media/vendor/marked.min.js
 Copyright: 2011-2024 Christopher Jeffrey
 License: MIT
 
-Files: media/vendor/highlight.min.js media/vendor/github-dark.min.css
+Files: media/vendor/highlight.min.js media/vendor/github-dark.min.css media/vendor/github-light.min.css
 Copyright: 2006 Ivan Sagalaev and highlight.js contributors
 License: BSD-3-Clause
 

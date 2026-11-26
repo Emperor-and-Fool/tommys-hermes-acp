@@ -53,3 +53,5 @@ extras/**/build/**
 extras/**/.build-venv/**
 extras/**/__pycache__/**
 dist/**
+# The README screenshot: the store pages and the details view load it from GitHub.
+media/two-agents-side-by-side.png
