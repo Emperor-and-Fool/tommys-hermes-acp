@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.6.3] - 2026-11-26
+
+The store pages catch up with the README. A marketplace listing only takes new text with a new
+version, so the rewritten README — and the tray it describes — ship in one release.
+
+### Changed
+
+- **The README is rewritten for the store pages**, with a new screenshot: what the extension does,
+  how to start, and where the dashboard and the second chat fit, in fewer words.
+- **The tray menu entries are named after what they install**: **Install Dashboard** and
+  **Uninstall Dashboard**, in English and Simplified Chinese. The command ids and behaviour are
+  unchanged — only the labels, which still said "Hermes systray app" and "Desktop GUI".
+
+### Fixed
+
+- **The highlight.js light theme is listed** in [`packaging/copyright`](packaging/copyright) beside
+  the dark one; `media/vendor/github-light.min.css` ships and is used for light editor themes.
+- **The README's links to `NOTICE`, `CHANGELOG.md`, `LICENSE`, `LICENSES/MIT-jove-rina.txt` and
+  `packaging/copyright` were absolute and broken**; they are relative now.
+
 ## [2.6.2] - 2026-11-25
 
 The patch a Hermes update can break is now the extension's business: it reads the checkout, says when

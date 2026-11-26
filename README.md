@@ -231,7 +231,7 @@ Every chat you open is a Hermes session, so you can see and continue it in the d
 
 **Will this be maintained?** It is maintained by Emperor & Fool for its own daily use, and released because it may be useful to others. The code is split by runtime — `src/host` (VS Code, files, CLI, ACP), `src/pane` (the chat view), `src/shared` (the messages between them) — and those messages are typed on both sides, so a change on one side that the other misses fails to compile.
 
-**Is this the upstream project?** This project originated from [Rina Hermes ACP](https://github.com/jove-rina/rina-hermes-acp) (MIT, © 2026 jove-rina) and continues independently under its own extension identity, without endorsement from upstream. Provenance is in [`NOTICE`](https://claude.ai/chat/NOTICE).
+**Is this the upstream project?** This project originated from [Rina Hermes ACP](https://github.com/jove-rina/rina-hermes-acp) (MIT, © 2026 jove-rina) and continues independently under its own extension identity, without endorsement from upstream. Provenance is in [`NOTICE`](NOTICE).
 
 **Does it work with plain VS Code?** Yes, 1.85 or newer. VSCodium is what it is developed against.
 
@@ -243,7 +243,7 @@ Every chat you open is a Hermes session, so you can see and continue it in the d
 - **2.5** — each chat its own working folder, permission modes that cover file edits, and an active project.
 - **2.6** — notes per agent and agent memory size; the patch follows a Hermes update and is fixed in one click; the dashboard in the tray on Linux and Windows.
 
-See [`CHANGELOG.md`](https://claude.ai/chat/CHANGELOG.md) for each release.
+See [`CHANGELOG.md`](CHANGELOG.md) for each release.
 
 **How far is this from the upstream?** v1.0.0 started with image paste, theming fixes and a font-size pill on top of upstream 0.3.2. Everything listed in this README since then is new work: the secondant and forwarding between chats, projects, steering, session memory with its filters, the permission modes, chats loaded from Hermes, environment detection, the patch check with its one-click fix, the tray dashboard, notes, and the translations. The upstream MIT notice is retained in full; see Licence below.
 
@@ -256,7 +256,7 @@ See [`CHANGELOG.md`](https://claude.ai/chat/CHANGELOG.md) for each release.
 
 ## Licence and attribution
 
-**This project is distributed under GPL-3.0-or-later**, © 2026 Emperor & Fool — full text in [`LICENSE`](https://claude.ai/chat/LICENSE). It originated from Rina Hermes ACP, received under the **MIT** licence, © 2026 jove-rina; that notice is retained verbatim in [`LICENSES/MIT-jove-rina.txt`](https://claude.ai/chat/LICENSES/MIT-jove-rina.txt) as MIT requires, and the upstream code remains available from upstream under MIT. The full split, the upstream commits this fork is based on, and the bundled third-party licences are in [`NOTICE`](https://claude.ai/chat/NOTICE) and [`packaging/copyright`](https://claude.ai/chat/packaging/copyright).
+**This project is distributed under GPL-3.0-or-later**, © 2026 Emperor & Fool — full text in [`LICENSE`](LICENSE). It originated from Rina Hermes ACP, received under the **MIT** licence, © 2026 jove-rina; that notice is retained verbatim in [`LICENSES/MIT-jove-rina.txt`](LICENSES/MIT-jove-rina.txt) as MIT requires, and the upstream code remains available from upstream under MIT. The full split, the upstream commits this fork is based on, and the bundled third-party licences are in [`NOTICE`](NOTICE) and [`packaging/copyright`](packaging/copyright).
 
 Because this is a GPL work: the complete source for every distributed build is this repository, and anyone redistributing a modified version must do so under the same licence.
 
