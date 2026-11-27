@@ -334,6 +334,10 @@ export class AcpClient {
             return null;
         }
         try {
+            // Deliberately `model.options` until a Hermes release ships #160767: today both names
+            // answer "method not found" here (same fallback below), and the name #160767 adds is
+            // still ours to propose. Rename to the method name #160767 merges with, in the release
+            // that retires the patches.
             const response = await this._conn.agent.request('model.options', {
                 sessionId: this._activeSessionId,
             } as any);
