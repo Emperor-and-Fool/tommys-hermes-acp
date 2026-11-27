@@ -6,7 +6,8 @@ Three `_`-prefixed ACP extension methods this extension calls, which upstream He
 - `_session/setHidden`: hide or unhide a session (what closing a tab does)
 - `_session/setTitle`: rename a session as a user title
 
-Kept here until they live on a hermes-agent fork branch with an upstream PR. They ship inside both
+Kept here until #160759 and #160767 are merged and shipped in a Hermes release; the release after
+that drops this directory. They ship inside both
 VSIXes, so an installed extension always carries its own copy:
 
     <installed extension>/packaging/hermes-patches/

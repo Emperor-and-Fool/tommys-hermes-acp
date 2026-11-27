@@ -149,7 +149,6 @@ checkout at the next connect and, when the wrong set is in place, offers **Patch
 
 ## Not done yet
 
-Neither patch is upstream. Until one is, `hermes update` is free to move the class that answers these
-methods again — which is exactly what 0.22.5 did to 0001. The durable fix is a PR against
-NousResearch/hermes-agent; the extension detecting a `null` catalog and proposing the relevant patch
-is the interim stopgap, not a substitute.
+Upstream: issue #160752, PRs #160759 (session methods) and #160767 (model.options, stacked on
+#160759), open since 2026-11-27. Patches stay required on 0.22.x / 0.23.x until a Hermes release
+contains both.
